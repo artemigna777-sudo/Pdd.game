@@ -96,6 +96,39 @@ export function historyView(
   );
 }
 
+/**
+ * Строка разбора: вопрос раскрывается касанием и показывает оригинальную карточку с выбранным
+ * и правильным ответом. Ошибки раскрыты сразу.
+ */
+export function answerDetails(question: Question, chosen: number, title: string): HTMLDetailsElement {
+  const ok = chosen === question.correct;
+  const body = el('div', { class: 'answer__card' });
+  const details = el(
+    'details',
+    { class: `answer ${ok ? 'is-ok' : 'is-bad'}`, open: !ok },
+    el(
+      'summary',
+      { class: 'answer__head' },
+      icon(ok ? 'check' : 'close', 'answer__mark'),
+      el(
+        'span',
+        { class: 'answer__body' },
+        el('span', { class: 'answer__title' }, `${title} — ${ok ? 'верно' : 'ошибка'}`),
+        el('span', { class: 'answer__text' }, question.text),
+      ),
+      icon('chevron', 'answer__chev'),
+    ),
+    body,
+  );
+  // Карточку с картинкой собираем, только когда вопрос раскрыт: 20 картинок сразу ни к чему.
+  const build = () => {
+    if (details.open && !body.hasChildNodes()) body.append(renderQuestionCard(question, undefined, { chosen }));
+  };
+  details.addEventListener('toggle', build);
+  build();
+  return details;
+}
+
 /** Результат попытки и разбор: что выбрано в каждом вопросе и какой ответ правильный. */
 export function attemptView(attempt: TicketAttempt, questions: readonly Question[], history: readonly TicketAttempt[]): HTMLElement {
   const total = attempt.answers.length;
@@ -131,34 +164,7 @@ export function attemptView(attempt: TicketAttempt, questions: readonly Question
     ...rows.map((r) => el('li', { class: `dot ${r.chosen === r.question.correct ? 'is-ok' : 'is-bad'}` }, String(r.question.number))),
   );
 
-  const answers = rows.map(({ question, chosen }) => {
-    const ok = chosen === question.correct;
-    const body = el('div', { class: 'answer__card' });
-    const details = el(
-      'details',
-      { class: `answer ${ok ? 'is-ok' : 'is-bad'}`, open: !ok },
-      el(
-        'summary',
-        { class: 'answer__head' },
-        icon(ok ? 'check' : 'close', 'answer__mark'),
-        el(
-          'span',
-          { class: 'answer__body' },
-          el('span', { class: 'answer__title' }, `Вопрос ${question.number} — ${ok ? 'верно' : 'ошибка'}`),
-          el('span', { class: 'answer__text' }, question.text),
-        ),
-        icon('chevron', 'answer__chev'),
-      ),
-      body,
-    );
-    // Карточку с картинкой собираем, только когда вопрос раскрыт: 20 картинок сразу ни к чему.
-    const build = () => {
-      if (details.open && !body.hasChildNodes()) body.append(renderQuestionCard(question, undefined, { chosen }));
-    };
-    details.addEventListener('toggle', build);
-    build();
-    return details;
-  });
+  const answers = rows.map(({ question, chosen }) => answerDetails(question, chosen, `Вопрос ${question.number}`));
 
   return el(
     'div',

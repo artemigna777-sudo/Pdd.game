@@ -383,7 +383,7 @@ function garage(scene: InteriorScene, ctx: MinigameContext): SceneScript {
     caption: `Автосервис «Гайка»: ${GARAGE_PARTS[part]}`,
     async enter() {
       scene.overview();
-      scene.bubble(`Дядя Гена: осмотри-ка — ${GARAGE_PARTS[part]}`, m.x - 30, m.y - 60, 'info', 200);
+      scene.bubble(`Осмотри-ка: ${GARAGE_PARTS[part]}`, m.x - 60, m.y - 60, 'info', 200);
       await scene.wait(500);
       await scene.tapTarget(spot.x, spot.y, 'Осмотреть', 30);
       const lens = graphics(scene, spot.x, spot.y, (g) => {

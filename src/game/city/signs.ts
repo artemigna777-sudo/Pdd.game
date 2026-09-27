@@ -6,6 +6,7 @@
  * показывается оригинальная картинка билета.
  */
 import * as Phaser from 'phaser';
+import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
 import type { LightState } from '../../world/templates.ts';
 
@@ -261,20 +262,21 @@ export type LightArrow = 'left' | 'right' | 'straight';
 
 export class TrafficLightView {
   readonly container: Phaser.GameObjects.Container;
-  private readonly housing: Phaser.GameObjects.Graphics;
-  private readonly lamps: Phaser.GameObjects.Graphics;
+  /** Светофор целиком — готовая картинка для каждого сочетания огней (см. bake.ts). */
+  private readonly image: Phaser.GameObjects.Image;
   private state: LightState = 'green';
   private arrow?: LightArrow;
   private blinkOn = true;
   private elapsed = 0;
 
-  constructor(scene: Phaser.Scene, arrow?: LightArrow) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    arrow?: LightArrow,
+  ) {
     this.arrow = arrow;
     this.container = scene.add.container(0, 0);
-    this.housing = scene.add.graphics();
-    this.lamps = scene.add.graphics();
-    this.container.add([this.housing, this.lamps]);
-    this.drawHousing();
+    this.image = scene.add.image(0, 0, '__DEFAULT');
+    this.container.add(this.image);
     this.draw();
   }
 
@@ -282,21 +284,7 @@ export class TrafficLightView {
   setArrow(arrow: LightArrow | undefined) {
     if (arrow === this.arrow) return;
     this.arrow = arrow;
-    this.drawHousing();
     this.draw();
-  }
-
-  /** Где секция со стрелкой: сбоку от основного светофора (прямо — справа). */
-  private arrowX(): number {
-    return this.arrow === 'left' ? -12 : 12;
-  }
-
-  private drawHousing() {
-    const g = this.housing.clear();
-    g.fillStyle(0x000000, 0.2).fillEllipse(3, 2, 8, 4);
-    g.fillStyle(0x6b7280).fillRect(-1.2, -30, 2.4, 30);
-    g.fillStyle(0x1f2328).fillRoundedRect(-7, -64, 14, 36, 4);
-    if (this.arrow) g.fillStyle(0x1f2328).fillRoundedRect(this.arrowX() - 6, -40, 12, 12, 3);
   }
 
   setState(state: LightState) {
@@ -317,17 +305,30 @@ export class TrafficLightView {
   }
 
   private draw() {
-    const g = this.lamps.clear();
-    const off = 0x3a3f46;
     const on = (c: string) => this.state === c || (this.state === `${c}-blink` && this.blinkOn) || (this.state === 'red-yellow' && (c === 'red' || c === 'yellow'));
-    g.fillStyle(on('red') ? 0xff3b30 : off).fillCircle(0, -57, 4.2);
-    g.fillStyle(on('yellow') ? 0xffcc00 : off).fillCircle(0, -46, 4.2);
-    g.fillStyle(on('green') ? 0x34c759 : off).fillCircle(0, -35, 4.2);
-    if (this.arrow) {
-      const x = this.arrowX();
-      g.fillStyle(0x34c759).fillCircle(x, -34, 4);
-      if (this.arrow === 'straight') g.fillStyle(0x1f2328).fillTriangle(x, -37.5, x - 3, -33, x + 3, -33).fillRect(x - 0.8, -33, 1.6, 3);
-      else g.fillStyle(0x1f2328).fillTriangle(x + (this.arrow === 'right' ? 3 : -3), -34, x - (this.arrow === 'right' ? 1 : -1), -37, x - (this.arrow === 'right' ? 1 : -1), -31);
-    }
+    const lit = { red: on('red'), yellow: on('yellow'), green: on('green') };
+    const arrow = this.arrow;
+    const key = `light:${+lit.red}${+lit.yellow}${+lit.green}:${arrow ?? '-'}`;
+    this.image.setTexture(bakedTexture(this.scene, key, 40, 72, (g) => drawTrafficLight(g, lit, arrow), { x: 0.5, y: 66 / 72 }));
+    this.image.setOrigin(0.5, 66 / 72).setScale(1 / PIXEL_RATIO);
+  }
+}
+
+/** Светофор: стойка, корпус, три огня и, при необходимости, секция со стрелкой. Низ стойки — в (0, 0). */
+function drawTrafficLight(g: Phaser.GameObjects.Graphics, lit: { red: boolean; yellow: boolean; green: boolean }, arrow: LightArrow | undefined) {
+  const off = 0x3a3f46;
+  // Секция со стрелкой — сбоку от основного светофора (прямо — справа).
+  const ax = arrow === 'left' ? -12 : 12;
+  g.fillStyle(0x000000, 0.2).fillEllipse(3, 2, 8, 4);
+  g.fillStyle(0x6b7280).fillRect(-1.2, -30, 2.4, 30);
+  g.fillStyle(0x1f2328).fillRoundedRect(-7, -64, 14, 36, 4);
+  if (arrow) g.fillStyle(0x1f2328).fillRoundedRect(ax - 6, -40, 12, 12, 3);
+  g.fillStyle(lit.red ? 0xff3b30 : off).fillCircle(0, -57, 4.2);
+  g.fillStyle(lit.yellow ? 0xffcc00 : off).fillCircle(0, -46, 4.2);
+  g.fillStyle(lit.green ? 0x34c759 : off).fillCircle(0, -35, 4.2);
+  if (arrow) {
+    g.fillStyle(0x34c759).fillCircle(ax, -34, 4);
+    if (arrow === 'straight') g.fillStyle(0x1f2328).fillTriangle(ax, -37.5, ax - 3, -33, ax + 3, -33).fillRect(ax - 0.8, -33, 1.6, 3);
+    else g.fillStyle(0x1f2328).fillTriangle(ax + (arrow === 'right' ? 3 : -3), -34, ax - (arrow === 'right' ? 1 : -1), -37, ax - (arrow === 'right' ? 1 : -1), -31);
   }
 }

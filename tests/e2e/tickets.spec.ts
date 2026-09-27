@@ -6,6 +6,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 const title = (page: Page) => page.locator('.topbar__title');
 
+// Обучение при первом запуске здесь не нужно.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true })));
+});
+
 /** Проходит билет, выбирая в каждом вопросе первый вариант. */
 async function passTicketWithFirstOptions(page: Page, ticket: number) {
   await page.getByRole('button', { name: new RegExp(`^Билет ${ticket}(,|$)`) }).tap();

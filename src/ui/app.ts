@@ -1,8 +1,11 @@
 import type * as Phaser from 'phaser';
+import { playSound, unlockAudioOnFirstTouch } from '../audio/feedback.ts';
 import { GAME_SUBTITLE, GAME_TITLE } from '../config.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
+import { EXAM_RULES, answerExam, checkTime, clock, currentItem, extraCount, startExam } from '../exam/exam.ts';
+import { allExams, findExam, recordExam } from '../exam/examHistory.ts';
 import { setGameActive } from '../game/game.ts';
 import {
   CONTROL_TICKETS,
@@ -17,22 +20,25 @@ import {
   progress,
   recordAnswer,
   recordControl,
+  recordExamPass,
   reviewQueue,
   saveProgress,
   trainingSet,
   type AnswerOutcome,
 } from '../progress/progress.ts';
 import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
+import { getSettings, updateSettings } from '../settings.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
-import { closeOverlay, playCutscene, showModal } from './cutscene.ts';
+import { closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
+import { examHistoryView, examResultView, examRulesView } from './examView.ts';
 import { plural } from './format.ts';
 import { ICONS } from './icons.ts';
 import { dueLabel, levelMeter, progressView, reviewView, starsText } from './progressView.ts';
-import { renderQuestionCard, type AnswerResult } from './questionCard.ts';
+import { renderExamCard, renderQuestionCard, type AnswerResult } from './questionCard.ts';
 import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
 import { showToast } from './toast.ts';
@@ -59,14 +65,22 @@ type Route =
   | { name: 'drill'; mode: DrillMode; topic?: string; via: 'review' | 'progress' | 'finale' }
   | { name: 'finale' }
   /** Контрольный билет финала (номер места из трёх). */
-  | { name: 'control'; slot: number };
+  | { name: 'control'; slot: number }
+  /** Экзамен: правила, история, начало тренировки. */
+  | { name: 'exam' }
+  /** Идущий экзамен: тренировка или экзамен-босс финала. */
+  | { name: 'exam-run'; boss: boolean }
+  /** Результат экзамена: сразу после экзамена (заменяет его в истории браузера) или из истории. */
+  | { name: 'exam-result'; at: number; via: 'run' | 'history'; boss: boolean };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
 type DrillRoute = Extract<Route, { name: 'drill' }>;
 type ControlRoute = Extract<Route, { name: 'control' }>;
+type ExamRunRoute = Extract<Route, { name: 'exam-run' }>;
+type ExamResultRoute = Extract<Route, { name: 'exam-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -83,6 +97,9 @@ const DEPTH: Record<RouteName, number> = {
   drill: 2,
   finale: 2,
   control: 3,
+  exam: 1,
+  'exam-run': 2,
+  'exam-result': 2,
 };
 
 // Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
@@ -90,6 +107,8 @@ const DEPTH: Record<RouteName, number> = {
 function depth(route: Route): number {
   if (route.name === 'attempt') return route.via === 'history' || route.via === 'control' ? 3 : 2;
   if (route.name === 'drill') return DEPTH[route.via] + 1;
+  // Экзамен-босс открывается из финала (глубина 2), тренировка — из экрана экзамена (глубина 1).
+  if (route.name === 'exam-run' || (route.name === 'exam-result' && route.via === 'run')) return route.boss ? 3 : 2;
   return DEPTH[route.name];
 }
 
@@ -127,6 +146,9 @@ export class App {
     });
     history.replaceState({ name: 'menu' }, '');
     this.render({ name: 'menu' });
+    unlockAudioOnFirstTouch();
+    // Первый запуск — короткое обучение.
+    if (!getSettings().tutorial) void playTutorial().then(() => updateSettings({ tutorial: true }));
   }
 
   private open(route: Route): void {
@@ -207,6 +229,15 @@ export class App {
       case 'control':
         screen = this.controlScreen(route);
         break;
+      case 'exam':
+        screen = this.examScreen();
+        break;
+      case 'exam-run':
+        screen = this.examRunScreen(route);
+        break;
+      case 'exam-result':
+        screen = this.examResultScreen(route);
+        break;
     }
     this.root.replaceChildren(screen);
     screen.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true });
@@ -227,7 +258,7 @@ export class App {
         const chapter = mapping.chapters.find((c) => c.id === current)!;
         const allDone = order.every((id) => data.chapters[id]?.delivered);
         const started = Object.keys(data.chapters).length > 0 || Object.keys(data.questions).length > 0;
-        story.textContent = allDone ? 'Финал: к экзамену' : started ? `Глава ${chapter.number}: ${chapter.title}` : 'Начать историю';
+        story.textContent = data.finale.exam ? 'История пройдена ★' : allDone ? 'Финал: к экзамену' : started ? `Глава ${chapter.number}: ${chapter.title}` : 'Начать историю';
         story.onclick = () => this.open(allDone ? { name: 'finale' } : { name: 'city', chapter: current });
         const answered = questions.filter((q) => data.questions[q.id]).length;
         // Неразрывные пробелы, чтобы строка не рвалась между числом и словом.
@@ -247,6 +278,8 @@ export class App {
     this.cleanup = onInstallModeChange(updateInstall);
 
     const level = el('button', { class: 'menu__level', type: 'button', onclick: () => this.open({ name: 'progress' }) }, levelMeter(levelOf(data.xp), data.xp, true));
+    const settingsButton = el('button', { class: 'btn btn--secondary btn--icon', type: 'button', 'aria-label': 'Настройки', onclick: () => this.open({ name: 'settings' }) });
+    settingsButton.innerHTML = ICONS.settings;
     const reviewButton = el(
       'button',
       { class: 'btn btn--secondary', type: 'button', 'aria-label': due ? `Разбор ошибок, пора повторить: ${due}` : 'Разбор ошибок', onclick: () => this.open({ name: 'review' }) },
@@ -274,13 +307,13 @@ export class App {
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'chapters' }) }, 'Главы'),
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'progress' }) }, 'Прогресс'),
         ),
-        reviewButton,
         el(
           'div',
           { class: 'menu__row' },
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'exam' }) }, 'Экзамен'),
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'tickets' }) }, 'Билеты'),
-          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'settings' }) }, 'Настройки'),
         ),
+        el('div', { class: 'menu__row menu__row--review' }, reviewButton, settingsButton),
         install,
         iosHint,
         stats,
@@ -440,23 +473,36 @@ export class App {
           type: 'button',
           disabled: !st.ready,
           onclick: async () => {
-            await playCutscene(FINALE_STORY.epilogue, { last: 'К экзамену' });
+            if (!seen.includes('epilogue')) {
+              await playCutscene(FINALE_STORY.epilogue, { last: 'К экзамену' });
+              if (this.route !== route) return;
+              see('epilogue');
+            }
+            await playCutscene(FINALE_STORY.exam, { last: 'Начать экзамен' });
             if (this.route !== route) return;
-            see('epilogue');
-            await showModal(
-              'Экзамен в ГИБДД',
-              el(
-                'div',
-                { class: 'rewards' },
-                el('p', { class: 'rewards__line' }, 'Экзамен-босс — 20 случайных вопросов за 20 минут по правилам ГИБДД — появится в следующем обновлении игры.'),
-                el('p', { class: 'rewards__line' }, 'А пока можно решать билеты целиком: они в меню «Билеты».'),
-              ),
-              [{ label: 'Понятно', primary: true }],
-            );
+            this.open({ name: 'exam-run', boss: true });
           },
         },
-        st.ready ? 'К экзамену' : 'Экзамен — после всех пунктов',
+        st.ready ? 'Сдать экзамен в ГИБДД' : 'Экзамен — после всех пунктов',
       );
+      if (data.finale.exam) {
+        body.replaceChildren(
+          el(
+            'section',
+            { class: 'result exam-result is-passed' },
+            el('p', { class: 'exam-result__verdict' }, 'Права получены!'),
+            el('p', { class: 'result__note' }, `Экзамен-босс сдан ${new Date(data.finale.exam).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}. История пройдена целиком.`),
+            el(
+              'p',
+              { class: 'result__note' },
+              `Уровень ${levelOf(data.xp).number} «${levelOf(data.xp).title}» · звёзд: ${order.reduce((sum, id) => sum + (data.chapters[id]?.stars ?? 0), 0)} из ${order.length * 3} · экзаменов сдано: ${allExams().filter((e) => e.passed).length}`,
+            ),
+          ),
+          el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => void playCutscene(FINALE_STORY.passed, { last: 'Конец' }) }, 'Концовка ещё раз'),
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'exam' }) }, 'Тренировочный экзамен'),
+        );
+        return;
+      }
       body.replaceChildren(
         el('p', { class: 'intro' }, 'Экзамен — финальный босс. Путь к нему открыт, когда выполнены все три пункта.'),
         list,
@@ -541,6 +587,176 @@ export class App {
         el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.replace(route) }, 'Ещё серия'),
       );
     });
+  }
+
+  // ─── Экзамен ───────────────────────────────────────────────────────────────────
+
+  private examScreen(): HTMLElement {
+    const history = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const start = el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.open({ name: 'exam-run', boss: false }) }, 'Начать экзамен');
+    const bossNote = progress().finale.exam
+      ? 'Экзамен-босс уже сдан — права получены. Здесь можно тренироваться сколько угодно.'
+      : 'Здесь — тренировка, она доступна всегда. Экзамен-босс ждёт в финале сюжета, после всех глав.';
+    loadQuestions().then((questions) => {
+      const byId = new Map(questions.map((q) => [q.id, q]));
+      history.replaceChildren(examHistoryView(allExams(), byId, (a) => this.open({ name: 'exam-result', at: a.at, via: 'history', boss: a.boss })));
+    });
+    return this.page(
+      'Экзамен',
+      el('div', { class: 'exam-hub' }, examRulesView(), start, el('p', { class: 'panel__note' }, bossNote), el('h2', { class: 'section-title' }, 'История экзаменов'), history),
+      { back: 'menu' },
+    );
+  }
+
+  private examRunScreen(route: ExamRunRoute): HTMLElement {
+    const back: BackTarget = route.boss ? 'finale' : 'exam';
+    const timer = el('span', { class: 'topbar__score exam-timer', role: 'timer', 'aria-label': 'Осталось времени' }, clock(EXAM_RULES.minutes * 60_000));
+    const bar = el('div', { class: 'progress__bar' });
+    const progressEl = el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
+    const status = el('p', { class: 'exam-status', 'aria-live': 'polite' });
+    const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    const answer = el('button', { class: 'btn btn--primary btn--lg', type: 'button', disabled: true }, 'Ответить');
+    let ticker: number | undefined;
+    const stop = () => window.clearInterval(ticker);
+    this.cleanup = stop;
+
+    const leave = () =>
+      void showModal('Выйти из экзамена?', el('p', { class: 'rewards__line' }, 'Экзамен не будет засчитан, ответы не сохранятся.'), [
+        { label: 'Продолжить экзамен', primary: true },
+        { label: 'Выйти', onClick: () => this.back(back) },
+      ]);
+    const screen = this.page(route.boss ? 'Экзамен в ГИБДД' : 'Экзамен', el('div', {}, status, body), { back, aside: timer, progress: progressEl, footer: answer, onBack: leave });
+    const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
+
+    loadQuestions().then((all) => {
+      if (this.route !== route) return;
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const s = startExam(all, Date.now());
+      let selected = -1;
+      let lastTick = -1;
+      playSound('start');
+
+      const show = () => {
+        const item = currentItem(s);
+        if (!item) return;
+        const q = byId.get(item.id)!;
+        const index = s.results.length;
+        const main = s.items.length - extraCount(s);
+        status.textContent = item.extra
+          ? `Дополнительный вопрос ${index - main + 1} из ${extraCount(s)} · блок ${item.block + 1} · без ошибок`
+          : `Вопрос ${index + 1} из ${EXAM_RULES.questions} · блок ${item.block + 1}`;
+        progressEl.setAttribute('aria-valuemax', String(s.items.length));
+        progressEl.setAttribute('aria-valuenow', String(index));
+        bar.style.width = `${(index / s.items.length) * 100}%`;
+        selected = -1;
+        answer.disabled = true;
+        body.replaceChildren(
+          renderExamCard(q, (i) => {
+            selected = i;
+            answer.disabled = false;
+          }),
+        );
+        scroller.scrollTop = 0;
+      };
+
+      const finish = () => {
+        stop();
+        const now = Date.now();
+        const outcome = s.outcome!;
+        const data = progress();
+        // Ответы идут в прогресс только теперь: во время экзамена ничто не подсказывает, верен ли ответ.
+        s.chosen.forEach((chosen, i) => recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now));
+        const reward = outcome.passed ? recordExamPass(data, route.boss, now) : undefined;
+        saveProgress();
+        const attempt = recordExam({
+          at: now,
+          ms: Math.min(now, outcome.at) - s.startedAt,
+          passed: outcome.passed,
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+          boss: route.boss,
+          items: s.items.map((i) => i.id),
+          extra: extraCount(s),
+          chosen: [...s.chosen],
+        });
+        playSound(outcome.passed ? 'pass' : 'fail');
+        levelUpToast(reward?.levelUp, false);
+        if (reward?.xp) showToast(`+${reward.xp} опыта`);
+        const result: ExamResultRoute = { name: 'exam-result', at: attempt.at, via: 'run', boss: route.boss };
+        const go = () => {
+          if (this.route !== route) return;
+          // Результат занимает место экзамена в истории браузера: «Назад» не начнёт экзамен заново.
+          this.replace(result);
+        };
+        if (route.boss) void playCutscene(outcome.passed ? FINALE_STORY.passed : FINALE_STORY.failed, { last: outcome.passed ? 'Конец' : 'Понятно' }).then(go);
+        else go();
+      };
+
+      answer.onclick = () => {
+        const item = currentItem(s);
+        if (!item || selected < 0) return;
+        const before = extraCount(s);
+        answerExam(s, selected, selected === byId.get(item.id)!.correct, all, Date.now());
+        if (s.outcome) return finish();
+        const added = extraCount(s) - before;
+        if (added > 0) {
+          body.replaceChildren();
+          void showModal(
+            'Дополнительные вопросы',
+            el(
+              'div',
+              { class: 'rewards' },
+              el('p', { class: 'rewards__line' }, `В основных вопросах есть ошибка. Дополнительно: ${added} ${plural(added, ['вопрос', 'вопроса', 'вопросов'])} из тех же блоков.`),
+              el('p', { class: 'rewards__line' }, `Время увеличено на ${(added / EXAM_RULES.extraQuestions) * EXAM_RULES.extraMinutes} минут. Ошибаться в дополнительных вопросах нельзя.`),
+            ),
+            [{ label: 'Продолжить', primary: true }],
+          ).then(show);
+          return;
+        }
+        show();
+      };
+
+      const tick = () => {
+        const left = s.deadline - Date.now();
+        timer.textContent = clock(left);
+        timer.classList.toggle('is-low', left <= 60_000);
+        const seconds = Math.ceil(left / 1000);
+        if (seconds <= 10 && seconds > 0 && seconds !== lastTick) {
+          lastTick = seconds;
+          playSound('tick');
+        }
+        if (checkTime(s, Date.now())) finish();
+      };
+      ticker = window.setInterval(tick, 250);
+      tick();
+      show();
+    });
+    return screen;
+  }
+
+  private examResultScreen(route: ExamResultRoute): HTMLElement {
+    const attempt = findExam(route.at);
+    const back: BackTarget = route.boss && route.via === 'run' ? 'finale' : 'exam';
+    if (!attempt) return this.page('Экзамен', el('p', { class: 'intro' }, 'Этот экзамен не найден: возможно, данные игры были очищены.'), { back });
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const footer =
+      back === 'finale'
+        ? el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.back('finale') }, 'К финалу')
+        : el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.back('exam', { name: 'exam-run', boss: false }) }, 'Сдать ещё раз');
+    loadQuestions().then((questions) => {
+      if (this.route !== route) return;
+      const byId = new Map(questions.map((q) => [q.id, q]));
+      const mistakes = attempt.chosen.some((c, i) => c !== byId.get(attempt.items[i])?.correct);
+      const story =
+        attempt.boss && attempt.passed
+          ? el('p', { class: 'banner banner--ok' }, 'История пройдена! Права получены — поздравляем от всей «Стрелы».')
+          : attempt.boss && mistakes
+            ? el('p', { class: 'banner banner--bad' }, 'Ошибки ушли в работу над ошибками. Когда они будут закреплены повторами, экзамен-босс откроется снова.')
+            : attempt.boss
+              ? el('p', { class: 'banner banner--bad' }, 'Ошибок нет, но время вышло. Экзамен-босса можно сдать снова из финала.')
+              : null;
+      body.replaceChildren(...[story, examResultView(attempt, byId)].filter((x): x is HTMLElement => !!x));
+    });
+    return this.page(attempt.boss ? 'Экзамен в ГИБДД' : 'Экзамен', body, { back, footer });
   }
 
   // ─── Билеты ────────────────────────────────────────────────────────────────────
@@ -646,7 +862,8 @@ export class App {
       const mistakes = results.filter((r) => !r.isCorrect).length;
       const out = recordControl(progress(), route.slot, mistakes, tickets);
       saveProgress();
-      levelUpToast(out.levelUp);
+      playSound(out.passed ? 'pass' : 'fail');
+      levelUpToast(out.levelUp, false);
       this.replace({ name: 'attempt', at: attempt.at, via: 'control', control: { passed: out.passed, replacement: out.replacement } });
     });
   }
@@ -743,9 +960,9 @@ export class App {
   private page(
     title: string,
     content: HTMLElement,
-    opts: { back: BackTarget; intro?: string; aside?: HTMLElement; progress?: HTMLElement; footer?: HTMLElement },
+    opts: { back: BackTarget; intro?: string; aside?: HTMLElement; progress?: HTMLElement; footer?: HTMLElement; onBack?: () => void },
   ): HTMLElement {
-    const backButton = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Назад', onclick: () => this.back(opts.back) });
+    const backButton = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Назад', onclick: () => (opts.onBack ? opts.onBack() : this.back(opts.back)) });
     backButton.innerHTML = ICONS.back;
     return el(
       'div',

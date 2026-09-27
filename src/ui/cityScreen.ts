@@ -8,6 +8,7 @@
  * пройдены и верных от 80%, на карте появляется флажок доставки → финал главы и награды.
  */
 import type * as Phaser from 'phaser';
+import { playSound } from '../audio/feedback.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import type { CityData, CityScene } from '../game/city/CityScene.ts';
 import {
@@ -58,8 +59,10 @@ function iconButton(icon: string, label: string, onclick: () => void): HTMLButto
   return b;
 }
 
-export function levelUpToast(level: LevelInfo | undefined): void {
-  if (level) showToast(`Новый уровень ${level.number}: «${level.title}»!`);
+export function levelUpToast(level: LevelInfo | undefined, sound = true): void {
+  if (!level) return;
+  showToast(`Новый уровень ${level.number}: «${level.title}»!`);
+  if (sound) playSound('reward');
 }
 
 export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): CityScreen {
@@ -208,7 +211,8 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     const body = el('div', { class: 'rewards' }, ...lines);
     const hintStars = out.stars < 3 ? el('p', { class: 'rewards__hint' }, 'Звёзд станет больше, если исправить ошибки главы: 90% — две звезды, 100% — три.') : null;
     if (hintStars) body.append(hintStars);
-    levelUpToast(out.levelUp);
+    playSound('pass');
+    levelUpToast(out.levelUp, false);
     return showModal(`Глава ${chapters[i].number} пройдена!`, body, [
       next ? { label: `Глава ${next.number}`, primary: true, onClick: () => nav.openChapter(next.id) } : { label: 'К финалу', primary: true, onClick: () => nav.openFinale() },
       { label: 'Остаться в районе' },

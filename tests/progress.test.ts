@@ -20,6 +20,7 @@ import {
   percent,
   recordAnswer,
   recordControl,
+  recordExamPass,
   refreshStars,
   reviewQueue,
   reviewStages,
@@ -231,4 +232,17 @@ test('из сохранённых данных остаётся только к�
   assert.equal(clean.chapters.ch2, undefined);
   assert.deepEqual(clean.finale.control, [{ ticket: 3, passed: true }]);
   assert.deepEqual(sanitizeProgress('мусор'), emptyProgress());
+});
+
+test('экзамен: тренировка даёт опыт каждый раз, экзамен-босс — один раз и завершает историю', () => {
+  const data = emptyProgress();
+  assert.equal(recordExamPass(data, false, day(0)).xp, XP.exam);
+  assert.equal(recordExamPass(data, false, day(1)).xp, XP.exam);
+  assert.equal(data.finale.exam, undefined);
+  assert.equal(recordExamPass(data, true, day(2)).xp, XP.boss);
+  assert.equal(data.finale.exam, day(2));
+  assert.equal(recordExamPass(data, true, day(3)).xp, 0);
+  assert.equal(data.xp, XP.exam * 2 + XP.boss);
+  assert.equal(sanitizeProgress(JSON.parse(JSON.stringify(data))).finale.exam, day(2));
+  assert.equal(sanitizeProgress({ finale: { exam: 'вчера' } }).finale.exam, undefined);
 });

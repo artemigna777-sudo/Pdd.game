@@ -1,3 +1,4 @@
+import { answerFeedback } from '../audio/feedback.ts';
 import { EXPLANATIONS_SOURCE } from '../config.ts';
 import { imageUrl } from '../data/questions.ts';
 import type { Question } from '../data/types.ts';
@@ -16,24 +17,17 @@ export interface AnswerResult {
  *
  * С `review` карточка сразу показывает уже данный ответ — для разбора пройденного билета.
  */
-export function renderQuestionCard(
-  question: Question,
-  onAnswer?: (result: AnswerResult) => void,
-  review?: { chosen: number },
-): HTMLElement {
+/** Оригинальный вопрос билета: номер, тема, картинка, текст и варианты. */
+function cardShell(question: Question, onOption: (index: number) => void, extra: Node[] = []) {
   const src = imageUrl(question);
-  const feedback = el('div', { class: 'feedback', role: 'status', 'aria-live': 'polite' });
-  const explanation = el('section', { class: 'explanation', 'aria-label': 'Пояснение', hidden: true });
-
   const buttons = question.options.map((text, index) =>
     el(
       'button',
-      { class: 'option', type: 'button', onclick: () => choose(index) },
+      { class: 'option', type: 'button', onclick: () => onOption(index) },
       el('span', { class: 'option__num', 'aria-hidden': 'true' }, String(index + 1)),
       el('span', { class: 'option__text' }, text),
     ),
   );
-
   const card = el(
     'article',
     { class: 'card', 'aria-label': `Билет ${question.ticket}, вопрос ${question.number}` },
@@ -52,14 +46,40 @@ export function renderQuestionCard(
       : null,
     el('h2', { class: 'card__text' }, question.text),
     el('ol', { class: 'options' }, ...buttons.map((b) => el('li', {}, b))),
-    feedback,
-    explanation,
+    ...extra,
   );
+  return { card, buttons };
+}
+
+/**
+ * Карточка вопроса на экзамене: верный ли ответ, не показывается. Касание варианта выбирает
+ * его (выбор можно поменять), ответ принимает кнопка экрана.
+ */
+export function renderExamCard(question: Question, onSelect: (index: number) => void): HTMLElement {
+  const { card, buttons } = cardShell(question, (index) => {
+    buttons.forEach((b, i) => {
+      b.classList.toggle('is-selected', i === index);
+      b.setAttribute('aria-pressed', String(i === index));
+    });
+    onSelect(index);
+  });
+  return card;
+}
+
+export function renderQuestionCard(
+  question: Question,
+  onAnswer?: (result: AnswerResult) => void,
+  review?: { chosen: number },
+): HTMLElement {
+  const feedback = el('div', { class: 'feedback', role: 'status', 'aria-live': 'polite' });
+  const explanation = el('section', { class: 'explanation', 'aria-label': 'Пояснение', hidden: true });
+  const { card, buttons } = cardShell(question, (index) => choose(index), [feedback, explanation]);
 
   let answered = false;
   function choose(index: number) {
     if (answered) return;
     reveal(index);
+    answerFeedback(index === question.correct);
 
     // Результат может оказаться ниже края экрана — показываем его, не уводя вопрос дальше, чем нужно.
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;

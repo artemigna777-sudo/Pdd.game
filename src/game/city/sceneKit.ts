@@ -9,7 +9,8 @@
 import * as Phaser from 'phaser';
 import { Polyline, headingAngle, rotate, type Vec } from '../../world/geometry.ts';
 import type { VehicleKind } from '../../world/templates.ts';
-import { CAR_COLORS, drawController, drawPedestrian, drawVehicle } from './art.ts';
+import { bakedImage } from '../bake.ts';
+import { CAR_COLORS, VEHICLE_SIZE, drawController, drawPedestrian, drawVehicle } from './art.ts';
 import { createSign, TrafficLightView } from './signs.ts';
 
 export interface Actor {
@@ -66,8 +67,9 @@ export class SceneKit {
 
   /** Транспорт. angle — куда смотрит нос, в градусах: 0 — вперёд (как игрок), 90 — вправо, 180 — навстречу. */
   vehicle(kind: VehicleKind, x: number, y: number, angle: number, color?: number): Actor {
-    const g = this.scene.add.graphics();
-    drawVehicle(g, kind, color ?? CAR_COLORS[(this.actors.length * 3 + 1) % CAR_COLORS.length]);
+    const c = color ?? CAR_COLORS[(this.actors.length * 3 + 1) % CAR_COLORS.length];
+    const size = VEHICLE_SIZE[kind];
+    const g = bakedImage(this.scene, `vehicle:${kind}:${c}`, size.w + 24, size.h + 24, (gfx) => drawVehicle(gfx, kind, c));
     const obj = this.scene.add.container(x, y, [g]).setRotation(deg(angle));
     this.root.add(obj);
     const actor: Actor = { obj, kind, headlights: kind !== 'bicycle' };
@@ -77,8 +79,8 @@ export class SceneKit {
   }
 
   pedestrian(x: number, y: number, angle = 0): Actor {
-    const g = this.scene.add.graphics();
-    drawPedestrian(g, this.actors.length);
+    const seed = this.actors.length % 24;
+    const g = bakedImage(this.scene, `pedestrian:${seed}`, 28, 24, (gfx) => drawPedestrian(gfx, seed));
     const obj = this.scene.add.container(x, y, [g]).setRotation(deg(angle));
     this.root.add(obj);
     const actor: Actor = { obj, kind: 'pedestrian', headlights: false };

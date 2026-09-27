@@ -14,6 +14,7 @@ import type { MapPoint } from '../../world/map.ts';
 import { MAPS, pointQueues, type Mapping, type Placement } from '../../world/mapping.ts';
 import { RoadGraph, type Lane, type PathPart } from '../../world/roadGraph.ts';
 import { TEMPLATES, type Maneuver, type TemplateInfo } from '../../world/templates.ts';
+import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
 import type { InteriorScene, MinigameKind } from '../interior/InteriorScene.ts';
 import { Atmosphere } from './atmosphere.ts';
@@ -74,8 +75,10 @@ interface Poi {
   done: boolean;
   /** Место доставки посылки главы (вопросов нет). */
   goal?: boolean;
+  /** Отметка спрятана: у точки идёт сцена или машина только что отъехала. */
+  hidden?: boolean;
   marker: Phaser.GameObjects.Container;
-  ring: Phaser.GameObjects.Graphics;
+  ring: Phaser.GameObjects.Image;
   mark: Phaser.GameObjects.Text;
   title: Phaser.GameObjects.Text;
 }
@@ -306,7 +309,7 @@ export class CityScene extends Phaser.Scene {
       if (!queue.length) continue;
       const stop = this.graph.pointStop(point);
       const p = this.graph.pointOnLane(stop.lane, stop.s);
-      const ring = this.add.graphics();
+      const ring = this.add.image(0, 0, '__DEFAULT').setScale(1 / PIXEL_RATIO);
       const q = this.add.text(0, 0, '', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold' }).setOrigin(0.5).setResolution(4);
       const title = this.add
         .text(0, 26, point.title, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#1b2430cc', padding: { x: 5, y: 2 } })
@@ -314,18 +317,22 @@ export class CityScene extends Phaser.Scene {
         .setResolution(4)
         .setAlpha(0);
       const marker = this.add.container(p.x, p.y, [ring, q, title]).setDepth(4);
-      this.tweens.add({ targets: ring, scale: 1.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.tweens.add({ targets: ring, scale: 1.15 / PIXEL_RATIO, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       const poi: Poi = { point, lane: stop.lane, s: stop.s, anchor: stop.anchor, dir: stop.dir, queue, cooldown: false, done: this.visited.has(point.id), marker, ring, mark: q, title };
       this.pois.push(poi);
       this.updateMarker(poi);
     }
   }
 
-  private drawMarker(ring: Phaser.GameObjects.Graphics, color: number) {
-    ring.clear();
-    ring.fillStyle(color, 0.25).fillCircle(0, 0, 22);
-    ring.lineStyle(3, color).strokeCircle(0, 0, 18);
-    ring.fillStyle(color).fillCircle(0, 0, 11);
+  /** Кольцо отметки — готовая картинка своего цвета (круги не пересчитываются каждый кадр). */
+  private drawMarker(ring: Phaser.GameObjects.Image, color: number) {
+    ring.setTexture(
+      bakedTexture(this, `marker:${color}`, 50, 50, (g) => {
+        g.fillStyle(color, 0.25).fillCircle(0, 0, 22);
+        g.lineStyle(3, color).strokeCircle(0, 0, 18);
+        g.fillStyle(color).fillCircle(0, 0, 11);
+      }),
+    );
   }
 
   /** Состояние точки: не пройдена, пройдена без ошибок, пройдена с ошибками. */
@@ -374,7 +381,7 @@ export class CityScene extends Phaser.Scene {
     if (!lane) return;
     const s = lane.length / 2;
     const p = this.graph.pointOnLane(lane, s);
-    const ring = this.add.graphics();
+    const ring = this.add.image(0, 0, '__DEFAULT').setScale(1 / PIXEL_RATIO);
     this.drawMarker(ring, 0x7b2cbf);
     const flag = this.add.graphics();
     flag.lineStyle(3, 0xffffff).lineBetween(-4, 8, -4, -9);
@@ -384,7 +391,7 @@ export class CityScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setResolution(4);
     const marker = this.add.container(p.x, p.y, [ring, flag, title]).setDepth(4.2);
-    this.tweens.add({ targets: ring, scale: 1.2, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: ring, scale: 1.2 / PIXEL_RATIO, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const dir = lane.dir;
     this.goal = { point: { id: 'goal', template: 'street', title: label, road: lane.road.id, toward: lane.to.id }, lane, s, anchor: p, dir, queue: [], cooldown: false, done: false, goal: true, marker, ring, mark: title, title };
   }
@@ -570,7 +577,7 @@ export class CityScene extends Phaser.Scene {
       focus: kit.toWorld(focusLocal),
     };
     this.active = active;
-    poi.marker.setVisible(false);
+    poi.hidden = true;
 
     const signal = this.signalAt(poi);
     if (signal) signal.paused = true;
@@ -595,7 +602,7 @@ export class CityScene extends Phaser.Scene {
 
   /** Мини-игра: машина стоит у здания, поверх города открывается сцена мини-игры. */
   private async startMinigame(poi: Poi, index: number, list: Placement[], question: Question, series: SeriesInfo) {
-    poi.marker.setVisible(false);
+    poi.hidden = true;
     const placement = list[index];
     const active: ActiveScene = {
       poi,
@@ -834,19 +841,28 @@ export class CityScene extends Phaser.Scene {
     for (const poi of this.stops) {
       if (poi.cooldown && poi !== this.active?.poi && distance(this.player.position, poi.anchor) > 260) {
         poi.cooldown = false;
-        poi.marker.setVisible(true);
+        poi.hidden = false;
       }
     }
 
     const cam = this.cameras.main;
     const worldZoom = cam.zoom / PIXEL_RATIO;
     const k = worldZoom < 0.6 ? Math.min(3.2, 0.6 / worldZoom) : 1;
+    // Phaser рисует и то, что за краем экрана, — отметки и светофоры вне кадра прячем.
+    const view = cam.worldView;
+    const margin = 60 / Math.min(1, worldZoom);
+    const inView = (x: number, y: number) => x > view.x - margin && x < view.right + margin && y > view.y - margin && y < view.bottom + margin;
     for (const poi of this.pois) {
       poi.marker.setScale(k);
+      poi.marker.setVisible(!poi.hidden && inView(poi.marker.x, poi.marker.y));
       // В обзоре подписаны только здания мини-игр, иначе подписи налезают друг на друга.
       poi.title.setAlpha(worldZoom < 0.6 && TEMPLATES[poi.point.template].minigame ? 1 : 0);
     }
-    this.goal?.marker.setScale(k);
+    if (this.goal) this.goal.marker.setScale(k).setVisible(inView(this.goal.marker.x, this.goal.marker.y));
+    for (const signal of this.signals) {
+      // На обзорной карте светофоры меньше пикселя — их не рисуем совсем.
+      for (const light of signal.byLane.values()) light.container.setVisible(worldZoom >= 0.6 && inView(light.container.x, light.container.y));
+    }
 
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
     if (this.active?.kit) sources.push(...this.active.kit.headlightSources());

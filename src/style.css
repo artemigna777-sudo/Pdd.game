@@ -1164,3 +1164,753 @@ button {
 .topbar--city .topbar__title {
   font-size: 16px;
 }
+
+/* ---------- Кнопки: тихая и недоступная ---------- */
+
+.btn--quiet {
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 16px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--bad);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Сюжетные сцены и окна ---------- */
+
+.cutscene {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 16px 12px calc(16px + var(--safe-bottom));
+  background: linear-gradient(to bottom, rgba(16, 22, 30, 0.15), rgba(16, 22, 30, 0.7));
+  pointer-events: auto;
+}
+
+.cutscene__card {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.cutscene__card.is-in {
+  animation: cutscene-in 0.22s ease-out;
+}
+
+@keyframes cutscene-in {
+  from {
+    opacity: 0.2;
+    transform: translateY(10px);
+  }
+}
+
+.cutscene__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 8px;
+}
+
+.cutscene__who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.cutscene__names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cutscene__name {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.cutscene__role {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.cutscene__count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cutscene__text {
+  margin: 12px 0 16px;
+  font-size: 18px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.cutscene__text.is-narrator {
+  font-style: italic;
+  color: #3d4957;
+}
+
+.cutscene__actions {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 10px;
+}
+
+.cutscene__actions > .btn:only-child,
+.cutscene__actions > [hidden] + .btn {
+  grid-column: 1 / -1;
+}
+
+.cutscene--modal {
+  justify-content: center;
+  background: rgba(16, 22, 30, 0.72);
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+  padding: 20px 16px 16px;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  animation: cutscene-in 0.22s ease-out;
+}
+
+.modal__title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.modal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.rewards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rewards p {
+  margin: 0;
+}
+
+.rewards__stars {
+  font-size: 44px;
+  line-height: 1;
+  text-align: center;
+  color: #e0a000;
+  letter-spacing: 0.08em;
+}
+
+.rewards__line {
+  font-size: 16px;
+}
+
+.rewards__xp {
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ok);
+}
+
+.rewards__next {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff7e0;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rewards__hint {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ---------- Уровень и полоски ---------- */
+
+.level {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.level__num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.level__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.level__title {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.level__xp {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.menu__level {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.level--compact {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  color: var(--on-dark);
+}
+
+.level--compact .level__num {
+  width: 40px;
+  height: 40px;
+  font-size: 19px;
+}
+
+.level--compact .level__title {
+  font-size: 15px;
+}
+
+.level--compact .level__xp {
+  color: var(--on-dark-muted);
+}
+
+.level--compact .bar {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe4ea;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.bar__fill--ok {
+  background: var(--ok);
+}
+
+.bar__fill--warn {
+  background: #e0a000;
+}
+
+.bar__fill--bad {
+  background: var(--bad);
+}
+
+.bar--stacked {
+  height: 14px;
+}
+
+/* ---------- Город: задание и опыт ---------- */
+
+.city-task {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-self: stretch;
+  width: auto;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px 14px;
+  border: 0;
+  background: rgba(16, 22, 30, 0.72);
+  color: var(--on-dark);
+  text-align: left;
+}
+
+.city-task.is-goal {
+  background: rgba(90, 24, 154, 0.85);
+}
+
+.city-task__goal {
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.city-task__goal::before {
+  content: '📦 ';
+}
+
+.city-task__meta {
+  font-size: 13px;
+  color: var(--on-dark-muted);
+}
+
+.xp-pops {
+  position: absolute;
+  top: calc(124px + var(--safe-top));
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none !important;
+}
+
+.xp-pop {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--ok);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: xp-pop 1.8s ease-out forwards;
+}
+
+.xp-pop--bad {
+  background: var(--bad);
+}
+
+@keyframes xp-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.8);
+  }
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+/* ---------- Главы: замки, звёзды, финал ---------- */
+
+.chapter-card.is-locked {
+  background: #e6eaef;
+  box-shadow: none;
+  color: #6b7785;
+}
+
+.chapter-card.is-locked .chapter-card__num {
+  background: #cfd6de;
+  font-size: 18px;
+}
+
+.chapter-card.is-done .chapter-card__num {
+  background: var(--ok);
+  color: #ffffff;
+}
+
+.chapter-card__task {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chapter-card__status {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #8a5a00;
+}
+
+.chapter-card__status.is-done {
+  color: var(--ok);
+}
+
+.chapter-card__status.is-locked {
+  color: #6b7785;
+}
+
+.chapter-card--finale:not(.is-locked) .chapter-card__num {
+  background: #5a189a;
+  color: #ffd166;
+}
+
+/* ---------- Прогресс ---------- */
+
+.progress-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.panel + .btn,
+.panel + .intro {
+  margin-top: 14px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.panel__note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.big-number {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-number span {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.legend li::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 3px;
+  background: #dfe4ea;
+}
+
+.legend__ok::before {
+  background: var(--ok) !important;
+}
+
+.legend__bad::before {
+  background: var(--bad) !important;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.row:disabled {
+  color: #8995a3;
+  cursor: default;
+}
+
+.row__title {
+  font-weight: 700;
+}
+
+.row__value {
+  flex: none;
+  font-size: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.row__value--stars {
+  color: #b07d00;
+  font-weight: 800;
+}
+
+.topic {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+
+.topic__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topic__name {
+  font-weight: 700;
+}
+
+.topic__pct {
+  flex: none;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.topic__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.stages {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.review__practice {
+  margin-top: 12px;
+}
+
+.review__practice + .panel__note {
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* ---------- Финал ---------- */
+
+.finale > * + * {
+  margin-top: 14px;
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.check__mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--line);
+  border-radius: 50%;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.check.is-done .check__mark {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.check__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.check__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.check__detail {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.slots .btn {
+  padding: 8px 4px;
+  font-size: 15px;
+}
+
+.slots .btn.is-passed:disabled {
+  opacity: 1;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.banner {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  font-weight: 700;
+}
+
+.banner--ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.banner--bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.quiz__note {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.quiz__note:empty {
+  display: none;
+}
+
+/* ---------- Меню на невысоком экране ---------- */
+
+@media (max-height: 640px) {
+  .hero {
+    padding-top: calc(16px + var(--safe-top));
+    padding-bottom: 16px;
+  }
+
+  .hero__title {
+    font-size: 32px;
+  }
+
+  .hero__subtitle {
+    margin-top: 6px;
+    font-size: 14px;
+  }
+
+  .menu {
+    gap: 10px;
+    padding-top: 14px;
+  }
+}
+
+/* В городе пустой счёт не занимает место: названию главы нужна вся ширина. */
+.topbar--city .topbar__score:empty {
+  display: none;
+}

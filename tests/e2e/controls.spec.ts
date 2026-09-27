@@ -15,6 +15,17 @@ interface CitySceneDebug {
   cameras: { main: { zoom: number; worldView: { x: number; y: number } } };
 }
 
+/**
+ * Сохранённый прогресс, в котором открыты все главы и уже показаны все сюжетные сцены:
+ * эти тесты проверяют управление, а не сюжет.
+ */
+function openAllChapters() {
+  const seen = ['prologue', 'intro', 'beat1', 'beat2', 'ready', 'low'];
+  const chapters: Record<string, unknown> = {};
+  for (let i = 1; i <= 10; i++) chapters[`ch${i}`] = { points: [], seen, stars: 1, ...(i < 10 ? { delivered: 1 } : {}) };
+  localStorage.setItem('pdd-game:progress', JSON.stringify({ xp: 0, questions: {}, chapters, finale: { control: [], seen: [] } }));
+}
+
 async function openCity(page: Page, control: 'tap' | 'joystick', chapter = 1) {
   // E2E_SLOW=6 — замедлить процессор браузера, как на сервере CI без видеокарты.
   if (process.env.E2E_SLOW) {
@@ -22,8 +33,9 @@ async function openCity(page: Page, control: 'tap' | 'joystick', chapter = 1) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_SLOW) });
   }
   await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode })), control);
+  await page.addInitScript(openAllChapters);
   await page.goto('/');
-  await page.getByRole('button', { name: 'Поехать в город' }).tap();
+  await page.getByRole('button', { name: 'Главы' }).tap();
   await page.locator('.chapter-card').nth(chapter - 1).tap();
   await page.waitForFunction(() => {
     const game = (window as unknown as { __game?: CityDebug }).__game;

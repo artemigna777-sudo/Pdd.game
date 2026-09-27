@@ -289,7 +289,7 @@ function classroom(scene: InteriorScene, ctx: MinigameContext): SceneScript {
     caption: `Викторина: вопрос ${ctx.index + 1} из ${ctx.total}`,
     async enter() {
       scene.overview();
-      scene.bubble(ctx.index === 0 ? 'Начинаем викторину! Отвечайте быстро и точно.' : 'Следующий вопрос!', BUBBLE.x, BUBBLE.y);
+      scene.bubble(ctx.index === 0 ? 'Викторина Виктора Петровича! Отвечай быстро и точно.' : 'Следующий вопрос!', BUBBLE.x, BUBBLE.y);
       await scene.wait(900);
       started = scene.time.now;
       status.setText('⏱ 0 с');
@@ -319,8 +319,8 @@ function classroom(scene: InteriorScene, ctx: MinigameContext): SceneScript {
 }
 
 const INSPECTOR_LINES: Record<InspectorCase, { line: string; icon: Parameters<typeof drawIcon>[1]; action: string }> = {
-  documents: { line: 'Здравствуйте! Инспектор ДПС. Предъявите, пожалуйста, документы.', icon: 'doc', action: 'Передать документы' },
-  insurance: { line: 'Добрый день! Проверка документов, в том числе полиса ОСАГО.', icon: 'doc', action: 'Передать документы' },
+  documents: { line: 'Здравствуйте! Лейтенант Соколов, ДПС. Предъявите, пожалуйста, документы.', icon: 'doc', action: 'Передать документы' },
+  insurance: { line: 'Добрый день! Лейтенант Соколов. Проверим документы, в том числе полис ОСАГО.', icon: 'doc', action: 'Передать документы' },
   alcohol: { line: 'Плановая проверка. Пройдите освидетельствование на состояние опьянения.', icon: 'breath', action: 'Взять алкотестер' },
   accident: { line: 'Рядом было ДТП. Проверим, знаете ли вы, как действовать.', icon: 'triangle', action: 'Выслушать' },
   punishment: { line: 'Профилактическая беседа: что грозит водителю за нарушения.', icon: 'doc', action: 'Выслушать' },
@@ -336,7 +336,7 @@ function inspector(scene: InteriorScene, ctx: MinigameContext): SceneScript {
   const w = room.anchors.window;
   const info = INSPECTOR_LINES[ctx.placement.params.case ?? 'documents'];
   return {
-    caption: 'Пост ДПС: разговор с инспектором',
+    caption: 'Пост ДПС: лейтенант Соколов',
     async enter() {
       scene.overview();
       scene.bubble(info.line, o.x - 40, o.y - 50, 'info', 250);
@@ -380,10 +380,10 @@ function garage(scene: InteriorScene, ctx: MinigameContext): SceneScript {
   const spot = { x: PART_SPOT[part].x * CAR_SCALE, y: CAR_Y + PART_SPOT[part].y * CAR_SCALE };
   const m = room.anchors.mechanic;
   return {
-    caption: `Автосервис: осмотр — ${GARAGE_PARTS[part]}`,
+    caption: `Автосервис «Гайка»: ${GARAGE_PARTS[part]}`,
     async enter() {
       scene.overview();
-      scene.bubble(`Осмотрите: ${GARAGE_PARTS[part]}`, m.x - 30, m.y - 60, 'info', 200);
+      scene.bubble(`Дядя Гена: осмотри-ка — ${GARAGE_PARTS[part]}`, m.x - 30, m.y - 60, 'info', 200);
       await scene.wait(500);
       await scene.tapTarget(spot.x, spot.y, 'Осмотреть', 30);
       const lens = graphics(scene, spot.x, spot.y, (g) => {
@@ -407,7 +407,7 @@ function garage(scene: InteriorScene, ctx: MinigameContext): SceneScript {
     },
     async fail() {
       scene.layer.add(graphics(scene, spot.x, spot.y - 46, (g) => drawIcon(g, 'wrench')).setScale(1.3));
-      scene.bubble('Не так. Посмотрите пояснение.', m.x - 30, m.y - 60, 'bad', 200);
+      scene.bubble('Не так. Глянь пояснение.', m.x - 30, m.y - 60, 'bad', 200);
       await scene.wait(1200);
     },
     leave() {},

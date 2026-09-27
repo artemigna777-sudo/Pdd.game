@@ -41,7 +41,9 @@ export interface CityHost {
   /** Машина остановилась у точки: сцена оживает (мини-игра может ждать касания). */
   onSceneStart?(minigame: boolean): void;
   /** Серия вопросов точки пройдена. */
-  onPointDone?(done: number, total: number): void;
+  onPointDone?(pointId: string): void;
+  /** Машина доехала до места доставки. */
+  onGoal?(): void;
 }
 
 export interface CityData {
@@ -50,7 +52,14 @@ export interface CityData {
   mapping: Mapping;
   chapter: string;
   control: ControlMode;
+  /** Точки, серия которых уже пройдена (из сохранённого прогресса). */
+  visited: string[];
+  /** Последний ответ на вопрос — ошибка (точка с такими вопросами — красная). */
+  isWrong(questionId: string): boolean;
 }
+
+/** Состояние точки на карте. */
+export type PoiState = 'new' | 'done' | 'mistakes';
 
 interface Poi {
   point: MapPoint;
@@ -61,8 +70,10 @@ interface Poi {
   /** Вопросы серии по порядку. */
   queue: Placement[];
   cooldown: boolean;
-  /** Серия пройдена хотя бы раз за поездку. */
+  /** Серия пройдена хотя бы раз. */
   done: boolean;
+  /** Место доставки посылки главы (вопросов нет). */
+  goal?: boolean;
   marker: Phaser.GameObjects.Container;
   ring: Phaser.GameObjects.Graphics;
   mark: Phaser.GameObjects.Text;
@@ -79,7 +90,9 @@ interface Signal {
 interface ActiveScene {
   poi: Poi;
   placement: Placement;
-  /** Номер вопроса в серии точки. */
+  /** Вопросы этого заезда: вся серия или только те, где была ошибка. */
+  series: Placement[];
+  /** Номер вопроса в серии. */
   index: number;
   /** Сцена на дороге (для мини-игр её нет). */
   kit?: SceneKit;
@@ -104,6 +117,9 @@ export class CityScene extends Phaser.Scene {
   private points: MapPoint[] = [];
   private interior?: InteriorScene;
   private control: ControlMode = 'tap';
+  private visited = new Set<string>();
+  private isWrong: (id: string) => boolean = () => false;
+  private goal?: Poi;
 
   private graph!: RoadGraph;
   private mapView!: MapRenderer;
@@ -135,6 +151,9 @@ export class CityScene extends Phaser.Scene {
     this.mapping = data.mapping;
     this.chapter = data.chapter;
     this.control = data.control;
+    this.visited = new Set(data.visited);
+    this.isWrong = data.isWrong;
+    this.goal = undefined;
     this.pois = [];
     this.signals = [];
     this.active = undefined;
@@ -201,19 +220,19 @@ export class CityScene extends Phaser.Scene {
   /** Есть ли в серии точки ещё вопросы после текущего. */
   get hasNextInSeries(): boolean {
     const a = this.active;
-    return !!a && a.index + 1 < a.poi.queue.length;
+    return !!a && a.index + 1 < a.series.length;
   }
 
   /** После ответа: следующий вопрос серии или едем дальше. */
   proceed() {
     const a = this.active;
     if (!a) return;
-    if (a.index + 1 < a.poi.queue.length) {
+    if (a.index + 1 < a.series.length) {
       void this.nextInSeries(a);
       return;
     }
     a.script.leave();
-    this.markDone(a.poi);
+    this.finishPoint(a.poi);
     if (a.interior) {
       const interior = a.interior;
       this.interior = undefined;
@@ -234,7 +253,7 @@ export class CityScene extends Phaser.Scene {
       if (signal) signal.paused = false;
       this.player.placeAt(a.poi.lane, a.poi.s);
     }
-    await this.startScene(a.poi, a.index + 1);
+    await this.startScene(a.poi, a.index + 1, a.series);
   }
 
   private driveOn(a: ActiveScene) {
@@ -288,9 +307,7 @@ export class CityScene extends Phaser.Scene {
       const stop = this.graph.pointStop(point);
       const p = this.graph.pointOnLane(stop.lane, stop.s);
       const ring = this.add.graphics();
-      const minigame = TEMPLATES[point.template].minigame;
-      this.drawMarker(ring, minigame ? 0x3a86ff : 0xffb703);
-      const q = this.add.text(0, 0, minigame ? '!' : '?', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold', color: minigame ? '#ffffff' : '#1b2430' }).setOrigin(0.5).setResolution(4);
+      const q = this.add.text(0, 0, '', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold' }).setOrigin(0.5).setResolution(4);
       const title = this.add
         .text(0, 26, point.title, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#1b2430cc', padding: { x: 5, y: 2 } })
         .setOrigin(0.5, 0)
@@ -298,7 +315,9 @@ export class CityScene extends Phaser.Scene {
         .setAlpha(0);
       const marker = this.add.container(p.x, p.y, [ring, q, title]).setDepth(4);
       this.tweens.add({ targets: ring, scale: 1.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      this.pois.push({ point, lane: stop.lane, s: stop.s, anchor: stop.anchor, dir: stop.dir, queue, cooldown: false, done: false, marker, ring, mark: q, title });
+      const poi: Poi = { point, lane: stop.lane, s: stop.s, anchor: stop.anchor, dir: stop.dir, queue, cooldown: false, done: this.visited.has(point.id), marker, ring, mark: q, title };
+      this.pois.push(poi);
+      this.updateMarker(poi);
     }
   }
 
@@ -309,13 +328,76 @@ export class CityScene extends Phaser.Scene {
     ring.fillStyle(color).fillCircle(0, 0, 11);
   }
 
-  /** Точка пройдена: зелёная отметка (заехать ещё раз можно — серия начнётся сначала). */
-  private markDone(poi: Poi) {
-    if (poi.done) return;
+  /** Состояние точки: не пройдена, пройдена без ошибок, пройдена с ошибками. */
+  poiState(poi: Poi): PoiState {
+    if (!poi.done) return 'new';
+    return poi.queue.some((p) => this.isWrong(p.id)) ? 'mistakes' : 'done';
+  }
+
+  /**
+   * Отметка точки: жёлтая «?» — ситуация на дороге, синяя «!» — мини-игра, зелёная «✓» —
+   * пройдена, красная «!» — в последний раз были ошибки (заехать ещё раз).
+   */
+  private updateMarker(poi: Poi) {
+    const minigame = TEMPLATES[poi.point.template].minigame;
+    const look = {
+      new: minigame ? { color: 0x3a86ff, mark: '!', ink: '#ffffff' } : { color: 0xffb703, mark: '?', ink: '#1b2430' },
+      done: { color: 0x1f8a43, mark: '✓', ink: '#ffffff' },
+      mistakes: { color: 0xd62839, mark: '!', ink: '#ffffff' },
+    }[this.poiState(poi)];
+    this.drawMarker(poi.ring, look.color);
+    poi.mark.setText(look.mark).setColor(look.ink);
+  }
+
+  /** Серия точки пройдена (заехать ещё раз можно: с ошибками — повторятся только они). */
+  private finishPoint(poi: Poi) {
     poi.done = true;
-    this.drawMarker(poi.ring, 0x1f8a43);
-    poi.mark.setText('✓').setColor('#ffffff');
-    this.host.onPointDone?.(this.pois.filter((p) => p.done).length, this.pois.length);
+    this.visited.add(poi.point.id);
+    this.updateMarker(poi);
+    this.host.onPointDone?.(poi.point.id);
+  }
+
+  // ─── Место доставки ──────────────────────────────────────────────────────────
+
+  /**
+   * Показать место доставки посылки: флажок на городской улице без точек интереса,
+   * подальше от машины — чтобы проехать через район.
+   */
+  showGoal(label: string) {
+    if (this.goal) return;
+    const busy = new Set(this.pois.map((p) => p.lane.road.id));
+    const from = this.player.position;
+    const lanes = [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && l.length >= 240 && !busy.has(l.road.id));
+    const pool = lanes.length ? lanes : [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city');
+    const mid = (l: Lane) => this.graph.pointOnLane(l, l.length / 2);
+    const lane = pool.sort((a, b) => distance(mid(b), from) - distance(mid(a), from) || a.id.localeCompare(b.id))[0];
+    if (!lane) return;
+    const s = lane.length / 2;
+    const p = this.graph.pointOnLane(lane, s);
+    const ring = this.add.graphics();
+    this.drawMarker(ring, 0x7b2cbf);
+    const flag = this.add.graphics();
+    flag.lineStyle(3, 0xffffff).lineBetween(-4, 8, -4, -9);
+    flag.fillStyle(0xffffff).fillTriangle(-3, -9, 9, -5, -3, -1);
+    const title = this.add
+      .text(0, 26, label, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#5a189acc', padding: { x: 5, y: 2 } })
+      .setOrigin(0.5, 0)
+      .setResolution(4);
+    const marker = this.add.container(p.x, p.y, [ring, flag, title]).setDepth(4.2);
+    this.tweens.add({ targets: ring, scale: 1.2, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const dir = lane.dir;
+    this.goal = { point: { id: 'goal', template: 'street', title: label, road: lane.road.id, toward: lane.to.id }, lane, s, anchor: p, dir, queue: [], cooldown: false, done: false, goal: true, marker, ring, mark: title, title };
+  }
+
+  /** Посылка доставлена — флажок убрать. */
+  removeGoal() {
+    this.goal?.marker.destroy();
+    this.goal = undefined;
+  }
+
+  /** Все точки, где машина может остановиться: точки интереса и место доставки. */
+  private get stops(): Poi[] {
+    return this.goal ? [...this.pois, this.goal] : this.pois;
   }
 
   private buildSignals() {
@@ -358,14 +440,19 @@ export class CityScene extends Phaser.Scene {
 
   // ─── Маршруты ────────────────────────────────────────────────────────────────
 
-  /** Обрезать маршрут у первой активной точки интереса на пути. */
+  /**
+   * Обрезать маршрут у первой активной точки интереса на пути. Пройденные без ошибок точки
+   * машина проезжает, если только игрок не выбрал такую точку целью (коснулся её).
+   */
   private clip(parts: PathPart[]): { parts: PathPart[]; poi?: Poi } {
+    const target = this.destination;
+    const passable = (poi: Poi) => !poi.goal && this.poiState(poi) === 'done' && !(target && target.lane === poi.lane && Math.abs(target.s - poi.s) < 2);
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (part.kind !== 'lane') continue;
       let hit: Poi | undefined;
-      for (const poi of this.pois) {
-        if (poi.cooldown || poi.lane !== part.lane) continue;
+      for (const poi of this.stops) {
+        if (poi.cooldown || poi.lane !== part.lane || passable(poi)) continue;
         if (poi.s >= part.s0 - 0.01 && poi.s <= part.s1 + 0.01 && (!hit || poi.s < hit.s)) hit = poi;
       }
       if (hit) return { parts: [...parts.slice(0, i), this.graph.lanePart(part.lane, part.s0, hit.s)], poi: hit };
@@ -444,21 +531,28 @@ export class CityScene extends Phaser.Scene {
 
   // ─── Сцена у точки ───────────────────────────────────────────────────────────
 
-  private async startScene(poi: Poi, index = 0) {
-    const placement = poi.queue[index];
-    const question = this.questions.get(placement.id);
-    if (!question) return;
-    if (this.leaving) this.finishLeaving(true);
+  private async startScene(poi: Poi, index = 0, list?: Placement[]) {
     if (this.destination && this.destination.lane === poi.lane && Math.abs(this.destination.s - poi.s) < 2) {
       this.destination = undefined;
       this.pinGfx.clear();
     }
+    if (poi.goal) {
+      poi.cooldown = true;
+      this.host.onGoal?.();
+      return;
+    }
+    // В точке с ошибками повторяются только вопросы, где в последний раз была ошибка.
+    list ??= this.poiState(poi) === 'mistakes' ? poi.queue.filter((p) => this.isWrong(p.id)) : poi.queue;
+    const placement = list[index];
+    const question = this.questions.get(placement.id);
+    if (!question) return;
+    if (this.leaving) this.finishLeaving(true);
 
     const info = TEMPLATES[placement.template];
-    const series: SeriesInfo = { index, total: poi.queue.length, point: poi.point.title };
+    const series: SeriesInfo = { index, total: list.length, point: poi.point.title };
     this.host.onSceneStart?.(info.minigame);
     if (info.minigame) {
-      await this.startMinigame(poi, index, placement, question, series);
+      await this.startMinigame(poi, index, list, question, series);
       return;
     }
     const kit = new SceneKit(this, poi.anchor, headingAngle(poi.dir));
@@ -467,6 +561,7 @@ export class CityScene extends Phaser.Scene {
     const active: ActiveScene = {
       poi,
       placement,
+      series: list,
       index,
       kit,
       script: undefined as unknown as SceneScript,
@@ -499,11 +594,13 @@ export class CityScene extends Phaser.Scene {
   }
 
   /** Мини-игра: машина стоит у здания, поверх города открывается сцена мини-игры. */
-  private async startMinigame(poi: Poi, index: number, placement: Placement, question: Question, series: SeriesInfo) {
+  private async startMinigame(poi: Poi, index: number, list: Placement[], question: Question, series: SeriesInfo) {
     poi.marker.setVisible(false);
+    const placement = list[index];
     const active: ActiveScene = {
       poi,
       placement,
+      series: list,
       index,
       script: undefined as unknown as SceneScript,
       exit: this.exitPath(poi, undefined),
@@ -518,7 +615,7 @@ export class CityScene extends Phaser.Scene {
     await interior.open(placement.template as MinigameKind);
     // Мини-игра закрывает весь экран — город под ней не рисуем (быстрее и бережёт батарею).
     this.cameras.main.setVisible(false);
-    active.script = interior.script({ placement, index, total: poi.queue.length });
+    active.script = interior.script({ placement, index, total: list.length });
     await active.script.enter();
     if (this.active !== active) return;
     this.host.showQuestion(question, placement, TEMPLATES[placement.template], { ...series, caption: active.script.caption });
@@ -609,7 +706,7 @@ export class CityScene extends Phaser.Scene {
   private handleTap(world: Vec) {
     const worldZoom = this.cameras.main.zoom / PIXEL_RATIO;
     let target: { lane: Lane; s: number } | undefined;
-    for (const poi of this.pois) {
+    for (const poi of this.stops) {
       if (poi.cooldown) continue;
       if (distance(world, { x: poi.marker.x, y: poi.marker.y }) < 30 / Math.min(1, worldZoom)) target = { lane: poi.lane, s: poi.s };
     }
@@ -734,7 +831,7 @@ export class CityScene extends Phaser.Scene {
       this.leaving.since += dt;
       if (this.leaving.since > 5 || distance(this.player.position, this.leaving.anchor) > 260) this.finishLeaving();
     }
-    for (const poi of this.pois) {
+    for (const poi of this.stops) {
       if (poi.cooldown && poi !== this.active?.poi && distance(this.player.position, poi.anchor) > 260) {
         poi.cooldown = false;
         poi.marker.setVisible(true);
@@ -749,6 +846,7 @@ export class CityScene extends Phaser.Scene {
       // В обзоре подписаны только здания мини-игр, иначе подписи налезают друг на друга.
       poi.title.setAlpha(worldZoom < 0.6 && TEMPLATES[poi.point.template].minigame ? 1 : 0);
     }
+    this.goal?.marker.setScale(k);
 
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
     if (this.active?.kit) sources.push(...this.active.kit.headlightSources());

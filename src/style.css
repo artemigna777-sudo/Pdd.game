@@ -73,11 +73,30 @@ button {
   display: block;
 }
 
+/* Жесты над игрой (двойной тап, прокрутка, выделение) обрабатывает игра, а не браузер. */
+#game,
+#game canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * Слой интерфейса лежит поверх игры на весь экран, но сам касания не забирает:
+ * их получают только кнопки, панели и непрозрачные экраны. Иначе в городе
+ * касания не доходят до машины.
+ */
 #ui {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
+  pointer-events: none;
+}
+
+.screen--page {
+  pointer-events: auto;
 }
 
 .screen {

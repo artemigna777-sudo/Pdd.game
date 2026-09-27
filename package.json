@@ -14,12 +14,14 @@
     "validate": "tsx scripts/validate.ts",
     "coverage": "tsx scripts/coverage.ts",
     "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
     "icons": "tsx scripts/icons.ts"
   },
   "dependencies": {
     "phaser": "^3.90.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^26.6.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",

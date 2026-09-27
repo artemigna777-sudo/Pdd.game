@@ -22,6 +22,8 @@ export interface MinigameContext {
 }
 
 const ROOM_WIDTH = 380;
+/** Какая часть комнаты «запекается» в картинку: всё, что бывает видно на экране телефона. */
+const BAKE_AREA = { x: -250, y: -640, w: 500, h: 1300 };
 
 export class InteriorScene extends Phaser.Scene {
   kind?: MinigameKind;
@@ -69,11 +71,38 @@ export class InteriorScene extends Phaser.Scene {
     this.kind = kind;
     this.results = [];
     this.room = buildRoom(this, kind);
+    this.bakeRoom(this.room);
     const cam = this.cameras.main;
     cam.setBackgroundColor(this.room.background);
     cam.centerOn(0, this.room.center);
     cam.fadeIn(350, 0, 0, 0);
     await this.wait(350);
+  }
+
+  /**
+   * Неподвижная обстановка комнаты (стены, мебель, машина на подъёмнике) — одной картинкой:
+   * иначе Phaser каждый кадр заново разбивает все её фигуры на треугольники. Подвижные предметы
+   * (room.props) и надписи остаются как есть.
+   */
+  private bakeRoom(room: Room) {
+    const live = new Set<Phaser.GameObjects.GameObject>(Object.values(room.props));
+    // Рисунки и группы рисунков (машина сбоку, пострадавший), которые не двигаются по ходу мини-игры.
+    const isStatic = (o: Phaser.GameObjects.GameObject): o is Phaser.GameObjects.Graphics | Phaser.GameObjects.Container =>
+      !live.has(o) &&
+      (o instanceof Phaser.GameObjects.Graphics ||
+        (o instanceof Phaser.GameObjects.Container && o.list.length > 0 && o.list.every((c) => c instanceof Phaser.GameObjects.Graphics)));
+    const statics = room.container.list.filter(isStatic);
+    if (!statics.length) return;
+    const res = PIXEL_RATIO;
+    const area = BAKE_AREA;
+    const rt = this.add.renderTexture(area.x, area.y, area.w * res, area.h * res).setOrigin(0).setScale(1 / res);
+    for (const g of statics) {
+      const { x, y, scaleX, scaleY } = g;
+      g.setPosition(x * res, y * res).setScale(scaleX * res, scaleY * res);
+      rt.draw(g, -area.x * res, -area.y * res);
+      g.destroy();
+    }
+    room.container.addAt(rt, 0);
   }
 
   async close(): Promise<void> {

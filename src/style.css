@@ -1914,3 +1914,192 @@ button {
 .topbar--city .topbar__score:empty {
   display: none;
 }
+
+/* ---------- Этап 5: экзамен, обучение, звук ---------- */
+
+.menu__row--review {
+  grid-template-columns: 1fr auto;
+}
+
+.btn--icon {
+  width: 64px;
+  padding: 0;
+}
+
+.exam-timer {
+  min-width: 72px;
+  font-size: 18px;
+}
+
+.exam-timer.is-low {
+  background: var(--bad);
+  color: #ffffff;
+}
+
+.exam-status {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.option.is-selected {
+  border-color: var(--focus);
+  background: #dbe7ff;
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.option.is-selected .option__num {
+  background: var(--focus);
+  color: #ffffff;
+}
+
+.exam-hub > * + * {
+  margin-top: 14px;
+}
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.rules li {
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.rules__ok {
+  background: var(--ok-bg);
+}
+
+.rules__warn {
+  background: var(--warn-bg);
+}
+
+.rules__bad {
+  background: var(--bad-bg);
+}
+
+.exam-result.is-passed {
+  background: var(--ok-bg);
+}
+
+.exam-result.is-failed {
+  background: var(--bad-bg);
+}
+
+.exam-result__verdict {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.exam-result.is-passed .exam-result__verdict {
+  color: var(--ok);
+}
+
+.exam-result.is-failed .exam-result__verdict {
+  color: var(--bad);
+}
+
+.tutorial {
+  text-align: center;
+}
+
+.tutorial__icon {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin: 4px auto 8px;
+  border-radius: 50%;
+  background: #fff7e0;
+  font-size: 44px;
+  line-height: 1;
+}
+
+.tutorial__title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.tutorial__text {
+  margin: 0 0 14px;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.tutorial__dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tutorial__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.tutorial__dot.is-active {
+  width: 22px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.settings__title--next {
+  margin-top: 20px;
+}
+
+.choice--toggle .choice__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  background: #c5ccd6;
+  transition: background-color 0.15s ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.choice--toggle[aria-pressed='true'] .switch {
+  background: var(--ok);
+}
+
+.choice--toggle[aria-pressed='true'] .switch::after {
+  transform: translateX(20px);
+}
+
+.choice--toggle[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--card);
+}

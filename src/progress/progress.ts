@@ -28,6 +28,10 @@ export const XP = {
   star: 50,
   /** Контрольный билет без ошибок. */
   control: 100,
+  /** Тренировочный экзамен сдан. */
+  exam: 30,
+  /** Экзамен-босс в финале сюжета сдан. */
+  boss: 500,
 } as const;
 
 export const LEVELS = [
@@ -80,7 +84,12 @@ export interface ProgressData {
   xp: number;
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
-  finale: { control: ControlSlot[]; seen: string[] };
+  finale: {
+    control: ControlSlot[];
+    seen: string[];
+    /** Когда сдан экзамен-босс — сюжет пройден. */
+    exam?: number;
+  };
 }
 
 export function emptyProgress(): ProgressData {
@@ -124,6 +133,7 @@ export function sanitizeProgress(raw: unknown): ProgressData {
         .map(({ ticket, passed }) => ({ ticket, passed }));
     }
     data.finale.seen = [...new Set(strings(f.seen))];
+    if (isInt(f.exam)) data.finale.exam = f.exam;
   }
   return data;
 }
@@ -419,6 +429,16 @@ export function finaleStatus(data: ProgressData, order: readonly string[], allId
     control,
     ready: controlOpen && control.length === CONTROL_TICKETS && control.every((s) => s.passed),
   };
+}
+
+/** Экзамен сдан: опыт (за босса — один раз, сюжет пройден). */
+export function recordExamPass(data: ProgressData, boss: boolean, now: number): AnswerOutcome {
+  if (boss) {
+    if (data.finale.exam) return { xp: 0 };
+    data.finale.exam = now;
+    return { xp: XP.boss, levelUp: gain(data, XP.boss) };
+  }
+  return { xp: XP.exam, levelUp: gain(data, XP.exam) };
 }
 
 // ─── Статистика по темам ─────────────────────────────────────────────────────────

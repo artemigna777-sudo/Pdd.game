@@ -113,3 +113,74 @@ export function showModal(title: string, body: HTMLElement, actions: ModalAction
     mount(root);
   });
 }
+
+export interface Slide {
+  icon: string;
+  title: string;
+  text: string;
+}
+
+/** Обучение при первом запуске: несколько коротких слайдов. */
+export const TUTORIAL: Slide[] = [
+  {
+    icon: '📦',
+    title: 'Курьер ПДД',
+    text: 'Все 800 вопросов экзамена ПДД (категории A, B, M) — в игре про курьера в городе Светофорске. Вопросы, картинки и ответы — из официальных билетов.',
+  },
+  {
+    icon: '🚗',
+    title: 'Езди по городу',
+    text: 'Коснись дороги — машина поедет туда (или включи джойстик в настройках). У жёлтых «?» и синих «!» точек ждут вопросы. Чтобы пройти главу, нужно проехать все точки и набрать от 80% верных ответов.',
+  },
+  {
+    icon: '🔁',
+    title: 'Ошибки не страшны',
+    text: 'Каждая ошибка вернётся на повтор через 1 день, потом через 3 и через 7 дней — пока не запомнится. Повторы ждут в «Разборе ошибок» в меню.',
+  },
+  {
+    icon: '🏁',
+    title: 'Финал — экзамен',
+    text: 'Пройди 10 глав, закрепи все ошибки — и сдай экзамен-босса: 20 вопросов за 20 минут, как в ГИБДД. Тренировочный экзамен есть в меню всегда.',
+  },
+];
+
+/** Показать обучение. Промис выполняется, когда слайды пролистаны или пропущены. */
+export function playTutorial(slides: readonly Slide[] = TUTORIAL): Promise<void> {
+  return new Promise((resolve) => {
+    let index = 0;
+    const icon = el('span', { class: 'tutorial__icon', 'aria-hidden': 'true' });
+    const title = el('h2', { class: 'tutorial__title' });
+    const text = el('p', { class: 'tutorial__text' });
+    const dots = el('div', { class: 'tutorial__dots', 'aria-hidden': 'true' }, ...slides.map(() => el('span', { class: 'tutorial__dot' })));
+    const next = el('button', { class: 'btn btn--primary', type: 'button', 'data-focus': true });
+    const skip = el('button', { class: 'btn btn--quiet', type: 'button' }, 'Пропустить');
+    const card = el('div', { class: 'cutscene__card tutorial' }, icon, title, text, dots, el('div', { class: 'cutscene__actions' }, skip, next));
+    const root = el('div', { class: 'cutscene cutscene--modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Обучение' }, card);
+    const finish = () => {
+      unmount(root);
+      resolve();
+    };
+    const show = () => {
+      const slide = slides[index];
+      icon.textContent = slide.icon;
+      title.textContent = slide.title;
+      text.textContent = slide.text;
+      [...dots.children].forEach((d, i) => d.classList.toggle('is-active', i === index));
+      const last = index === slides.length - 1;
+      next.textContent = last ? 'Начать' : 'Далее';
+      skip.hidden = last;
+      card.classList.remove('is-in');
+      void card.offsetWidth;
+      card.classList.add('is-in');
+    };
+    next.addEventListener('click', () => {
+      if (index < slides.length - 1) {
+        index++;
+        show();
+      } else finish();
+    });
+    skip.addEventListener('click', finish);
+    show();
+    mount(root);
+  });
+}

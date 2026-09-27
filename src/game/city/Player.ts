@@ -6,6 +6,7 @@
 import * as Phaser from 'phaser';
 import { Polyline, headingAngle, type Vec } from '../../world/geometry.ts';
 import { partLength, type Lane, type PathPart, type RoadGraph } from '../../world/roadGraph.ts';
+import { bakedImage } from '../bake.ts';
 import { COLORS, drawCar } from './art.ts';
 
 const ACCEL = 150;
@@ -35,8 +36,7 @@ export class Player {
     lane: Lane,
     s: number,
   ) {
-    const body = scene.add.graphics();
-    drawCar(body, COLORS.player, true);
+    const body = bakedImage(scene, 'player-car', 40, 56, (g) => drawCar(g, COLORS.player, true));
     this.blinkers = scene.add.graphics();
     this.container = scene.add.container(0, 0, [body, this.blinkers]).setDepth(6);
     this.line = new Polyline([graph.pointOnLane(lane, s)]);

@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { bakedImage, bakedTexture } from './bake.ts';
 import { PIXEL_RATIO } from './display.ts';
 
 /**
@@ -32,7 +33,7 @@ const DASH = 34;
 const GAP = 30;
 
 interface Car {
-  gfx: Phaser.GameObjects.Graphics;
+  gfx: Phaser.GameObjects.Image;
   lane: number;
   /** Собственная скорость машины по направлению её движения. */
   speed: number;
@@ -40,7 +41,8 @@ interface Car {
 }
 
 interface Prop {
-  gfx: Phaser.GameObjects.Graphics;
+  /** Дом (прямоугольники дёшевы и рисуются как есть) или дерево (готовая картинка). */
+  gfx: Phaser.GameObjects.Container;
   side: -1 | 1;
   height: number;
 }
@@ -48,7 +50,7 @@ interface Prop {
 export class StreetScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.Graphics;
   private markings!: Phaser.GameObjects.Graphics;
-  private player!: Phaser.GameObjects.Graphics;
+  private player!: Phaser.GameObjects.Image;
   private cars: Car[] = [];
   private props: Prop[] = [];
   private speed = CRUISE_SPEED;
@@ -71,8 +73,7 @@ export class StreetScene extends Phaser.Scene {
 
     this.ground = this.add.graphics();
     this.markings = this.add.graphics();
-    this.player = this.add.graphics().setDepth(3);
-    drawCar(this.player, COLORS.player, { courier: true });
+    this.player = this.carImage(COLORS.player, true).setDepth(3);
 
     this.layout();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
@@ -141,8 +142,17 @@ export class StreetScene extends Phaser.Scene {
     }
   }
 
+  /** Машина — готовая картинка (текстура рисуется один раз на цвет). */
+  private carTexture(color: number, courier = false): string {
+    return bakedTexture(this, `street-car:${color}:${courier}`, 40, 66, (g) => drawCar(g, color, { courier }));
+  }
+
+  private carImage(color: number, courier = false): Phaser.GameObjects.Image {
+    return this.add.image(0, 0, this.carTexture(color, courier)).setScale(1 / PIXEL_RATIO);
+  }
+
   private makeProp(side: -1 | 1): Prop {
-    const gfx = this.add.graphics().setDepth(1);
+    const gfx = this.add.container(0, 0).setDepth(1);
     const prop: Prop = { gfx, side, height: 0 };
     this.redrawProp(prop);
     return prop;
@@ -150,7 +160,7 @@ export class StreetScene extends Phaser.Scene {
 
   /** Дом (крыша сверху) или дерево на обочине. */
   private redrawProp(prop: Prop): void {
-    const g = prop.gfx.clear();
+    prop.gfx.removeAll(true);
     const margin = this.roadX - 18;
     const available = Math.max(margin - 12, 0);
 
@@ -159,6 +169,8 @@ export class StreetScene extends Phaser.Scene {
       const bh = Phaser.Math.Between(50, 110);
       const color = Phaser.Utils.Array.GetRandom(ROOF_COLORS);
       const x = prop.side < 0 ? margin - 8 - bw : this.viewW - margin + 8;
+      const g = this.add.graphics();
+      prop.gfx.add(g);
       g.fillStyle(COLORS.shadow, 0.18).fillRect(x + 5, 5, bw, bh);
       g.fillStyle(color).fillRect(x, 0, bw, bh);
       g.lineStyle(2, 0x000000, 0.15).strokeRect(x + 5, 5, bw - 10, bh - 10);
@@ -167,9 +179,12 @@ export class StreetScene extends Phaser.Scene {
     } else {
       const r = Phaser.Math.Between(11, 17);
       const cx = prop.side < 0 ? margin - 6 - r - Math.random() * Math.max(available - 2 * r, 0) : this.viewW - margin + 6 + r + Math.random() * Math.max(available - 2 * r, 0);
-      g.fillStyle(COLORS.shadow, 0.2).fillCircle(cx + 4, r + 4, r);
-      g.fillStyle(COLORS.tree).fillCircle(cx, r, r);
-      g.fillStyle(COLORS.treeLight).fillCircle(cx - r * 0.3, r * 0.7, r * 0.55);
+      const tree = bakedImage(this, `street-tree:${r}`, r * 2 + 12, r * 2 + 12, (g) => {
+        g.fillStyle(COLORS.shadow, 0.2).fillCircle(4, 4, r);
+        g.fillStyle(COLORS.tree).fillCircle(0, 0, r);
+        g.fillStyle(COLORS.treeLight).fillCircle(-r * 0.3, -r * 0.3, r * 0.55);
+      });
+      prop.gfx.add(tree.setPosition(cx, r));
       prop.height = r * 2;
     }
   }
@@ -186,7 +201,7 @@ export class StreetScene extends Phaser.Scene {
       [2, false],
     ];
     plan.forEach(([lane, oncoming], i) => {
-      const gfx = this.add.graphics().setDepth(2);
+      const gfx = this.carImage(CAR_COLORS[0]).setDepth(2);
       const car: Car = { gfx, lane, oncoming, speed: 0 };
       this.resetCar(car, (i / plan.length) * this.viewH * 1.6 - this.viewH * 0.3);
       this.cars.push(car);
@@ -197,7 +212,8 @@ export class StreetScene extends Phaser.Scene {
     car.speed = car.oncoming ? Phaser.Math.Between(90, 160) : Phaser.Math.Between(80, 200);
     // Попутная машина в полосе игрока едет медленнее, чтобы не наезжать на него.
     if (!car.oncoming && car.lane === 2) car.speed = Phaser.Math.Between(60, 100);
-    drawCar(car.gfx.clear(), Phaser.Utils.Array.GetRandom(CAR_COLORS), {});
+    const color = Phaser.Utils.Array.GetRandom(CAR_COLORS);
+    car.gfx.setTexture(this.carTexture(color));
     car.gfx.setAngle(car.oncoming ? 180 : 0);
     car.gfx.setPosition(this.laneCenter(car.lane) + Phaser.Math.Between(-3, 3), y);
   }

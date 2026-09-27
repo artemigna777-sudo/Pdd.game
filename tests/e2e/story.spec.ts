@@ -47,6 +47,7 @@ function seed(page: Page, data: unknown) {
     // Только при первой загрузке: после перезагрузки игра должна читать то, что сохранила сама.
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('pdd-game:progress', JSON.stringify(value));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
       sessionStorage.setItem('seeded', '1');
     }
   }, data);
@@ -105,8 +106,15 @@ async function answerCard(page: Page, right: boolean) {
   await page.locator('.option').nth(right ? correct : (correct + 1) % (await page.locator('.option').count())).tap();
 }
 
-test('глава 1: пролог, вступление, точка — и всё это сохраняется после перезагрузки', async ({ page }) => {
+test('глава 1: обучение, пролог, вступление, точка — и всё это сохраняется после перезагрузки', async ({ page }) => {
   await page.goto('/');
+  // Первый запуск — короткое обучение.
+  const tutorial = page.locator('.tutorial');
+  await expect(tutorial.locator('.tutorial__title')).toHaveText('Курьер ПДД');
+  await page.getByRole('button', { name: 'Далее' }).tap();
+  await expect(tutorial.locator('.tutorial__title')).toHaveText('Езди по городу');
+  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await expect(tutorial).toHaveCount(0);
   await expect(page.locator('.level__title')).toHaveText('Уровень 1 · Ученик');
   await page.getByRole('button', { name: 'Начать историю' }).tap();
 
@@ -129,8 +137,10 @@ test('глава 1: пролог, вступление, точка — и всё
   expect(answered).toBe(pointQuestions(ROAD_POINT).length);
   await expect(page.locator('.city-task')).toContainText('Точки 1 из 26');
 
-  // Закрыли игру и открыли снова: прогресс на месте, вступление не повторяется.
+  // Закрыли игру и открыли снова: прогресс на месте, обучение и вступление не повторяются.
   await page.reload();
+  await page.waitForTimeout(500);
+  await expect(page.locator('.tutorial')).toHaveCount(0);
   const story = page.getByRole('button', { name: 'Глава 1: Первый день' });
   await expect(story).toBeVisible();
   await expect(page.locator('.menu__stats')).toHaveText(`Пройдено вопросов: ${answered} из 800`);

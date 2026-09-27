@@ -32,7 +32,7 @@ async function openCity(page: Page, control: 'tap' | 'joystick', chapter = 1) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_SLOW) });
   }
-  await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode })), control);
+  await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode, tutorial: true })), control);
   await page.addInitScript(openAllChapters);
   await page.goto('/');
   await page.getByRole('button', { name: 'Главы' }).tap();

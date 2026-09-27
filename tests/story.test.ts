@@ -9,6 +9,9 @@ const allLines = (): Line[] => [
   ...FINALE_STORY.intro,
   ...FINALE_STORY.controls,
   ...FINALE_STORY.epilogue,
+  ...FINALE_STORY.exam,
+  ...FINALE_STORY.passed,
+  ...FINALE_STORY.failed,
 ];
 
 test('у каждой главы своя история: задание, место доставки, вступление, две сцены по ходу, финал', () => {

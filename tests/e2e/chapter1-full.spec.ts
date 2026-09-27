@@ -75,6 +75,7 @@ async function playPoint(page: Page, id: string, wrongEvery: number) {
 
 test('глава 1 целиком: от пролога до доставки и наград', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Пропустить' }).tap(); // обучение
   await page.getByRole('button', { name: 'Начать историю' }).tap();
   expect(await readCutscenes(page)).toBeGreaterThan(8); // пролог и вступление
   await page.waitForFunction(() => (window as Any).__game?.scene.isActive('city') && (window as Any).__game.scene.getScene('city').pois?.length > 0);

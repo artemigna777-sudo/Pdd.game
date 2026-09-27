@@ -4,34 +4,24 @@ import { loadQuestions } from '../data/questions.ts';
 import type { Question } from '../data/types.ts';
 import { setGameActive } from '../game/game.ts';
 import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
+import { cityScreen } from './cityScreen.ts';
 import { el } from './dom.ts';
+import { ICONS } from './icons.ts';
 import { renderQuestionCard, type AnswerResult } from './questionCard.ts';
+import { settingsPanel } from './settingsPanel.ts';
 
 /**
- * Экраны этапа 1: меню поверх анимированной улицы и временный режим «пройти вопрос»
- * (случайные вопросы или билет целиком), чтобы проверить, что данные читаются правильно.
+ * Экраны: меню поверх анимированной улицы, город (этап 2), билеты целиком и настройки.
  */
-type Route = { name: 'menu' } | { name: 'random' } | { name: 'tickets' } | { name: 'ticket'; ticket: number };
+type Route = { name: 'menu' } | { name: 'city' } | { name: 'settings' } | { name: 'tickets' } | { name: 'ticket'; ticket: number };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
-const DEPTH: Record<RouteName, number> = { menu: 0, random: 1, tickets: 1, ticket: 2 };
-
-const BACK_ICON =
-  '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DEPTH: Record<RouteName, number> = { menu: 0, city: 1, settings: 1, tickets: 1, ticket: 2 };
 
 function isRoute(value: unknown): value is Route {
   return typeof value === 'object' && value !== null && (value as Route).name in DEPTH;
-}
-
-function shuffle<T>(items: readonly T[]): T[] {
-  const result = [...items];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
 }
 
 export class App {
@@ -65,17 +55,25 @@ export class App {
     this.cleanup?.();
     this.cleanup = undefined;
     this.route = route;
-    setGameActive(this.game, route.name === 'menu');
+    setGameActive(this.game, route.name === 'menu' || route.name === 'city');
 
     let screen: HTMLElement;
     switch (route.name) {
       case 'menu':
         screen = this.menuScreen();
         break;
+      case 'city': {
+        const city = cityScreen(this.game, () => this.back('menu'));
+        this.cleanup = city.cleanup;
+        screen = city.element;
+        break;
+      }
+      case 'settings':
+        screen = this.page('Настройки', settingsPanel(), { back: 'menu' });
+        break;
       case 'tickets':
         screen = this.ticketsScreen();
         break;
-      case 'random':
       case 'ticket':
         screen = this.quizScreen(route);
         break;
@@ -120,12 +118,17 @@ export class App {
       el(
         'div',
         { class: 'menu' },
-        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.open({ name: 'random' }) }, 'Пройти вопрос'),
-        el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'tickets' }) }, 'Билеты'),
+        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.open({ name: 'city' }) }, 'Поехать в город'),
+        el(
+          'div',
+          { class: 'menu__row' },
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'tickets' }) }, 'Билеты'),
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'settings' }) }, 'Настройки'),
+        ),
         install,
         iosHint,
         stats,
-        el('p', { class: 'menu__note' }, 'Временный режим для проверки вопросов. Город и сюжет появятся на следующих этапах.'),
+        el('p', { class: 'menu__note' }, 'Тестовый район: у жёлтых точек вас ждут ситуации с вопросами. Главы и сюжет появятся на следующих этапах.'),
       ),
     );
   }
@@ -147,26 +150,20 @@ export class App {
     return this.page('Билеты', grid, { back: 'menu', intro: 'Выберите билет: 20 вопросов подряд, в конце — результат.' });
   }
 
-  private quizScreen(route: Extract<Route, { name: 'random' | 'ticket' }>): HTMLElement {
-    const endless = route.name === 'random';
+  private quizScreen(route: TicketRoute): HTMLElement {
     const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
     const score = el('span', { class: 'topbar__score' });
     const bar = el('div', { class: 'progress__bar' });
-    const progress = endless ? undefined : el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
+    const progress = el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
     const next = el('button', { class: 'btn btn--primary btn--lg', type: 'button' }, 'Дальше');
-    const screen = this.page(endless ? 'Случайный вопрос' : `Билет ${route.ticket}`, body, {
-      back: endless ? 'menu' : 'tickets',
-      aside: score,
-      progress,
-      footer: next,
-    });
+    const screen = this.page(`Билет ${route.ticket}`, body, { back: 'tickets', aside: score, progress, footer: next });
     const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
     const footer = screen.querySelector<HTMLElement>('.bottombar')!;
     footer.hidden = true;
 
     loadQuestions().then((all) => {
       if (this.route !== route) return;
-      const list = endless ? shuffle(all) : all.filter((q) => q.ticket === route.ticket).sort((a, b) => a.number - b.number);
+      const list = all.filter((q) => q.ticket === route.ticket).sort((a, b) => a.number - b.number);
       const results: AnswerResult[] = [];
       let index = 0;
 
@@ -174,11 +171,9 @@ export class App {
         const correct = results.filter((r) => r.isCorrect).length;
         score.textContent = `${correct}/${results.length}`;
         score.setAttribute('aria-label', `Правильно ${correct} из ${results.length}`);
-        if (progress) {
-          progress.setAttribute('aria-valuemax', String(list.length));
-          progress.setAttribute('aria-valuenow', String(results.length));
-          bar.style.width = `${(results.length / list.length) * 100}%`;
-        }
+        progress.setAttribute('aria-valuemax', String(list.length));
+        progress.setAttribute('aria-valuenow', String(results.length));
+        bar.style.width = `${(results.length / list.length) * 100}%`;
       };
 
       const show = (question: Question) => {
@@ -187,8 +182,7 @@ export class App {
           renderQuestionCard(question, (result) => {
             results.push(result);
             updateStatus();
-            const isLast = !endless && index === list.length - 1;
-            next.textContent = isLast ? 'Показать результат' : endless ? 'Следующий вопрос' : 'Дальше';
+            next.textContent = index === list.length - 1 ? 'Показать результат' : 'Дальше';
             footer.hidden = false;
           }),
         );
@@ -197,12 +191,12 @@ export class App {
 
       next.onclick = () => {
         index++;
-        if (route.name === 'ticket' && index >= list.length) {
+        if (index >= list.length) {
           footer.hidden = true;
           body.replaceChildren(this.ticketResult(route, results));
           scroller.scrollTop = 0;
         } else {
-          show(list[index % list.length]);
+          show(list[index]);
         }
       };
 
@@ -234,7 +228,7 @@ export class App {
     opts: { back: 'menu' | 'tickets'; intro?: string; aside?: HTMLElement; progress?: HTMLElement; footer?: HTMLElement },
   ): HTMLElement {
     const backButton = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Назад', onclick: () => this.back(opts.back) });
-    backButton.innerHTML = BACK_ICON;
+    backButton.innerHTML = ICONS.back;
     return el(
       'div',
       { class: 'screen screen--page' },

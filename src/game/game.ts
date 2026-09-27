@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { PIXEL_RATIO } from './display.ts';
+import { CityScene } from './city/CityScene.ts';
 import { StreetScene } from './StreetScene.ts';
 
 /**
@@ -23,7 +24,7 @@ export function startGame(parent: HTMLElement): Phaser.Game {
       height: Math.round(height * PIXEL_RATIO),
       zoom: 1 / PIXEL_RATIO,
     },
-    scene: [StreetScene],
+    scene: [StreetScene, CityScene],
   });
 
   new ResizeObserver(() => {

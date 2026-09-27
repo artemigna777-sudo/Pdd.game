@@ -500,7 +500,11 @@ export class CityScene extends Phaser.Scene {
     if (!this.joy.active || this.joy.mag < 0.25) {
       if (this.joyWasActive) {
         this.joyWasActive = false;
-        if (!this.pendingPoi) this.player.stopSoon();
+        // Палец отпустили — машина плавно останавливается. Точка интереса остаётся целью,
+        // только если до неё уже не успеть затормозить.
+        const before = this.player.remaining();
+        this.player.stopSoon();
+        if (this.player.remaining() < before - 0.5) this.pendingPoi = undefined;
       }
       return;
     }

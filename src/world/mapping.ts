@@ -55,3 +55,10 @@ export function pointQueues(mapping: Mapping, chapterId: string): Map<string, Pl
   for (const queue of queues.values()) queue.sort((a, b) => a.step - b.step);
   return queues;
 }
+
+/** Точки главы по порядку и вопросы каждой точки (для подсчёта прогресса главы). */
+export function chapterInfo(mapping: Mapping, chapterId: string): { id: string; points: { id: string; questions: string[] }[] } {
+  const chapter = mapping.chapters.find((c) => c.id === chapterId);
+  const queues = pointQueues(mapping, chapterId);
+  return { id: chapterId, points: (chapter?.points ?? []).map((p) => ({ id: p.id, questions: (queues.get(p.id) ?? []).map((q) => q.id) })) };
+}

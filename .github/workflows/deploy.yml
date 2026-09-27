@@ -33,9 +33,9 @@ jobs:
         run: npm test
       - name: Сборка
         run: npm run build
-      - name: Браузер для тестов управления
+      - name: Браузер для тестов
         run: npx playwright install --with-deps chromium
-      - name: Тесты управления в браузере
+      - name: Браузерные тесты (управление, сюжет, билеты)
         run: npm run test:e2e
       - if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v4

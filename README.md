@@ -12,7 +12,7 @@
 |---|---|
 | `npm install` | Установить зависимости (один раз) |
 | `npm run dev` | Запустить игру локально |
-| `npm run import` | Заново извлечь вопросы и картинки из PDF в `data/raw/` |
+| `npm run import` | Заново извлечь вопросы и картинки из PDF в `data/raw/` и подключить пояснения |
 | `npm run validate` | Проверить `data/questions.json` и вывести отчёт |
 | `npm run build` | Проверить типы и собрать игру в `dist/` |
 | `npm run icons` | Перерисовать иконки приложения |
@@ -22,6 +22,7 @@
 | Путь | Содержимое |
 |---|---|
 | `data/raw/` | Исходный файл с билетами (PDF) |
+| `data/raw/pdd_russia/` | Пояснения к ответам из открытого набора [pdd_russia](https://github.com/etspring/pdd_russia) |
 | `data/questions.json` | Вопросы в формате из CLAUDE.md (создаётся `npm run import`) |
 | `data/import-report.md` | Отчёт последнего импорта |
 | `public/images/` | Картинки билетов, извлечены из PDF без изменений |

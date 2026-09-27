@@ -9,12 +9,14 @@
  *  2. Извлекает картинки билетов (исходные JPEG байт в байт) в public/images/.
  *  3. Читает «Таблицу правильных ответов» в конце файла.
  *  4. Определяет тему каждого вопроса (в файле тем нет, см. scripts/topics.ts).
- *  5. Сверяет всё между собой и падает, если что-то потерялось.
- *  6. Пишет data/questions.json и data/import-report.md.
+ *  5. Подключает пояснения к ответам из data/raw/pdd_russia (в PDF пояснений нет, см. scripts/explanations.ts).
+ *  6. Сверяет всё между собой и падает, если что-то потерялось.
+ *  7. Пишет data/questions.json и data/import-report.md.
  */
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Question } from '../src/data/types.ts';
+import { loadExplanationSource, matchExplanation } from './explanations.ts';
 import { readPdfImages, readPdfText, type PageImage, type PageText, type TextLine } from './lib/pdf.ts';
 import { classifyTopic } from './topics.ts';
 
@@ -23,6 +25,7 @@ const RAW_DIR = path.join(ROOT, 'data', 'raw');
 const OUT_JSON = path.join(ROOT, 'data', 'questions.json');
 const OUT_REPORT = path.join(ROOT, 'data', 'import-report.md');
 const IMAGES_DIR = path.join(ROOT, 'public', 'images');
+const EXPLANATIONS_DIR = path.join(ROOT, 'data', 'raw', 'pdd_russia', 'tickets');
 
 /** Нижний колонтитул страницы (ссылка на сайт и номер страницы). */
 const FOOTER_Y = 790;
@@ -208,6 +211,9 @@ async function main() {
   await rm(IMAGES_DIR, { recursive: true, force: true });
   await mkdir(IMAGES_DIR, { recursive: true });
 
+  const explanationSource = loadExplanationSource(EXPLANATIONS_DIR);
+  const explanationProblems: string[] = [];
+
   const questions: Question[] = [];
   for (const q of raw) {
     const id = `B${pad(q.ticket)}-Q${pad(q.number)}`;
@@ -233,7 +239,7 @@ async function main() {
       }
     }
 
-    const question: Question = {
+    const base: Omit<Question, 'topic'> = {
       id,
       ticket: q.ticket,
       number: q.number,
@@ -241,15 +247,17 @@ async function main() {
       ...(image ? { image } : {}),
       options,
       correct: (answer ?? 0) - 1,
-      topic: '',
     };
-    question.topic = classifyTopic(question);
-    questions.push(question);
+    const { explanation, problem } = matchExplanation(base, explanationSource);
+    if (problem) explanationProblems.push(`${id}: ${problem}`);
+    // Порядок полей как в схеме из CLAUDE.md: пояснение, затем тема.
+    questions.push({ ...base, ...(explanation ? { explanation } : {}), topic: classifyTopic(base) });
   }
 
   questions.sort((a, b) => a.ticket - b.ticket || a.number - b.number);
 
   const withImages = questions.filter((q) => q.image).length;
+  const withExplanations = questions.filter((q) => q.explanation).length;
   const topics = new Map<string, number>();
   for (const q of questions) topics.set(q.topic, (topics.get(q.topic) ?? 0) + 1);
 
@@ -269,7 +277,8 @@ async function main() {
     `| Картинок на обложке (пропущены) | ${coverImages.length} |`,
     `| Картинок не привязано к вопросу | ${unassignedImages.length} |`,
     `| Правильных ответов в таблице | ${[...answers.values()].reduce((s, a) => s + a.length, 0)} |`,
-    `| Пояснений в файле | нет |`,
+    `| Пояснений в PDF | нет |`,
+    `| Пояснений подключено из pdd_russia | ${withExplanations} |`,
     `| Ошибок | ${errors.length} |`,
     '',
     '## Темы',
@@ -280,6 +289,14 @@ async function main() {
     '|---|---|',
     ...[...topics.entries()].sort((a, b) => b[1] - a[1]).map(([t, n]) => `| ${t} | ${n} |`),
     '',
+    '## Пояснения',
+    '',
+    'В PDF пояснений нет. Они берутся из открытого набора pdd_russia (`data/raw/pdd_russia/SOURCE.md`) и подключаются,',
+    'только если у вопроса в наборе тот же билет, номер, число вариантов, правильный ответ и практически тот же текст.',
+    '',
+    `Подключено: ${withExplanations} из ${questions.length}.`,
+    '',
+    ...(explanationProblems.length ? ['Не подключено:', '', ...explanationProblems.map((e) => `- ${e}`), ''] : []),
     ...(errors.length ? ['## Ошибки', '', ...errors.map((e) => `- ${e}`), ''] : []),
   ].join('\n');
 

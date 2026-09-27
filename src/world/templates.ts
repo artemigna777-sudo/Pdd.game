@@ -1,8 +1,8 @@
 /**
- * Каталог шаблонов сцен и их параметры.
+ * Каталог шаблонов сцен и мини-игр и их параметры.
  *
- * Шаблон собирает ситуацию на дороге из параметров вопроса (data/mapping.json).
- * Файл без зависимостей от Phaser: его использует и игра, и `npm run coverage`.
+ * Шаблон собирает ситуацию на дороге (или мини-игру) из параметров вопроса (data/scenes.json).
+ * Файл без зависимостей от Phaser: его использует и игра, и скрипты размещения и покрытия.
  */
 
 export const TEMPLATE_IDS = [
@@ -16,9 +16,13 @@ export const TEMPLATE_IDS = [
   'overtaking',
   'parking',
   'signs-marking',
+  'street',
   'highway',
   'night-road',
-  'theory',
+  'classroom',
+  'inspector',
+  'garage',
+  'first-aid',
 ] as const;
 
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
@@ -29,7 +33,53 @@ export type VehicleKind = 'car' | 'truck' | 'bus' | 'tram' | 'moto' | 'bicycle' 
 export type LightState = 'green' | 'green-blink' | 'yellow' | 'yellow-blink' | 'red' | 'red-yellow' | 'off';
 export type Side = 'left' | 'right' | 'oncoming';
 
-/** Время суток и погода: доступны в любом шаблоне. */
+/** Мини-игра «Гараж»: что осматривает игрок. */
+export const GARAGE_PARTS = {
+  brakes: 'тормоза',
+  steering: 'рулевое управление',
+  lights: 'фары и фонари',
+  wipers: 'стеклоочистители',
+  tires: 'шины',
+  engine: 'двигатель',
+  exhaust: 'выпускная система',
+  body: 'кузов и рама',
+  cabin: 'салон',
+  glass: 'стёкла',
+  belts: 'ремни безопасности',
+  horn: 'звуковой сигнал',
+  hitch: 'буксирное устройство',
+  cargo: 'груз на багажнике',
+  'child-seat': 'детское кресло',
+} as const;
+export type GaragePart = keyof typeof GARAGE_PARTS;
+
+/** Мини-игра «Инспектор»: с чего инспектор начинает разговор. */
+export const INSPECTOR_CASES = ['documents', 'alcohol', 'accident', 'punishment', 'phone', 'belts', 'insurance', 'stop', 'fine'] as const;
+export type InspectorCase = (typeof INSPECTOR_CASES)[number];
+
+/**
+ * Мини-игра «Аптечка»: шаг помощи пострадавшему. Порядок ключей — порядок шагов:
+ * вопросы одной точки идут от вызова помощи к конкретным травмам.
+ */
+export const FIRST_AID_STEPS = {
+  call: 'Вызов помощи',
+  extract: 'Извлечение из машины',
+  breathing: 'Проверка дыхания',
+  unconscious: 'Без сознания',
+  cpr: 'Реанимация',
+  choking: 'Дыхательные пути',
+  bleeding: 'Кровотечение',
+  wound: 'Рана',
+  head: 'Травма головы',
+  spine: 'Травма позвоночника',
+  fracture: 'Переломы',
+  burn: 'Ожог',
+  cold: 'Переохлаждение',
+  medicine: 'Лекарства',
+} as const;
+export type Injury = keyof typeof FIRST_AID_STEPS;
+
+/** Время суток и погода: доступны в любом шаблоне на дороге. */
 export interface Conditions {
   time?: 'day' | 'night';
   weather?: 'clear' | 'rain' | 'snow' | 'fog';
@@ -41,14 +91,15 @@ export interface SceneParams {
   conditions?: Conditions;
   /** Что показать при неправильном ответе; по умолчанию — своё у каждого шаблона. */
   consequence?: Consequence;
-  /** Дорожные знаки в сцене (номера по ПДД, например "2.1", "3.20"). */
+  /** Дорожные знаки в сцене (номера по ПДД, например "2.1", "3.20"). Пустой список — знаков нет совсем. */
   signs?: string[];
   /** Кто по ситуации проезжает первым; игрок едет после них. */
   yieldTo?: Array<Side | 'pedestrians' | 'cyclist'>;
 
   // Перекрёстки
   light?: LightState;
-  arrow?: 'left' | 'right';
+  /** Дополнительная секция светофора со стрелкой (горит зелёным). */
+  arrow?: 'left' | 'right' | 'straight';
   controller?: 'side' | 'front' | 'up' | 'right-arm';
   fromLeft?: VehicleKind;
   fromRight?: VehicleKind;
@@ -65,22 +116,37 @@ export interface SceneParams {
   leftSignal?: boolean;
   marking?: 'dashed' | 'solid' | 'double';
   jam?: boolean;
-  vehicle?: 'bus' | 'tram';
+  vehicle?: 'bus' | 'tram' | 'none';
   leaving?: boolean;
   barrier?: 'none' | 'open' | 'closed';
   train?: boolean;
   crosswalkAhead?: boolean;
   highBeam?: boolean;
+  /** Препятствие (знак аварийной остановки) на полосе игрока. */
+  obstacle?: boolean;
+
+  // Мини-игры
+  part?: GaragePart;
+  case?: InspectorCase;
+  injury?: Injury;
 }
 
 export interface TemplateInfo {
   id: TemplateId;
   title: string;
-  /** Сцена вокруг узла (перекрёсток) или точки на участке дороги. */
+  /** Коротко — для подписи точки на карте. */
+  short: string;
+  /** Сцена вокруг узла (перекрёсток), в точке на участке дороги или мини-игра у здания. */
   anchor: 'node' | 'road';
+  /** Мини-игра: своя сцена поверх города вместо ситуации на дороге. */
+  minigame: boolean;
+  /** Где на карте может стоять точка: на обычной дороге, на автомагистрали, на переезде. */
+  place: 'city' | 'highway' | 'railway';
   consequence: Consequence;
   /** Для участков дороги: на сколько раньше точки сцены останавливается игрок. */
   stopOffset: number;
+  /** Сколько вопросов подряд задаётся в одной точке. */
+  series: number;
   /** Параметры, которые понимает шаблон (кроме общих). */
   params: Array<keyof SceneParams>;
 }
@@ -88,140 +154,109 @@ export interface TemplateInfo {
 const COMMON: Array<keyof SceneParams> = ['maneuver', 'conditions', 'consequence', 'signs', 'yieldTo'];
 const TRAFFIC: Array<keyof SceneParams> = ['fromLeft', 'fromRight', 'oncoming', 'pedestrians', 'cyclist', 'emergency'];
 
+const road = (id: TemplateId, title: string, short: string, rest: Partial<TemplateInfo> & Pick<TemplateInfo, 'consequence' | 'params'>): TemplateInfo => ({
+  id,
+  title,
+  short,
+  anchor: 'road',
+  minigame: false,
+  place: 'city',
+  stopOffset: 0,
+  series: 3,
+  ...rest,
+});
+
+const node = (id: TemplateId, title: string, short: string, params: Array<keyof SceneParams>): TemplateInfo => ({
+  id,
+  title,
+  short,
+  anchor: 'node',
+  minigame: false,
+  place: 'city',
+  consequence: id === 'signalized' ? 'inspector' : 'hazard',
+  stopOffset: 0,
+  series: 3,
+  params,
+});
+
+const minigame = (id: TemplateId, title: string, short: string, params: Array<keyof SceneParams>, series: number): TemplateInfo => ({
+  id,
+  title,
+  short,
+  anchor: 'road',
+  minigame: true,
+  place: 'city',
+  consequence: 'instructor',
+  stopOffset: 0,
+  series,
+  params,
+});
+
 export const TEMPLATES: Record<TemplateId, TemplateInfo> = {
-  signalized: {
-    id: 'signalized',
-    title: 'Регулируемый перекрёсток',
-    anchor: 'node',
-    consequence: 'inspector',
-    stopOffset: 0,
-    params: [...TRAFFIC, 'light', 'arrow', 'controller'],
-  },
-  'uncontrolled-equal': {
-    id: 'uncontrolled-equal',
-    title: 'Перекрёсток равнозначных дорог',
-    anchor: 'node',
-    consequence: 'hazard',
-    stopOffset: 0,
-    params: TRAFFIC,
-  },
-  'uncontrolled-priority': {
-    id: 'uncontrolled-priority',
-    title: 'Перекрёсток неравнозначных дорог',
-    anchor: 'node',
-    consequence: 'hazard',
-    stopOffset: 0,
-    params: [...TRAFFIC, 'playerOn', 'mainRoad'],
-  },
-  roundabout: {
-    id: 'roundabout',
-    title: 'Круговое движение',
-    anchor: 'node',
-    consequence: 'hazard',
-    stopOffset: 0,
-    params: [...TRAFFIC, 'playerOnRing'],
-  },
-  crosswalk: {
-    id: 'crosswalk',
-    title: 'Пешеходный переход',
-    anchor: 'road',
-    consequence: 'hazard',
-    stopOffset: 34,
-    params: ['pedestrians', 'jam', 'oncoming'],
-  },
-  'bus-stop': {
-    id: 'bus-stop',
-    title: 'Остановка общественного транспорта',
-    anchor: 'road',
+  signalized: node('signalized', 'Регулируемый перекрёсток', 'Светофор', [...TRAFFIC, 'light', 'arrow', 'controller']),
+  'uncontrolled-equal': node('uncontrolled-equal', 'Перекрёсток равнозначных дорог', 'Перекрёсток', TRAFFIC),
+  'uncontrolled-priority': node('uncontrolled-priority', 'Перекрёсток неравнозначных дорог', 'Главная дорога', [...TRAFFIC, 'playerOn', 'mainRoad']),
+  roundabout: node('roundabout', 'Круговое движение', 'Кольцо', [...TRAFFIC, 'playerOnRing']),
+  crosswalk: road('crosswalk', 'Пешеходный переход', 'Переход', { consequence: 'hazard', stopOffset: 34, params: ['pedestrians', 'jam', 'oncoming'] }),
+  'bus-stop': road('bus-stop', 'Остановка общественного транспорта', 'Остановка', {
     consequence: 'hazard',
     stopOffset: 110,
     params: ['vehicle', 'leaving', 'pedestrians', 'oncoming'],
-  },
-  railway: {
-    id: 'railway',
-    title: 'Железнодорожный переезд',
-    anchor: 'road',
-    consequence: 'hazard',
-    stopOffset: 70,
-    params: ['barrier', 'train', 'light'],
-  },
-  overtaking: {
-    id: 'overtaking',
-    title: 'Обгон и встречный разъезд',
-    anchor: 'road',
-    consequence: 'hazard',
-    stopOffset: 0,
-    params: ['ahead', 'leftSignal', 'marking', 'oncoming'],
-  },
-  parking: {
-    id: 'parking',
-    title: 'Остановка и стоянка',
-    anchor: 'road',
-    consequence: 'fine',
-    stopOffset: 0,
-    params: ['crosswalkAhead', 'marking', 'oncoming'],
-  },
-  'signs-marking': {
-    id: 'signs-marking',
-    title: 'Знаки и разметка',
-    anchor: 'road',
-    consequence: 'inspector',
-    stopOffset: 60,
-    params: ['marking', 'ahead', 'oncoming'],
-  },
-  highway: {
-    id: 'highway',
-    title: 'Автомагистраль',
-    anchor: 'road',
-    consequence: 'inspector',
-    stopOffset: 0,
-    params: ['ahead', 'oncoming'],
-  },
-  'night-road': {
-    id: 'night-road',
-    title: 'Тёмное время суток и погода',
-    anchor: 'road',
-    consequence: 'hazard',
-    stopOffset: 0,
-    params: ['oncoming', 'ahead', 'highBeam'],
-  },
-  theory: {
-    id: 'theory',
-    title: 'Автошкола',
-    anchor: 'road',
-    consequence: 'instructor',
-    stopOffset: 0,
-    params: [],
-  },
+  }),
+  railway: road('railway', 'Железнодорожный переезд', 'Переезд', { consequence: 'hazard', stopOffset: 70, place: 'railway', params: ['barrier', 'train', 'light', 'ahead'] }),
+  overtaking: road('overtaking', 'Обгон и встречный разъезд', 'Обгон', { consequence: 'hazard', params: ['ahead', 'leftSignal', 'marking', 'oncoming', 'obstacle'] }),
+  parking: road('parking', 'Остановка и стоянка', 'Стоянка', { consequence: 'fine', params: ['crosswalkAhead', 'marking', 'oncoming'] }),
+  'signs-marking': road('signs-marking', 'Знаки и разметка', 'Знаки', { consequence: 'inspector', stopOffset: 60, params: ['marking', 'ahead', 'oncoming'] }),
+  street: road('street', 'На дороге', 'Дорога', { consequence: 'hazard', stopOffset: 30, params: ['marking', 'ahead', 'oncoming'] }),
+  highway: road('highway', 'Автомагистраль', 'Магистраль', { consequence: 'inspector', place: 'highway', params: ['ahead', 'oncoming'] }),
+  'night-road': road('night-road', 'Тёмное время суток и погода', 'Непогода', { consequence: 'hazard', params: ['oncoming', 'ahead', 'highBeam'] }),
+  classroom: minigame('classroom', 'Автошкола: викторина', 'Автошкола', [], 5),
+  inspector: minigame('inspector', 'Инспектор ДПС', 'Пост ДПС', ['case'], 4),
+  garage: minigame('garage', 'Гараж: осмотр машины', 'Автосервис', ['part'], 4),
+  'first-aid': minigame('first-aid', 'Аптечка: первая помощь', 'Аптечка', ['injury'], 4),
 };
 
+const VEHICLES = ['car', 'truck', 'bus', 'tram', 'moto', 'bicycle', 'police', 'ambulance', 'tractor'];
 const ENUMS: Partial<Record<keyof SceneParams, readonly string[]>> = {
   maneuver: ['straight', 'left', 'right', 'uturn'],
   consequence: ['fine', 'hazard', 'inspector', 'instructor'],
   light: ['green', 'green-blink', 'yellow', 'yellow-blink', 'red', 'red-yellow', 'off'],
-  arrow: ['left', 'right'],
+  arrow: ['left', 'right', 'straight'],
   controller: ['side', 'front', 'up', 'right-arm'],
-  fromLeft: ['car', 'truck', 'bus', 'tram', 'moto', 'bicycle', 'police', 'ambulance', 'tractor'],
+  fromLeft: VEHICLES,
+  fromRight: VEHICLES,
+  oncoming: VEHICLES,
+  ahead: VEHICLES,
   pedestrians: ['crossing', 'waiting', 'none'],
   playerOn: ['main', 'secondary'],
   mainRoad: ['straight', 'left', 'right'],
   marking: ['dashed', 'solid', 'double'],
-  vehicle: ['bus', 'tram'],
+  vehicle: ['bus', 'tram', 'none'],
   barrier: ['none', 'open', 'closed'],
+  part: Object.keys(GARAGE_PARTS),
+  case: INSPECTOR_CASES,
+  injury: Object.keys(FIRST_AID_STEPS),
 };
-ENUMS.fromRight = ENUMS.fromLeft;
-ENUMS.oncoming = ENUMS.fromLeft;
-ENUMS.ahead = ENUMS.fromLeft;
 
-const BOOLEANS: Array<keyof SceneParams> = ['cyclist', 'emergency', 'playerOnRing', 'leftSignal', 'jam', 'leaving', 'train', 'crosswalkAhead', 'highBeam'];
+const BOOLEANS: Array<keyof SceneParams> = ['cyclist', 'emergency', 'playerOnRing', 'leftSignal', 'jam', 'leaving', 'train', 'crosswalkAhead', 'highBeam', 'obstacle'];
+
+/** Параметры, без которых мини-игра не соберётся. */
+const REQUIRED: Partial<Record<TemplateId, Array<keyof SceneParams>>> = {
+  inspector: ['case'],
+  garage: ['part'],
+  'first-aid': ['injury'],
+};
 
 /** Проверка параметров сцены. Возвращает список проблем (пустой — всё в порядке). */
 export function validateParams(template: TemplateId, params: unknown): string[] {
   if (typeof params !== 'object' || params === null || Array.isArray(params)) return ['params должен быть объектом'];
   const info = TEMPLATES[template];
-  const allowed = new Set<string>([...COMMON, ...info.params]);
+  const allowed = new Set<string>([...(info.minigame ? [] : COMMON), ...info.params]);
   const problems: string[] = [];
 
+  for (const key of REQUIRED[template] ?? []) {
+    if (!(key in params)) problems.push(`шаблону «${template}» нужен параметр «${key}»`);
+  }
   for (const [key, value] of Object.entries(params)) {
     if (!allowed.has(key)) {
       problems.push(`шаблон «${template}» не понимает параметр «${key}»`);

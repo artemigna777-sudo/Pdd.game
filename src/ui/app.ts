@@ -1,6 +1,6 @@
 import type * as Phaser from 'phaser';
 import { GAME_SUBTITLE, GAME_TITLE } from '../config.ts';
-import { loadQuestions } from '../data/questions.ts';
+import { loadMapping, loadQuestions } from '../data/questions.ts';
 import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
 import { setGameActive } from '../game/game.ts';
@@ -11,14 +11,17 @@ import { ICONS } from './icons.ts';
 import { renderQuestionCard, type AnswerResult } from './questionCard.ts';
 import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
+import { plural } from './format.ts';
+import { TEMPLATES } from '../world/templates.ts';
 
 /**
- * Экраны: меню поверх анимированной улицы, город (этап 2), билеты целиком, история
- * пройденных билетов с разбором ответов и настройки.
+ * Экраны: меню поверх анимированной улицы, выбор главы и город-район главы, билеты целиком,
+ * история пройденных билетов с разбором ответов и настройки.
  */
 type Route =
   | { name: 'menu' }
-  | { name: 'city' }
+  | { name: 'chapters' }
+  | { name: 'city'; chapter: string }
   | { name: 'settings' }
   | { name: 'tickets' }
   | { name: 'ticket'; ticket: number }
@@ -29,10 +32,10 @@ type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'tickets' | 'history';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
-const DEPTH: Record<RouteName, number> = { menu: 0, city: 1, settings: 1, tickets: 1, ticket: 2, history: 2, attempt: 2 };
+const DEPTH: Record<RouteName, number> = { menu: 0, chapters: 1, city: 2, settings: 1, tickets: 1, ticket: 2, history: 2, attempt: 2 };
 
 // Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
 // а открытый из истории — на уровень глубже неё.
@@ -93,8 +96,11 @@ export class App {
       case 'menu':
         screen = this.menuScreen();
         break;
+      case 'chapters':
+        screen = this.chaptersScreen();
+        break;
       case 'city': {
-        const city = cityScreen(this.game, () => this.back('menu'));
+        const city = cityScreen(this.game, route.chapter, () => this.back('chapters'));
         this.cleanup = city.cleanup;
         screen = city.element;
         break;
@@ -155,7 +161,7 @@ export class App {
       el(
         'div',
         { class: 'menu' },
-        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.open({ name: 'city' }) }, 'Поехать в город'),
+        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.open({ name: 'chapters' }) }, 'Поехать в город'),
         el(
           'div',
           { class: 'menu__row' },
@@ -165,7 +171,7 @@ export class App {
         install,
         iosHint,
         stats,
-        el('p', { class: 'menu__note' }, 'Тестовый район: у жёлтых точек вас ждут ситуации с вопросами. Главы и сюжет появятся на следующих этапах.'),
+        el('p', { class: 'menu__note' }, 'Десять районов города — десять глав. У жёлтых точек ждут ситуации на дороге, у синих — мини-игры.'),
       ),
     );
   }
@@ -203,6 +209,33 @@ export class App {
       back: 'menu',
       intro: 'Выберите билет: 20 вопросов подряд, в конце — результат и разбор ответов. Под номером билета — последний результат.',
     });
+  }
+
+  private chaptersScreen(): HTMLElement {
+    const list = el('div', { class: 'chapters' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    loadMapping().then((mapping) => {
+      list.replaceChildren(
+        ...mapping.chapters.map((chapter) => {
+          const count = mapping.questions.filter((q) => q.chapter === chapter.id).length;
+          const games = new Set(mapping.questions.filter((q) => q.chapter === chapter.id && TEMPLATES[q.template].minigame).map((q) => q.template));
+          const meta = `${count} ${plural(count, ['вопрос', 'вопроса', 'вопросов'])} · ${chapter.points.length} ${plural(chapter.points.length, ['точка', 'точки', 'точек'])}`;
+          return el(
+            'button',
+            { class: 'chapter-card', type: 'button', onclick: () => this.open({ name: 'city', chapter: chapter.id }) },
+            el('span', { class: 'chapter-card__num' }, String(chapter.number)),
+            el(
+              'span',
+              { class: 'chapter-card__body' },
+              el('span', { class: 'chapter-card__title' }, chapter.title),
+              el('span', { class: 'chapter-card__district' }, chapter.district),
+              el('span', { class: 'chapter-card__topics' }, chapter.topics.join(', ')),
+              el('span', { class: 'chapter-card__meta' }, games.size ? `${meta} · мини-игры: ${[...games].map((t) => TEMPLATES[t].short).join(', ')}` : meta),
+            ),
+          );
+        }),
+      );
+    });
+    return this.page('Главы', list, { back: 'menu', intro: 'Каждая глава — свой район города и свои темы билетов. Выберите, куда поехать.' });
   }
 
   private historyScreen(): HTMLElement {

@@ -10,7 +10,7 @@
  */
 import * as Phaser from 'phaser';
 import { PIXEL_RATIO } from '../display.ts';
-import type { CityMap, MapRoad } from '../../world/map.ts';
+import type { CityMap, MapPoint, MapRoad } from '../../world/map.ts';
 import { DEAD_END_RADIUS, LANE_WIDTH, MEDIAN_WIDTH, RING_INNER, RING_OUTER, RoadGraph, laneOffset, roadHalfWidth } from '../../world/roadGraph.ts';
 import { COLORS, ROOF_COLORS, drawBuilding, drawTree, seeded } from './art.ts';
 
@@ -70,7 +70,11 @@ export class MapRenderer {
   /** Прямоугольники дорог с тротуарами — сюда не ставим дома и деревья. */
   private readonly occupied: Rect[] = [];
 
-  constructor(scene: Phaser.Scene, graph: RoadGraph) {
+  constructor(
+    scene: Phaser.Scene,
+    graph: RoadGraph,
+    private readonly points: MapPoint[],
+  ) {
     this.scene = scene;
     this.graph = graph;
     this.map = graph.map;
@@ -202,6 +206,15 @@ export class MapRenderer {
     this.railsOverlay(bounds.x, bounds.w);
   }
 
+  /** Мост автомагистрали над железной дорогой: ограждения по краям. */
+  private bridge(rect: Rect, y: number) {
+    const box = { x: rect.x - 6, y: y - 34, w: rect.w + 12, h: 68 };
+    this.marks.draw(box, (g) => {
+      g.fillStyle(0x000000, 0.18).fillRect(box.x, box.y + box.h, box.w, 6);
+      g.fillStyle(0xc9ced6).fillRect(box.x, box.y, 5, box.h).fillRect(box.x + box.w - 5, box.y, 5, box.h);
+    });
+  }
+
   /** Рельсы поверх всего (в том числе поверх асфальта на переезде). */
   private railsOverlay(x: number, w: number) {
     const y = this.map.railwayY!;
@@ -231,9 +244,12 @@ export class MapRenderer {
         else g.fillRect(m.x, a.y - 1, m.w, 2);
       });
     }
-    // Рельсы видны и на переезде.
+    // Рельсы видны и на переезде. Автомагистраль проходит над железной дорогой по мосту.
     const y = this.map.railwayY;
-    if (y !== undefined && rect.y < y && rect.y + rect.h > y && rect.w < rect.h) this.railsOverlay(rect.x, rect.w);
+    if (y !== undefined && rect.y < y && rect.y + rect.h > y && rect.w < rect.h) {
+      if (road.kind === 'highway') this.bridge(rect, y);
+      else this.railsOverlay(rect.x, rect.w);
+    }
   }
 
   private drawNode(id: string) {
@@ -304,9 +320,9 @@ export class MapRenderer {
     }
   }
 
-  /** Постоянные элементы у точек интереса: переходы, стоп-линии, остановка, парковка, автошкола. */
+  /** Постоянные элементы у точек интереса: переходы, стоп-линии, остановка, парковка, здания мини-игр. */
   private drawPointFeatures(scene: Phaser.Scene) {
-    for (const point of this.map.points) {
+    for (const point of this.points) {
       const stop = this.graph.pointStop(point);
       const { lane } = stop;
       const d = lane.dir;
@@ -363,23 +379,39 @@ export class MapRenderer {
           }
           break;
         }
-        case 'theory': {
-          // Автошкола: здание с вывеской и площадка перед ним.
-          const back = { x: a.x + n.x * (LANE_WIDTH + SIDEWALK + 70), y: a.y + n.y * (LANE_WIDTH + SIDEWALK + 70) };
-          const bw = Math.abs(d.x) > 0.5 ? 150 : 110;
-          const bh = Math.abs(d.x) > 0.5 ? 110 : 150;
-          const rect = { x: back.x - bw / 2, y: back.y - bh / 2, w: bw, h: bh };
-          this.occupied.push({ x: rect.x - 20, y: rect.y - 20, w: rect.w + 40, h: rect.h + 40 });
-          this.decor.draw(rect, (g) => drawBuilding(g, rect.x, rect.y, rect.w, rect.h, 0xe8b04b));
-          scene.add
-            .text(back.x, back.y, 'АВТО\nШКОЛА', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#5a3d00', align: 'center' })
-            .setOrigin(0.5)
-            .setDepth(3.5)
-            .setResolution(4);
+        case 'classroom':
+          this.landmark(scene, a, d, n, 0xe8b04b, 'АВТО\nШКОЛА', '#5a3d00');
           break;
-        }
+        case 'garage':
+          this.landmark(scene, a, d, n, 0x8d99ae, 'АВТО\nСЕРВИС', '#1b2430');
+          break;
+        case 'inspector':
+          this.pocket(a, d, n, 120);
+          this.landmark(scene, a, d, n, 0x1d4ed8, 'ДПС', '#ffffff', 70);
+          break;
+        case 'first-aid':
+          this.pocket(a, d, n, 120);
+          this.landmark(scene, a, d, n, 0xf8f9fa, '+', '#d62839', 60);
+          break;
       }
     }
+  }
+
+  /** Здание мини-игры справа от дороги с крупной надписью (видна и в обзоре района). */
+  private landmark(scene: Phaser.Scene, a: { x: number; y: number }, d: { x: number; y: number }, n: { x: number; y: number }, color: number, label: string, ink: string, size = 110) {
+    const offset = LANE_WIDTH + SIDEWALK + 28 + size / 2;
+    const back = { x: a.x + n.x * offset, y: a.y + n.y * offset };
+    const along = Math.abs(d.x) > 0.5;
+    const bw = along ? size * 1.35 : size;
+    const bh = along ? size : size * 1.35;
+    const rect = { x: back.x - bw / 2, y: back.y - bh / 2, w: bw, h: bh };
+    this.occupied.push({ x: rect.x - 20, y: rect.y - 20, w: rect.w + 40, h: rect.h + 40 });
+    this.decor.draw(rect, (g) => drawBuilding(g, rect.x, rect.y, rect.w, rect.h, color));
+    scene.add
+      .text(back.x, back.y, label, { fontFamily: 'system-ui, sans-serif', fontSize: label.length < 3 ? '30px' : '15px', fontStyle: 'bold', color: ink, align: 'center' })
+      .setOrigin(0.5)
+      .setDepth(3.5)
+      .setResolution(4);
   }
 
   /** Асфальтовый карман справа от полосы (ширина 28) с тротуаром за ним. */

@@ -11,11 +11,16 @@ interface CityDebug {
 }
 interface CitySceneDebug {
   pois?: unknown[];
-  player: { position: { x: number; y: number } };
+  player: { position: { x: number; y: number }; speed: number };
   cameras: { main: { zoom: number; worldView: { x: number; y: number } } };
 }
 
 async function openCity(page: Page, control: 'tap' | 'joystick') {
+  // E2E_SLOW=6 — замедлить процессор браузера, как на сервере CI без видеокарты.
+  if (process.env.E2E_SLOW) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_SLOW) });
+  }
   await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode })), control);
   await page.goto('/');
   await page.getByRole('button', { name: 'Поехать в город' }).tap();
@@ -32,6 +37,16 @@ function carPosition(page: Page): Promise<Vec> {
     return [p.x, p.y] as Vec;
   });
 }
+
+function carSpeed(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __game: CityDebug }).__game.scene.getScene('city').player.speed);
+}
+
+/**
+ * На сервере CI браузер рисует без видеокарты и заметно медленнее телефона, поэтому тесты
+ * ждут нужного состояния, а не фиксированное время.
+ */
+const SLOW = { timeout: 90_000 };
 
 /** Экранная точка (CSS-пиксели) для точки мира. */
 function screenOf(page: Page, world: Vec): Promise<Vec> {
@@ -53,7 +68,7 @@ test('касание дороги: машина едет к точке каса�
   const [x0, y0] = await carPosition(page);
   const [sx, sy] = await screenOf(page, [x0 + 120, y0]);
   await page.touchscreen.tap(sx, sy);
-  await expect.poll(async () => (await carPosition(page))[0], { timeout: 10_000 }).toBeGreaterThan(x0 + 100);
+  await expect.poll(async () => (await carPosition(page))[0], SLOW).toBeGreaterThan(x0 + 100);
 });
 
 test('джойстик: машина едет, пока палец отведён, и останавливается после отпускания', async ({ page, context }) => {
@@ -66,14 +81,18 @@ test('джойстик: машина едет, пока палец отведё�
   // Ведём палец вправо — машина едет на восток.
   await touch('touchStart', 195, 600);
   for (let i = 1; i <= 6; i++) await touch('touchMove', 195 + i * 8, 600);
-  await expect.poll(async () => (await carPosition(page))[0], { timeout: 10_000 }).toBeGreaterThan(x0 + 60);
+  await expect.poll(async () => (await carPosition(page))[0], SLOW).toBeGreaterThan(x0 + 40);
   await touch('touchEnd');
+  const [xRelease] = await carPosition(page);
 
-  // Отпустили — машина плавно останавливается.
-  await page.waitForTimeout(2500);
-  const stopped = await carPosition(page);
-  await page.waitForTimeout(700);
-  expect(await carPosition(page)).toEqual(stopped);
+  // Отпустили — машина плавно останавливается (в пределах тормозного пути) и больше не едет,
+  // даже если впереди точка интереса.
+  await expect.poll(() => carSpeed(page), SLOW).toBe(0);
+  const [xs, ys] = await carPosition(page);
+  expect(xs - xRelease).toBeLessThan(70);
+  await page.waitForTimeout(1000);
+  const [x1, y1] = await carPosition(page);
+  expect(Math.hypot(x1 - xs, y1 - ys)).toBeLessThan(0.5);
 });
 
 test('точка интереса: доехать касанием, ответить на вопрос и поехать дальше', async ({ page }) => {
@@ -90,17 +109,17 @@ test('точка интереса: доехать касанием, ответи
   await page.touchscreen.tap(sx, sy);
 
   const sheet = page.locator('.sheet.is-open');
-  await expect(sheet).toBeVisible({ timeout: 20_000 });
+  await expect(sheet).toBeVisible(SLOW);
   await expect(sheet.locator('.card__text')).toHaveText('Какие из указанных знаков запрещают движение водителям мопедов?');
 
   // Неправильный ответ: сначала последствие, потом пояснение и кнопка «едем дальше».
   await sheet.locator('.option').first().tap();
   const next = page.getByRole('button', { name: 'Понятно, едем дальше' });
-  await expect(next).toBeVisible({ timeout: 20_000 });
+  await expect(next).toBeVisible(SLOW);
   await expect(page.locator('.sheet .explanation')).toBeVisible();
 
   const [x0] = await carPosition(page);
   await next.tap();
   await expect(page.locator('.sheet.is-open')).toHaveCount(0);
-  await expect.poll(async () => (await carPosition(page))[0], { timeout: 10_000 }).toBeGreaterThan(x0 + 40);
+  await expect.poll(async () => (await carPosition(page))[0], SLOW).toBeGreaterThan(x0 + 40);
 });

@@ -15,6 +15,7 @@ import { MAPS, pointQueues, type Mapping, type Placement } from '../../world/map
 import { RoadGraph, type Lane, type PathPart } from '../../world/roadGraph.ts';
 import { TEMPLATES, type Maneuver, type TemplateInfo } from '../../world/templates.ts';
 import { PIXEL_RATIO } from '../display.ts';
+import type { InteriorScene, MinigameKind } from '../interior/InteriorScene.ts';
 import { Atmosphere } from './atmosphere.ts';
 import { MapRenderer } from './mapRenderer.ts';
 import { Player } from './Player.ts';
@@ -22,10 +23,25 @@ import { SceneKit } from './sceneKit.ts';
 import { createScript, sceneConditions, type SceneScript } from './sceneScripts.ts';
 import { TrafficLightView } from './signs.ts';
 
+/** Вопрос в серии точки интереса. */
+export interface SeriesInfo {
+  /** Номер вопроса в серии, с 0. */
+  index: number;
+  total: number;
+  /** Подпись точки на карте. */
+  point: string;
+  /** Подпись от сцены (для мини-игр — шаг, номер вопроса викторины). */
+  caption?: string;
+}
+
 export interface CityHost {
   /** Машина стоит у точки, сцена ожила — показать вопрос. */
-  showQuestion(question: Question, placement: Placement, template: TemplateInfo): void;
+  showQuestion(question: Question, placement: Placement, template: TemplateInfo, series: SeriesInfo): void;
   onOverviewChange?(on: boolean): void;
+  /** Машина остановилась у точки: сцена оживает (мини-игра может ждать касания). */
+  onSceneStart?(minigame: boolean): void;
+  /** Серия вопросов точки пройдена. */
+  onPointDone?(done: number, total: number): void;
 }
 
 export interface CityData {
@@ -42,10 +58,14 @@ interface Poi {
   s: number;
   anchor: Vec;
   dir: Vec;
+  /** Вопросы серии по порядку. */
   queue: Placement[];
-  next: number;
   cooldown: boolean;
+  /** Серия пройдена хотя бы раз за поездку. */
+  done: boolean;
   marker: Phaser.GameObjects.Container;
+  ring: Phaser.GameObjects.Graphics;
+  mark: Phaser.GameObjects.Text;
   title: Phaser.GameObjects.Text;
 }
 
@@ -59,7 +79,12 @@ interface Signal {
 interface ActiveScene {
   poi: Poi;
   placement: Placement;
-  kit: SceneKit;
+  /** Номер вопроса в серии точки. */
+  index: number;
+  /** Сцена на дороге (для мини-игр её нет). */
+  kit?: SceneKit;
+  /** Мини-игра поверх города. */
+  interior?: InteriorScene;
   script: SceneScript;
   exit: PathPart[];
   /** Сколько траектории выезда уже проехано (заезд на кольцо, рывок). */
@@ -75,7 +100,9 @@ export class CityScene extends Phaser.Scene {
   private host!: CityHost;
   private questions = new Map<string, Question>();
   private mapping!: Mapping;
-  private chapter = 'test';
+  private chapter = 'ch1';
+  private points: MapPoint[] = [];
+  private interior?: InteriorScene;
   private control: ControlMode = 'tap';
 
   private graph!: RoadGraph;
@@ -115,18 +142,20 @@ export class CityScene extends Phaser.Scene {
     this.pendingPoi = undefined;
     this.destination = undefined;
     this.overview = false;
+    this.interior = undefined;
   }
 
   create() {
     const chapter = this.mapping.chapters.find((c) => c.id === this.chapter)!;
     const map = MAPS[chapter.map];
+    this.points = chapter.points;
     this.graph = new RoadGraph(map);
-    this.mapView = new MapRenderer(this, this.graph);
+    this.mapView = new MapRenderer(this, this.graph, this.points);
     this.atmosphere = new Atmosphere(this);
     this.buildPois();
     this.buildSignals();
 
-    this.player = new Player(this, this.graph, this.graph.laneFor('AB', 'B'), 30);
+    this.player = new Player(this, this.graph, this.startLane(), 30);
     this.player.onArrive = () => this.onArrive();
     this.pinGfx = this.add.graphics().setDepth(4.5);
     this.joyGfx = this.add.graphics().setDepth(30);
@@ -141,6 +170,16 @@ export class CityScene extends Phaser.Scene {
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
     this.input.on(Phaser.Input.Events.POINTER_UP, this.onPointerUp, this);
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.onPointerUp, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.scene.isActive('interior') || this.scene.isPaused('interior')) this.scene.stop('interior');
+    });
+  }
+
+  /** Старт: городская улица без точек интереса, чтобы машину было видно в движении сразу. */
+  private startLane(): Lane {
+    const busy = new Set(this.pois.map((p) => p.lane));
+    const lanes = [...this.graph.lanes.values()].filter((l) => l.length > 200);
+    return lanes.find((l) => !busy.has(l) && !this.pois.some((p) => p.lane.from === l.to && distance(p.anchor, l.to) < 200)) ?? lanes[0];
   }
 
   // ─── Публичные команды для интерфейса ────────────────────────────────────────
@@ -159,14 +198,48 @@ export class CityScene extends Phaser.Scene {
     else await a.script.fail(a.placement.params.consequence ?? TEMPLATES[a.placement.template].consequence);
   }
 
-  /** После ответа: едем дальше. */
+  /** Есть ли в серии точки ещё вопросы после текущего. */
+  get hasNextInSeries(): boolean {
+    const a = this.active;
+    return !!a && a.index + 1 < a.poi.queue.length;
+  }
+
+  /** После ответа: следующий вопрос серии или едем дальше. */
   proceed() {
     const a = this.active;
     if (!a) return;
-    this.active = undefined;
-    a.poi.next++;
-    a.poi.cooldown = true;
+    if (a.index + 1 < a.poi.queue.length) {
+      void this.nextInSeries(a);
+      return;
+    }
     a.script.leave();
+    this.markDone(a.poi);
+    if (a.interior) {
+      const interior = a.interior;
+      this.interior = undefined;
+      this.cameras.main.setVisible(true);
+      void interior.close().then(() => this.driveOn(a));
+      return;
+    }
+    this.driveOn(a);
+  }
+
+  /** Следующий вопрос серии в той же точке: сцена собирается заново, машина — на месте остановки. */
+  private async nextInSeries(a: ActiveScene) {
+    a.script.leave();
+    if (a.kit) {
+      this.atmosphere.clear();
+      const signal = this.signalAt(a.poi);
+      await a.kit.fadeOut(300);
+      if (signal) signal.paused = false;
+      this.player.placeAt(a.poi.lane, a.poi.s);
+    }
+    await this.startScene(a.poi, a.index + 1);
+  }
+
+  private driveOn(a: ActiveScene) {
+    this.active = undefined;
+    a.poi.cooldown = true;
 
     let parts = this.graph.splitPath(a.exit, a.exitOffset)[1];
     const last = parts[parts.length - 1];
@@ -177,7 +250,7 @@ export class CityScene extends Phaser.Scene {
     const clipped = this.clip(parts);
     this.pendingPoi = clipped.poi;
     this.player.setPath(clipped.parts);
-    this.leaving = { kit: a.kit, anchor: a.poi.anchor, since: 0, signal: this.signalAt(a.poi) };
+    if (a.kit) this.leaving = { kit: a.kit, anchor: a.poi.anchor, since: 0, signal: this.signalAt(a.poi) };
     const b = this.graph.map.bounds;
     this.cameras.main.setBounds(b.x, b.y, b.width, b.height);
     this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
@@ -187,6 +260,10 @@ export class CityScene extends Phaser.Scene {
   focusVisible(visible: number) {
     const a = this.active;
     if (!a) return;
+    if (a.interior) {
+      a.interior.focus(visible);
+      return;
+    }
     const cam = this.cameras.main;
     const viewH = cam.height / cam.zoom;
     const target = { x: a.focus.x, y: a.focus.y + (0.5 - visible / 2) * viewH };
@@ -205,16 +282,15 @@ export class CityScene extends Phaser.Scene {
 
   private buildPois() {
     const queues = pointQueues(this.mapping, this.chapter);
-    for (const point of this.graph.map.points) {
+    for (const point of this.points) {
       const queue = queues.get(point.id) ?? [];
       if (!queue.length) continue;
       const stop = this.graph.pointStop(point);
       const p = this.graph.pointOnLane(stop.lane, stop.s);
       const ring = this.add.graphics();
-      ring.fillStyle(0xffb703, 0.25).fillCircle(0, 0, 22);
-      ring.lineStyle(3, 0xffb703).strokeCircle(0, 0, 18);
-      ring.fillStyle(0xffb703).fillCircle(0, 0, 11);
-      const q = this.add.text(0, 0, '?', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#1b2430' }).setOrigin(0.5).setResolution(4);
+      const minigame = TEMPLATES[point.template].minigame;
+      this.drawMarker(ring, minigame ? 0x3a86ff : 0xffb703);
+      const q = this.add.text(0, 0, minigame ? '!' : '?', { fontFamily: 'system-ui, sans-serif', fontSize: '15px', fontStyle: 'bold', color: minigame ? '#ffffff' : '#1b2430' }).setOrigin(0.5).setResolution(4);
       const title = this.add
         .text(0, 26, point.title, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#1b2430cc', padding: { x: 5, y: 2 } })
         .setOrigin(0.5, 0)
@@ -222,12 +298,28 @@ export class CityScene extends Phaser.Scene {
         .setAlpha(0);
       const marker = this.add.container(p.x, p.y, [ring, q, title]).setDepth(4);
       this.tweens.add({ targets: ring, scale: 1.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      this.pois.push({ point, lane: stop.lane, s: stop.s, anchor: stop.anchor, dir: stop.dir, queue, next: 0, cooldown: false, marker, title });
+      this.pois.push({ point, lane: stop.lane, s: stop.s, anchor: stop.anchor, dir: stop.dir, queue, cooldown: false, done: false, marker, ring, mark: q, title });
     }
   }
 
+  private drawMarker(ring: Phaser.GameObjects.Graphics, color: number) {
+    ring.clear();
+    ring.fillStyle(color, 0.25).fillCircle(0, 0, 22);
+    ring.lineStyle(3, color).strokeCircle(0, 0, 18);
+    ring.fillStyle(color).fillCircle(0, 0, 11);
+  }
+
+  /** Точка пройдена: зелёная отметка (заехать ещё раз можно — серия начнётся сначала). */
+  private markDone(poi: Poi) {
+    if (poi.done) return;
+    poi.done = true;
+    this.drawMarker(poi.ring, 0x1f8a43);
+    poi.mark.setText('✓').setColor('#ffffff');
+    this.host.onPointDone?.(this.pois.filter((p) => p.done).length, this.pois.length);
+  }
+
   private buildSignals() {
-    for (const point of this.graph.map.points) {
+    for (const point of this.points) {
       if (point.template !== 'signalized') continue;
       const node = this.graph.node(point.toward);
       const r = this.graph.radius(node.id);
@@ -352,8 +444,8 @@ export class CityScene extends Phaser.Scene {
 
   // ─── Сцена у точки ───────────────────────────────────────────────────────────
 
-  private async startScene(poi: Poi) {
-    const placement = poi.queue[poi.next % poi.queue.length];
+  private async startScene(poi: Poi, index = 0) {
+    const placement = poi.queue[index];
     const question = this.questions.get(placement.id);
     if (!question) return;
     if (this.leaving) this.finishLeaving(true);
@@ -363,12 +455,19 @@ export class CityScene extends Phaser.Scene {
     }
 
     const info = TEMPLATES[placement.template];
+    const series: SeriesInfo = { index, total: poi.queue.length, point: poi.point.title };
+    this.host.onSceneStart?.(info.minigame);
+    if (info.minigame) {
+      await this.startMinigame(poi, index, placement, question, series);
+      return;
+    }
     const kit = new SceneKit(this, poi.anchor, headingAngle(poi.dir));
     const playerLocal = kit.toLocal(this.player.position);
     const focusLocal = info.anchor === 'node' ? { x: 0, y: playerLocal.y * 0.45 } : { x: 0, y: playerLocal.y - 120 };
     const active: ActiveScene = {
       poi,
       placement,
+      index,
       kit,
       script: undefined as unknown as SceneScript,
       exit: this.exitPath(poi, placement.params.maneuver),
@@ -396,7 +495,39 @@ export class CityScene extends Phaser.Scene {
 
     await active.script.enter();
     if (this.active !== active) return;
-    this.host.showQuestion(question, placement, info);
+    this.host.showQuestion(question, placement, info, { ...series, caption: active.script.caption });
+  }
+
+  /** Мини-игра: машина стоит у здания, поверх города открывается сцена мини-игры. */
+  private async startMinigame(poi: Poi, index: number, placement: Placement, question: Question, series: SeriesInfo) {
+    poi.marker.setVisible(false);
+    const active: ActiveScene = {
+      poi,
+      placement,
+      index,
+      script: undefined as unknown as SceneScript,
+      exit: this.exitPath(poi, undefined),
+      exitOffset: 0,
+      focus: poi.anchor,
+    };
+    this.active = active;
+    const interior = this.interior ?? (await this.launchInterior());
+    if (this.active !== active) return;
+    this.interior = interior;
+    active.interior = interior;
+    await interior.open(placement.template as MinigameKind);
+    // Мини-игра закрывает весь экран — город под ней не рисуем (быстрее и бережёт батарею).
+    this.cameras.main.setVisible(false);
+    active.script = interior.script({ placement, index, total: poi.queue.length });
+    await active.script.enter();
+    if (this.active !== active) return;
+    this.host.showQuestion(question, placement, TEMPLATES[placement.template], { ...series, caption: active.script.caption });
+  }
+
+  private launchInterior(): Promise<InteriorScene> {
+    return new Promise((resolve) => {
+      this.scene.launch('interior', { onReady: (scene: InteriorScene) => resolve(scene) });
+    });
   }
 
   private leadIn(active: ActiveScene, dist: number): Promise<void> {
@@ -595,7 +726,7 @@ export class CityScene extends Phaser.Scene {
     const dt = Math.min(deltaMs, 50) / 1000;
     if (this.control === 'joystick') this.driveJoystick();
     this.player.update(dt);
-    this.active?.kit.update(dt);
+    this.active?.kit?.update(dt);
     this.updateSignals(dt);
 
     if (this.leaving) {
@@ -615,11 +746,12 @@ export class CityScene extends Phaser.Scene {
     const k = worldZoom < 0.6 ? Math.min(3.2, 0.6 / worldZoom) : 1;
     for (const poi of this.pois) {
       poi.marker.setScale(k);
-      poi.title.setAlpha(worldZoom < 0.6 ? 1 : 0);
+      // В обзоре подписаны только здания мини-игр, иначе подписи налезают друг на друга.
+      poi.title.setAlpha(worldZoom < 0.6 && TEMPLATES[poi.point.template].minigame ? 1 : 0);
     }
 
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
-    if (this.active) sources.push(...this.active.kit.headlightSources());
+    if (this.active?.kit) sources.push(...this.active.kit.headlightSources());
     if (this.leaving) sources.push(...this.leaving.kit.headlightSources());
     this.atmosphere.update(dt, sources);
 

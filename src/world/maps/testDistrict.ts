@@ -1,9 +1,9 @@
-import type { CityMap } from '../map.ts';
+import type { CityMap, MapPoint } from '../map.ts';
 
 /**
- * Тестовый район (этап 2): сетка кварталов 3×3, кольцо, автомагистраль на востоке
- * и загородная дорога на юге через железнодорожный переезд. На каждый шаблон сцены —
- * своя точка интереса.
+ * Тестовый район (этап 2, теперь — для автотестов дорожного графа): сетка кварталов 3×3,
+ * кольцо, автомагистраль на востоке и загородная дорога на юге через железнодорожный
+ * переезд. testPoints — по точке интереса на шаблон.
  *
  *   A ─── B ─── C ════ H1
  *   │     │     │      ║  автомагистраль
@@ -62,19 +62,20 @@ export const testDistrict: CityMap = {
     { id: 'H1H2', from: 'H1', to: 'H2', lanes: 2, kind: 'highway' },
     { id: 'KN', from: 'K', to: 'N', kind: 'country' },
   ],
-  points: [
-    { id: 'lights', template: 'signalized', title: 'Светофор', road: 'ER', toward: 'E' },
-    { id: 'ring', template: 'roundabout', title: 'Кольцо', road: 'ER', toward: 'R' },
-    { id: 'main-road', template: 'uncontrolled-priority', title: 'Главная дорога', road: 'FI', toward: 'F' },
-    { id: 'equal', template: 'uncontrolled-equal', title: 'Равнозначный перекрёсток', road: 'RI', toward: 'I' },
-    { id: 'zebra', template: 'crosswalk', title: 'Пешеходный переход', road: 'BE', toward: 'E', at: 0.45 },
-    { id: 'bus-stop', template: 'bus-stop', title: 'Остановка', road: 'DG', toward: 'G', at: 0.62 },
-    { id: 'parking', template: 'parking', title: 'Парковка', road: 'JK', toward: 'K', at: 0.5 },
-    { id: 'signs', template: 'signs-marking', title: 'Знаки', road: 'AB', toward: 'B', at: 0.62 },
-    { id: 'highway', template: 'highway', title: 'Автомагистраль', road: 'H1H2', toward: 'H2', at: 0.45 },
-    { id: 'overtake', template: 'overtaking', title: 'Обгон', road: 'KN', toward: 'N', at: 0.2 },
-    { id: 'railway', template: 'railway', title: 'Переезд', road: 'KN', toward: 'N', at: 0.5 },
-    { id: 'night', template: 'night-road', title: 'Ночная дорога', road: 'KN', toward: 'N', at: 0.8 },
-    { id: 'school', template: 'theory', title: 'Автошкола', road: 'AD', toward: 'D', at: 0.5 },
-  ],
 };
+
+export const testPoints: MapPoint[] = [
+  { id: 'lights', template: 'signalized', title: 'Светофор', road: 'ER', toward: 'E' },
+  { id: 'ring', template: 'roundabout', title: 'Кольцо', road: 'ER', toward: 'R' },
+  { id: 'main-road', template: 'uncontrolled-priority', title: 'Главная дорога', road: 'FI', toward: 'F' },
+  { id: 'equal', template: 'uncontrolled-equal', title: 'Равнозначный перекрёсток', road: 'RI', toward: 'I' },
+  { id: 'zebra', template: 'crosswalk', title: 'Пешеходный переход', road: 'BE', toward: 'E', at: 0.45 },
+  { id: 'bus-stop', template: 'bus-stop', title: 'Остановка', road: 'DG', toward: 'G', at: 0.62 },
+  { id: 'parking', template: 'parking', title: 'Парковка', road: 'JK', toward: 'K', at: 0.5 },
+  { id: 'signs', template: 'signs-marking', title: 'Знаки', road: 'AB', toward: 'B', at: 0.62 },
+  { id: 'highway', template: 'highway', title: 'Автомагистраль', road: 'H1H2', toward: 'H2', at: 0.45 },
+  { id: 'overtake', template: 'overtaking', title: 'Обгон', road: 'KN', toward: 'N', at: 0.2 },
+  { id: 'railway', template: 'railway', title: 'Переезд', road: 'KN', toward: 'N', at: 0.5 },
+  { id: 'night', template: 'night-road', title: 'Ночная дорога', road: 'KN', toward: 'N', at: 0.8 },
+  { id: 'school', template: 'classroom', title: 'Автошкола', road: 'AD', toward: 'D', at: 0.5 },
+];

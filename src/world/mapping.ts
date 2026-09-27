@@ -1,50 +1,57 @@
 /**
- * Где в игре встречается каждый вопрос (data/mapping.json): глава, точка на карте,
- * шаблон сцены и параметры сцены. Проверяется скриптом `npm run coverage`.
+ * Где в игре встречается каждый вопрос (data/mapping.json): глава, точка на карте её района,
+ * шаблон сцены или мини-игры и параметры. Создаётся `npm run mapping`, проверяется
+ * `npm run coverage`.
  */
-import type { CityMap } from './map.ts';
-import { testDistrict } from './maps/testDistrict.ts';
+import type { CityMap, MapPoint } from './map.ts';
+import { DISTRICTS } from './maps/districts.ts';
 import type { SceneParams, TemplateId } from './templates.ts';
 
-export interface Chapter {
+/** Разобранная вручную сцена вопроса (data/scenes.json). */
+export interface SceneEntry {
+  template: TemplateId;
+  params: SceneParams;
+}
+
+export interface ChapterData {
   id: string;
+  number: number;
   title: string;
-  /** Карта района, на которой проходит глава. */
+  /** Название района. */
+  district: string;
+  /** Карта района (src/world/maps/districts.ts). */
   map: string;
+  topics: string[];
+  /** Точки интереса на карте района. */
+  points: MapPoint[];
 }
 
 export interface Placement {
   /** id вопроса из data/questions.json. */
   id: string;
   chapter: string;
-  /** id точки интереса на карте главы. */
+  /** id точки интереса в главе. */
   point: string;
+  /** Номер вопроса в серии точки, с 1. */
+  step: number;
   template: TemplateId;
   params: SceneParams;
-  /** Размещено автоматически по теме (черновик до этапа 3); false — подобрано вручную. */
-  auto: boolean;
 }
 
 export interface Mapping {
-  chapters: Chapter[];
+  chapters: ChapterData[];
   questions: Placement[];
 }
 
-export const MAPS: Record<string, CityMap> = {
-  [testDistrict.id]: testDistrict,
-};
+export const MAPS: Record<string, CityMap> = Object.fromEntries(DISTRICTS.map((m) => [m.id, m]));
 
-/** Очереди вопросов по точкам главы: сначала подобранные вручную, потом по порядку билетов. */
+/** Серии вопросов по точкам главы — в том порядке, в котором их задают. */
 export function pointQueues(mapping: Mapping, chapterId: string): Map<string, Placement[]> {
   const queues = new Map<string, Placement[]>();
   for (const placement of mapping.questions) {
     if (placement.chapter !== chapterId) continue;
-    const queue = queues.get(placement.point) ?? [];
-    queue.push(placement);
-    queues.set(placement.point, queue);
+    queues.set(placement.point, [...(queues.get(placement.point) ?? []), placement]);
   }
-  for (const queue of queues.values()) {
-    queue.sort((a, b) => Number(a.auto) - Number(b.auto) || a.id.localeCompare(b.id));
-  }
+  for (const queue of queues.values()) queue.sort((a, b) => a.step - b.step);
   return queues;
 }

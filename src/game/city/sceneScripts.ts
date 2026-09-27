@@ -27,6 +27,8 @@ export interface ScriptContext {
 }
 
 export interface SceneScript {
+  /** Подпись к карточке вопроса (для мини-игр: шаг, номер вопроса викторины). */
+  caption?: string;
   /** Сцена оживает; когда промис выполнен — можно показывать вопрос. */
   enter(): Promise<void>;
   /** Правильный ответ: сначала проезжают те, кому нужно уступить. */
@@ -201,6 +203,8 @@ function intersectionScript(ctx: ScriptContext, template: TemplateId): SceneScri
   };
 
   const signsFor = () => {
+    // Пустой список знаков — на перекрёстке знаков нет совсем (например, выезд с грунтовой дороги).
+    if (params.signs && params.signs.length === 0) return;
     let own = params.signs;
     if (!own) {
       if (template === 'uncontrolled-priority') own = [params.playerOn === 'secondary' ? '2.4' : '2.1'];
@@ -229,6 +233,7 @@ function intersectionScript(ctx: ScriptContext, template: TemplateId): SceneScri
         const cross = own === 'green' || own === 'green-blink' || own === 'yellow' ? 'red' : own === 'red' ? 'green' : own;
         ctx.lights.left.setState(cross);
         ctx.lights.right.setState(cross);
+        ctx.lights.own.setArrow(params.controller ? undefined : params.arrow);
         if (params.controller) {
           kit.controller(0, 0, params.controller === 'side' ? 90 : 180);
           if (params.controller === 'up') kit.say('Жезл поднят вверх', 0, -30, 'info');
@@ -259,6 +264,7 @@ function intersectionScript(ctx: ScriptContext, template: TemplateId): SceneScri
       } else await consequence(ctx, kind);
     },
     leave() {
+      ctx.lights?.own.setArrow(undefined);
       for (const side of ['right', 'left', 'oncoming'] as const) {
         const actor = a[side];
         if (actor) kit.after(700, () => void passThrough(actor, side));
@@ -352,10 +358,15 @@ function busStopScript(ctx: ScriptContext): SceneScript {
   return {
     async enter() {
       kit.sign(params.vehicle === 'tram' ? '5.17' : '5.16', bay + 30, -52);
-      const kind = params.vehicle ?? 'bus';
-      bus = kit.vehicle(kind, bay, -8, 0);
-      if (params.leaving) kit.blink(bus, 'left');
+      if (params.vehicle !== 'none') {
+        bus = kit.vehicle(params.vehicle ?? 'bus', bay, -8, 0);
+        if (params.leaving) kit.blink(bus, 'left');
+      }
       for (let i = 0; i < 3; i++) people.push(kit.pedestrian(bay + 26 + (i % 2) * 10, -30 + i * 16, -90));
+      if (params.pedestrians === 'crossing' && bus) {
+        // Пассажиры идут к автобусу (трамваю) и от него.
+        people.forEach((p, i) => void kit.move(p, [{ x: bay + 16, y: -30 + i * 16 }], 22, false));
+      }
       if (params.oncoming) {
         oncoming = kit.vehicle(params.oncoming, -HALF, -420, 180);
         await kit.move(oncoming, [{ x: -HALF, y: -120 }], 160);
@@ -396,6 +407,11 @@ function railwayScript(ctx: ScriptContext): SceneScript {
       kit.sign('1.3.1', -44, -30);
       signRow(kit, params.signs?.filter((s) => s !== '1.3.1'), 44, 64, 34);
       drawBarrier(params.barrier === 'closed');
+      if (params.ahead) {
+        // Впереди стоит машина: перед шлагбаумом или сразу за переездом.
+        const beyond = params.barrier !== 'closed';
+        kit.vehicle(params.ahead, HALF, beyond ? -70 - len(params.ahead) / 2 : 40 + len(params.ahead) / 2, 0);
+      }
       kit.billboards.add(signal);
       const w = kit.toWorld({ x: 58, y: 40 });
       signal.setPosition(w.x - kit.anchor.x, w.y - kit.anchor.y);
@@ -454,10 +470,20 @@ function overtakingScript(ctx: ScriptContext): SceneScript {
     async enter() {
       markingLine(kit, params.marking ?? 'dashed', -520, 220);
       signRow(kit, params.signs, 44, player.y - 60, -36);
-      const kind = params.ahead ?? 'truck';
-      ahead = kit.vehicle(kind, HALF, player.y - 180, 0);
-      const arrivals = [kit.move(ahead, [{ x: HALF, y: player.y - 40 - len(kind) / 2 - CAR_HALF_LENGTH }], 110)];
-      if (params.leftSignal) kit.blink(ahead, 'left');
+      const arrivals: Promise<void>[] = [];
+      if (params.obstacle) {
+        // Препятствие на своей полосе: стоящая машина со знаком аварийной остановки.
+        kit.vehicle('car', HALF, player.y - 150, 0, 0x8d99ae);
+        const g = kit.markings;
+        const ty = player.y - 104;
+        g.fillStyle(0xd62839).fillTriangle(HALF, ty - 8, HALF + 8, ty + 6, HALF - 8, ty + 6);
+        g.fillStyle(0xffffff).fillTriangle(HALF, ty - 3, HALF + 4, ty + 3.5, HALF - 4, ty + 3.5);
+      } else if (params.ahead || !params.oncoming) {
+        const kind = params.ahead ?? 'truck';
+        ahead = kit.vehicle(kind, HALF, player.y - 180, 0);
+        arrivals.push(kit.move(ahead, [{ x: HALF, y: player.y - 40 - len(kind) / 2 - CAR_HALF_LENGTH }], 110));
+        if (params.leftSignal) kit.blink(ahead, 'left');
+      }
       if (params.oncoming !== undefined || !params.ahead) {
         oncoming = kit.vehicle(params.oncoming ?? 'car', -HALF, player.y - 700, 180);
         arrivals.push(kit.move(oncoming, [{ x: -HALF, y: player.y - 330 }], 200));
@@ -544,6 +570,11 @@ function straightRoadScript(ctx: ScriptContext, template: TemplateId): SceneScri
       const signX = highway ? 84 : 44;
       signRow(kit, params.signs, signX, player.y - 70, -40, template === 'signs-marking');
       const arrivals: Promise<void>[] = [];
+      if (template === 'street' && !params.ahead && !params.oncoming) {
+        // Обычная улица: навстречу проезжает машина.
+        oncoming = kit.vehicle('car', laneX.oncomingNear, player.y - 700, 180);
+        arrivals.push(kit.move(oncoming, [{ x: laneX.oncomingNear, y: player.y - 320 }], 190));
+      }
       if (params.ahead) {
         const a = kit.vehicle(params.ahead, laneX.own, player.y - 300, 0);
         actors.push(a);
@@ -555,17 +586,11 @@ function straightRoadScript(ctx: ScriptContext, template: TemplateId): SceneScri
         arrivals.push(kit.move(oncoming, [{ x: laneX.oncomingNear, y: player.y - (night ? 200 : 300) }], 190));
       }
       if (highway) traffic();
-      if (template === 'theory') {
-        const instructor = kit.pedestrian(48, 4, -90);
-        actors.push(instructor);
-        kit.caption('Инструктор', 48, 14);
-      }
       await Promise.all(arrivals);
       await kit.wait(400);
     },
     async success() {
-      if (template === 'theory') kit.say('Инструктор: «Отлично!»', player.x, player.y - 34, 'good', 1400);
-      else sayCorrect(ctx);
+      sayCorrect(ctx);
       if (oncoming) {
         if (oncoming.highBeam) {
           oncoming.highBeam = false;
@@ -613,10 +638,15 @@ export function createScript(template: TemplateId, ctx: ScriptContext): SceneScr
     case 'parking':
       return parkingScript(ctx);
     case 'signs-marking':
+    case 'street':
     case 'highway':
     case 'night-road':
-    case 'theory':
       return straightRoadScript(ctx, template);
+    case 'classroom':
+    case 'inspector':
+    case 'garage':
+    case 'first-aid':
+      throw new Error(`«${template}» — мини-игра, её сценарий в InteriorScene`);
   }
 }
 

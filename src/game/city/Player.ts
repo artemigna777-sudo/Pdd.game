@@ -97,6 +97,17 @@ export class Player {
     this.rebuild();
   }
 
+  /** Поставить машину в точку полосы (без поездки) — например, перед следующим вопросом серии. */
+  placeAt(lane: Lane, s: number) {
+    this.parts = [this.graph.lanePart(lane, s, s)];
+    this.s = 0;
+    this.speed = 0;
+    this.arrived = true;
+    this.rebuild();
+    this.heading = headingAngle(lane.dir);
+    this.place();
+  }
+
   /** Добавить части в конец маршрута. */
   append(parts: PathPart[]) {
     if (!parts.length) return;

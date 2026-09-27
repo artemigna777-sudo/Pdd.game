@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { distance } from '../src/world/geometry.ts';
-import { testDistrict } from '../src/world/maps/testDistrict.ts';
+import { testDistrict, testPoints } from '../src/world/maps/testDistrict.ts';
 import { RoadGraph, partLength, type PathPart } from '../src/world/roadGraph.ts';
 
 const graph = new RoadGraph(testDistrict);
@@ -59,14 +59,14 @@ test('кольцо проезжается против часовой стрел
 });
 
 test('точки интереса лежат на своих полосах', () => {
-  for (const point of testDistrict.points) {
+  for (const point of testPoints) {
     const stop = graph.pointStop(point);
     assert.ok(stop.s > 0 && stop.s < stop.lane.length, `${point.id}: s=${stop.s}, длина ${stop.lane.length}`);
   }
 });
 
 test('переезд стоит на железной дороге', () => {
-  const railway = testDistrict.points.find((p) => p.template === 'railway')!;
+  const railway = testPoints.find((p) => p.template === 'railway')!;
   assert.equal(graph.pointStop(railway).anchor.y, testDistrict.railwayY);
 });
 

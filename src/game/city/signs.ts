@@ -257,25 +257,46 @@ export function createSign(scene: Phaser.Scene, code: string): Phaser.GameObject
 }
 
 /** Светофор-табличка: красный, жёлтый, зелёный и, при необходимости, дополнительная секция-стрелка. */
+export type LightArrow = 'left' | 'right' | 'straight';
+
 export class TrafficLightView {
   readonly container: Phaser.GameObjects.Container;
+  private readonly housing: Phaser.GameObjects.Graphics;
   private readonly lamps: Phaser.GameObjects.Graphics;
   private state: LightState = 'green';
-  private arrow?: 'left' | 'right';
+  private arrow?: LightArrow;
   private blinkOn = true;
   private elapsed = 0;
 
-  constructor(scene: Phaser.Scene, arrow?: 'left' | 'right') {
+  constructor(scene: Phaser.Scene, arrow?: LightArrow) {
     this.arrow = arrow;
     this.container = scene.add.container(0, 0);
-    const housing = scene.add.graphics();
-    housing.fillStyle(0x000000, 0.2).fillEllipse(3, 2, 8, 4);
-    housing.fillStyle(0x6b7280).fillRect(-1.2, -30, 2.4, 30);
-    housing.fillStyle(0x1f2328).fillRoundedRect(-7, -64, 14, 36, 4);
-    if (arrow) housing.fillStyle(0x1f2328).fillRoundedRect(arrow === 'right' ? 6 : -18, -40, 12, 12, 3);
+    this.housing = scene.add.graphics();
     this.lamps = scene.add.graphics();
-    this.container.add([housing, this.lamps]);
+    this.container.add([this.housing, this.lamps]);
+    this.drawHousing();
     this.draw();
+  }
+
+  /** Дополнительная секция со стрелкой (горит зелёным) или без неё. */
+  setArrow(arrow: LightArrow | undefined) {
+    if (arrow === this.arrow) return;
+    this.arrow = arrow;
+    this.drawHousing();
+    this.draw();
+  }
+
+  /** Где секция со стрелкой: сбоку от основного светофора (прямо — справа). */
+  private arrowX(): number {
+    return this.arrow === 'left' ? -12 : 12;
+  }
+
+  private drawHousing() {
+    const g = this.housing.clear();
+    g.fillStyle(0x000000, 0.2).fillEllipse(3, 2, 8, 4);
+    g.fillStyle(0x6b7280).fillRect(-1.2, -30, 2.4, 30);
+    g.fillStyle(0x1f2328).fillRoundedRect(-7, -64, 14, 36, 4);
+    if (this.arrow) g.fillStyle(0x1f2328).fillRoundedRect(this.arrowX() - 6, -40, 12, 12, 3);
   }
 
   setState(state: LightState) {
@@ -303,9 +324,10 @@ export class TrafficLightView {
     g.fillStyle(on('yellow') ? 0xffcc00 : off).fillCircle(0, -46, 4.2);
     g.fillStyle(on('green') ? 0x34c759 : off).fillCircle(0, -35, 4.2);
     if (this.arrow) {
-      const x = this.arrow === 'right' ? 12 : -12;
+      const x = this.arrowX();
       g.fillStyle(0x34c759).fillCircle(x, -34, 4);
-      g.fillStyle(0x1f2328).fillTriangle(x + (this.arrow === 'right' ? 3 : -3), -34, x - (this.arrow === 'right' ? 1 : -1), -37, x - (this.arrow === 'right' ? 1 : -1), -31);
+      if (this.arrow === 'straight') g.fillStyle(0x1f2328).fillTriangle(x, -37.5, x - 3, -33, x + 3, -33).fillRect(x - 0.8, -33, 1.6, 3);
+      else g.fillStyle(0x1f2328).fillTriangle(x + (this.arrow === 'right' ? 3 : -3), -34, x - (this.arrow === 'right' ? 1 : -1), -37, x - (this.arrow === 'right' ? 1 : -1), -31);
     }
   }
 }

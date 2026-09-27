@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "import": "tsx scripts/import.ts",
+    "mapping": "tsx scripts/mapping.ts",
     "validate": "tsx scripts/validate.ts",
+    "coverage": "tsx scripts/coverage.ts",
+    "test": "tsx --test tests/*.test.ts",
     "icons": "tsx scripts/icons.ts"
   },
   "dependencies": {

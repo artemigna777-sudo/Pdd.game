@@ -130,10 +130,10 @@ function interiorTarget(page: Page): Promise<Vec | null> {
   });
 }
 
-/** Ответить на все вопросы серии точки (первым вариантом) и нажать «дальше» после каждого. */
-async function answerSeries(page: Page): Promise<number> {
+/** Ответить на вопросы серии точки (первым вариантом, не больше limit) и нажать «дальше» после каждого. */
+async function answerSeries(page: Page, limit = Infinity): Promise<number> {
   let answered = 0;
-  for (;;) {
+  while (answered < limit) {
     const sheet = page.locator('.sheet.is-open');
     // Мини-игра сначала просит коснуться места в сцене.
     await expect
@@ -151,6 +151,7 @@ async function answerSeries(page: Page): Promise<number> {
     await next.tap();
     if (label !== 'Следующий вопрос') return answered;
   }
+  return answered;
 }
 
 test('точка интереса: доехать касанием, ответить на серию вопросов и поехать дальше', async ({ page }) => {
@@ -175,26 +176,46 @@ test('точка интереса: доехать касанием, ответи
   await expect.poll(() => carSpeed(page), SLOW).toBeGreaterThan(0);
 });
 
+/** Начать серию вопросов в точке с заданным шаблоном (машина сразу у точки). Возвращает длину серии. */
+function startPoint(page: Page, template: string, point?: string): Promise<number> {
+  return page.evaluate(
+    ([t, id]) => {
+      const scene = (window as unknown as { __game: CityDebug }).__game.scene.getScene('city') as unknown as {
+        pois: Array<PoiDebug & { lane: unknown; s: number }>;
+        player: { placeAt(lane: unknown, s: number): void };
+        startScene(poi: unknown): void;
+      };
+      const poi = scene.pois.find((p) => p.point.template === t && (!id || p.point.id === id))!;
+      scene.player.placeAt(poi.lane, poi.s);
+      scene.startScene(poi);
+      return poi.queue.length;
+    },
+    [template, point] as const,
+  );
+}
+
+const interiorActive = (page: Page) => page.evaluate(() => (window as unknown as { __game: CityDebug }).__game.scene.isActive('interior'));
+
+// Каждая мини-игра: касание в сцене, два вопроса серии подряд (сцена не закрывается между ними).
 for (const [chapter, template] of [
   [1, 'classroom'],
   [7, 'inspector'],
   [9, 'garage'],
   [6, 'first-aid'],
 ] as const) {
-  test(`мини-игра «${template}»: касание в сцене, вся серия вопросов, возврат в город`, async ({ page }) => {
+  test(`мини-игра «${template}»: касание в сцене и вопросы серии подряд`, async ({ page }) => {
     await openCity(page, 'tap', chapter);
-    const total = await page.evaluate((t) => {
-      const scene = (window as unknown as { __game: CityDebug }).__game.scene.getScene('city') as unknown as {
-        pois: Array<PoiDebug & { lane: unknown; s: number }>;
-        player: { placeAt(lane: unknown, s: number): void };
-        startScene(poi: unknown): void;
-      };
-      const poi = scene.pois.find((p) => p.point.template === t)!;
-      scene.player.placeAt(poi.lane, poi.s);
-      scene.startScene(poi);
-      return poi.queue.length;
-    }, template);
-    expect(await answerSeries(page)).toBe(total);
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __game: CityDebug }).__game.scene.isActive('interior')), SLOW).toBe(false);
+    expect(await startPoint(page, template)).toBeGreaterThan(1);
+    expect(await answerSeries(page, 2)).toBe(2);
+    expect(await interiorActive(page)).toBe(true);
   });
 }
+
+test('мини-игра: после последнего вопроса серии — снова город', async ({ page }) => {
+  // Самая короткая серия: один вопрос у поста ДПС в главе 3.
+  await openCity(page, 'tap', 3);
+  expect(await startPoint(page, 'inspector', 'p22')).toBe(1);
+  expect(await answerSeries(page)).toBe(1);
+  await expect.poll(() => interiorActive(page), SLOW).toBe(false);
+  await expect.poll(() => carSpeed(page), SLOW).toBeGreaterThan(0);
+});

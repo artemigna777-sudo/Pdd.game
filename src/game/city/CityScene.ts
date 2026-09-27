@@ -217,6 +217,7 @@ export class CityScene extends Phaser.Scene {
     if (a.interior) {
       const interior = a.interior;
       this.interior = undefined;
+      this.cameras.main.setVisible(true);
       void interior.close().then(() => this.driveOn(a));
       return;
     }
@@ -515,6 +516,8 @@ export class CityScene extends Phaser.Scene {
     this.interior = interior;
     active.interior = interior;
     await interior.open(placement.template as MinigameKind);
+    // Мини-игра закрывает весь экран — город под ней не рисуем (быстрее и бережёт батарею).
+    this.cameras.main.setVisible(false);
     active.script = interior.script({ placement, index, total: poi.queue.length });
     await active.script.enter();
     if (this.active !== active) return;

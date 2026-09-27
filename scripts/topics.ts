@@ -121,7 +121,7 @@ const RULES: Record<number, Rule[]> = {
   ],
 };
 
-export function classifyTopic(q: Question): Topic {
+export function classifyTopic(q: Omit<Question, 'topic'>): Topic {
   const manual = MANUAL[q.id];
   if (manual) return manual;
 

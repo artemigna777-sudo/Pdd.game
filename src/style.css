@@ -469,10 +469,6 @@ button {
   font-size: 17px;
 }
 
-.feedback p {
-  margin: 6px 0 0;
-}
-
 .feedback--ok {
   background: var(--ok-bg);
   color: #145c2d;
@@ -481,6 +477,38 @@ button {
 .feedback--bad {
   background: var(--bad-bg);
   color: #8e1a28;
+}
+
+.explanation {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.explanation__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.explanation__text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.explanation__source {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.explanation__source a {
+  color: inherit;
 }
 
 /* ---------- Результат билета ---------- */

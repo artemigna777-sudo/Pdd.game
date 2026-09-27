@@ -13,8 +13,14 @@ export interface AnswerResult {
  * Карточка вопроса: оригинальный текст, картинка билета и варианты ответа без изменений.
  * После выбора подсвечивает правильный и выбранный варианты и показывает пояснение (если есть)
  * с указанием источника.
+ *
+ * С `review` карточка сразу показывает уже данный ответ — для разбора пройденного билета.
  */
-export function renderQuestionCard(question: Question, onAnswer: (result: AnswerResult) => void): HTMLElement {
+export function renderQuestionCard(
+  question: Question,
+  onAnswer?: (result: AnswerResult) => void,
+  review?: { chosen: number },
+): HTMLElement {
   const src = imageUrl(question);
   const feedback = el('div', { class: 'feedback', role: 'status', 'aria-live': 'polite' });
   const explanation = el('section', { class: 'explanation', 'aria-label': 'Пояснение', hidden: true });
@@ -53,6 +59,16 @@ export function renderQuestionCard(question: Question, onAnswer: (result: Answer
   let answered = false;
   function choose(index: number) {
     if (answered) return;
+    reveal(index);
+
+    // Результат может оказаться ниже края экрана — показываем его, не уводя вопрос дальше, чем нужно.
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    feedback.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
+
+    onAnswer?.({ question, chosen: index, isCorrect: index === question.correct });
+  }
+
+  function reveal(index: number) {
     answered = true;
     const isCorrect = index === question.correct;
 
@@ -61,10 +77,17 @@ export function renderQuestionCard(question: Question, onAnswer: (result: Answer
       if (i === question.correct) button.classList.add('is-correct');
       else if (i === index) button.classList.add('is-wrong');
     });
-    buttons[index].setAttribute('aria-pressed', 'true');
+    buttons[index]?.setAttribute('aria-pressed', 'true');
 
+    const verdict = review
+      ? isCorrect
+        ? `Ваш ответ — ${index + 1}, верно.`
+        : `Ваш ответ — ${index + 1}. Правильный — ${question.correct + 1}.`
+      : isCorrect
+        ? 'Верно!'
+        : `Неверно. Правильный ответ — ${question.correct + 1}.`;
     feedback.className = `feedback ${isCorrect ? 'feedback--ok' : 'feedback--bad'}`;
-    feedback.replaceChildren(el('strong', {}, isCorrect ? 'Верно!' : `Неверно. Правильный ответ — ${question.correct + 1}.`));
+    feedback.replaceChildren(el('strong', {}, verdict));
 
     if (question.explanation) {
       explanation.replaceChildren(
@@ -79,13 +102,8 @@ export function renderQuestionCard(question: Question, onAnswer: (result: Answer
       );
       explanation.hidden = false;
     }
-
-    // Результат может оказаться ниже края экрана — показываем его, не уводя вопрос дальше, чем нужно.
-    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    feedback.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
-
-    onAnswer({ question, chosen: index, isCorrect });
   }
 
+  if (review) reveal(review.chosen);
   return card;
 }

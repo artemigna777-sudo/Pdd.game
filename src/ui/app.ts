@@ -1,6 +1,7 @@
 import type * as Phaser from 'phaser';
 import { GAME_SUBTITLE, GAME_TITLE } from '../config.ts';
 import { loadQuestions } from '../data/questions.ts';
+import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
 import { setGameActive } from '../game/game.ts';
 import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
@@ -9,16 +10,33 @@ import { el } from './dom.ts';
 import { ICONS } from './icons.ts';
 import { renderQuestionCard, type AnswerResult } from './questionCard.ts';
 import { settingsPanel } from './settingsPanel.ts';
+import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
 
 /**
- * Экраны: меню поверх анимированной улицы, город (этап 2), билеты целиком и настройки.
+ * Экраны: меню поверх анимированной улицы, город (этап 2), билеты целиком, история
+ * пройденных билетов с разбором ответов и настройки.
  */
-type Route = { name: 'menu' } | { name: 'city' } | { name: 'settings' } | { name: 'tickets' } | { name: 'ticket'; ticket: number };
+type Route =
+  | { name: 'menu' }
+  | { name: 'city' }
+  | { name: 'settings' }
+  | { name: 'tickets' }
+  | { name: 'ticket'; ticket: number }
+  | { name: 'history' }
+  /** Результат и разбор попытки: сразу после билета (`via: 'ticket'`) или из истории. */
+  | { name: 'attempt'; at: number; via: 'ticket' | 'history' };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
+type AttemptRoute = Extract<Route, { name: 'attempt' }>;
+/** Экраны, на которые ведёт «Назад». */
+type BackTarget = 'menu' | 'tickets' | 'history';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
-const DEPTH: Record<RouteName, number> = { menu: 0, city: 1, settings: 1, tickets: 1, ticket: 2 };
+const DEPTH: Record<RouteName, number> = { menu: 0, city: 1, settings: 1, tickets: 1, ticket: 2, history: 2, attempt: 2 };
+
+// Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
+// а открытый из истории — на уровень глубже неё.
+const depth = (route: Route) => (route.name === 'attempt' && route.via === 'history' ? 3 : DEPTH[route.name]);
 
 function isRoute(value: unknown): value is Route {
   return typeof value === 'object' && value !== null && (value as Route).name in DEPTH;
@@ -27,6 +45,8 @@ function isRoute(value: unknown): value is Route {
 export class App {
   private route: Route = { name: 'menu' };
   private cleanup: (() => void) | undefined;
+  /** Экран, который открыть после возврата «Назад» (например, билет заново из разбора). */
+  private afterBack: Route | undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -35,7 +55,12 @@ export class App {
 
   start(): void {
     // Системная кнопка «Назад» на Android возвращает на предыдущий экран, а не закрывает игру.
-    window.addEventListener('popstate', (e) => this.render(isRoute(e.state) ? e.state : { name: 'menu' }));
+    window.addEventListener('popstate', (e) => {
+      const next = this.afterBack;
+      this.afterBack = undefined;
+      if (next) this.open(next);
+      else this.render(isRoute(e.state) ? e.state : { name: 'menu' });
+    });
     history.replaceState({ name: 'menu' }, '');
     this.render({ name: 'menu' });
   }
@@ -45,10 +70,16 @@ export class App {
     this.render(route);
   }
 
-  private back(to: 'menu' | 'tickets'): void {
-    const steps = DEPTH[this.route.name] - DEPTH[to];
-    if (steps > 0 && isRoute(history.state)) history.go(-steps);
-    else this.render({ name: to });
+  /** Вернуться на экран `to`, а затем, если указано, открыть `then` поверх него. */
+  private back(to: BackTarget, then?: Route): void {
+    const steps = depth(this.route) - DEPTH[to];
+    if (steps > 0 && isRoute(history.state)) {
+      this.afterBack = then;
+      history.go(-steps);
+    } else {
+      this.render({ name: to });
+      if (then) this.open(then);
+    }
   }
 
   private render(route: Route): void {
@@ -76,6 +107,12 @@ export class App {
         break;
       case 'ticket':
         screen = this.quizScreen(route);
+        break;
+      case 'history':
+        screen = this.historyScreen();
+        break;
+      case 'attempt':
+        screen = this.attemptScreen(route);
         break;
     }
     this.root.replaceChildren(screen);
@@ -134,20 +171,73 @@ export class App {
   }
 
   private ticketsScreen(): HTMLElement {
+    const { last } = summarize(allAttempts());
     const grid = el('div', { class: 'tickets' }, el('p', { class: 'loading' }, 'Загрузка…'));
     loadQuestions().then((questions) => {
       const tickets = [...new Set(questions.map((q) => q.ticket))].sort((a, b) => a - b);
       grid.replaceChildren(
-        ...tickets.map((ticket) =>
-          el(
+        ...tickets.map((ticket) => {
+          const attempt = last.get(ticket);
+          return el(
             'button',
-            { class: 'ticket-btn', type: 'button', 'aria-label': `Билет ${ticket}`, onclick: () => this.open({ name: 'ticket', ticket }) },
-            String(ticket),
-          ),
+            {
+              class: 'ticket-btn',
+              type: 'button',
+              'aria-label': attempt
+                ? `Билет ${ticket}, последний результат ${attempt.correct} из ${attempt.answers.length}`
+                : `Билет ${ticket}`,
+              onclick: () => this.open({ name: 'ticket', ticket }),
+            },
+            el('span', { class: 'ticket-btn__num' }, String(ticket)),
+            attempt ? scoreBadge(attempt, 'ticket-btn__score') : null,
+          );
+        }),
+      );
+    });
+    const historyButton = el(
+      'button',
+      { class: 'btn btn--secondary tickets__history', type: 'button', onclick: () => this.open({ name: 'history' }) },
+      'История попыток',
+    );
+    return this.page('Билеты', el('div', {}, historyButton, grid), {
+      back: 'menu',
+      intro: 'Выберите билет: 20 вопросов подряд, в конце — результат и разбор ответов. Под номером билета — последний результат.',
+    });
+  }
+
+  private historyScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    loadQuestions().then((questions) => {
+      const total = new Set(questions.map((q) => q.ticket)).size;
+      body.replaceChildren(
+        historyView(
+          allAttempts(),
+          total,
+          (attempt) => this.open({ name: 'attempt', at: attempt.at, via: 'history' }),
+          () => this.back('tickets'),
         ),
       );
     });
-    return this.page('Билеты', grid, { back: 'menu', intro: 'Выберите билет: 20 вопросов подряд, в конце — результат.' });
+    return this.page('История попыток', body, { back: 'tickets' });
+  }
+
+  private attemptScreen(route: AttemptRoute): HTMLElement {
+    const attempt = findAttempt(route.at);
+    const back = route.via === 'history' ? 'history' : 'tickets';
+    if (!attempt) {
+      return this.page('Попытка', el('p', { class: 'intro' }, 'Эта попытка не найдена: возможно, данные игры были очищены.'), { back });
+    }
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const retry = el(
+      'button',
+      { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.back('tickets', { name: 'ticket', ticket: attempt.ticket }) },
+      'Пройти ещё раз',
+    );
+    loadQuestions().then((questions) => {
+      if (this.route !== route) return;
+      body.replaceChildren(attemptView(attempt, ticketQuestions(questions, attempt.ticket), allAttempts()));
+    });
+    return this.page(`Билет ${attempt.ticket}`, body, { back, footer: retry });
   }
 
   private quizScreen(route: TicketRoute): HTMLElement {
@@ -163,8 +253,9 @@ export class App {
 
     loadQuestions().then((all) => {
       if (this.route !== route) return;
-      const list = all.filter((q) => q.ticket === route.ticket).sort((a, b) => a.number - b.number);
+      const list = ticketQuestions(all, route.ticket);
       const results: AnswerResult[] = [];
+      const startedAt = Date.now();
       let index = 0;
 
       const updateStatus = () => {
@@ -192,9 +283,18 @@ export class App {
       next.onclick = () => {
         index++;
         if (index >= list.length) {
-          footer.hidden = true;
-          body.replaceChildren(this.ticketResult(route, results));
-          scroller.scrollTop = 0;
+          const finishedAt = Date.now();
+          const attempt = recordAttempt({
+            ticket: route.ticket,
+            at: finishedAt,
+            ms: finishedAt - startedAt,
+            answers: results.map((r) => r.chosen),
+            correct: results.filter((r) => r.isCorrect).length,
+          });
+          // Результат занимает место билета в истории браузера: «Назад» и «Вперёд» не начнут билет заново.
+          const result: AttemptRoute = { name: 'attempt', at: attempt.at, via: 'ticket' };
+          history.replaceState(result, '');
+          this.render(result);
         } else {
           show(list[index]);
         }
@@ -207,25 +307,11 @@ export class App {
     return screen;
   }
 
-  private ticketResult(route: TicketRoute, results: AnswerResult[]): HTMLElement {
-    const correct = results.filter((r) => r.isCorrect).length;
-    const mistakes = results.filter((r) => !r.isCorrect).map((r) => r.question.number);
-    return el(
-      'section',
-      { class: 'result' },
-      el('p', { class: 'result__score' }, String(correct), el('span', {}, ` из ${results.length}`)),
-      el('p', { class: 'result__label' }, 'правильных ответов'),
-      el('p', { class: 'result__mistakes' }, mistakes.length ? `Ошибки в вопросах: ${mistakes.join(', ')}` : 'Без ошибок!'),
-      el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => this.render(route) }, 'Пройти билет ещё раз'),
-      el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.back('tickets') }, 'Другой билет'),
-    );
-  }
-
   /** Экран со строкой заголовка, кнопкой «Назад» и прокручиваемым содержимым. */
   private page(
     title: string,
     content: HTMLElement,
-    opts: { back: 'menu' | 'tickets'; intro?: string; aside?: HTMLElement; progress?: HTMLElement; footer?: HTMLElement },
+    opts: { back: BackTarget; intro?: string; aside?: HTMLElement; progress?: HTMLElement; footer?: HTMLElement },
   ): HTMLElement {
     const backButton = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Назад', onclick: () => this.back(opts.back) });
     backButton.innerHTML = ICONS.back;

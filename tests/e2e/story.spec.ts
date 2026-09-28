@@ -271,7 +271,7 @@ test('финал: контрольные билеты открываются п�
   await expect(page.locator('.topbar__title')).toHaveText(`Контрольный билет ${ticket}`);
   for (let i = 1; i <= 20; i++) {
     await answerCard(page, true);
-    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше' }).tap();
+    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше', exact: true }).tap();
   }
   await expect(page.locator('.banner')).toHaveText('Контрольный билет пройден без ошибок!');
   await page.getByRole('button', { name: 'К финалу' }).tap();
@@ -283,7 +283,7 @@ test('финал: контрольные билеты открываются п�
   await second.tap();
   for (let i = 1; i <= 20; i++) {
     await answerCard(page, i !== 5);
-    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше' }).tap();
+    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше', exact: true }).tap();
   }
   await expect(page.locator('.banner')).toContainText('Контрольный билет не засчитан');
   await page.getByRole('button', { name: 'К финалу' }).tap();

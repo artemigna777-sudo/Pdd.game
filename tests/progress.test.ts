@@ -38,7 +38,8 @@ const day = (n: number, hour = 10) => new Date(2026, 8, 27 + n, hour).getTime();
 
 test('ошибка → повтор через 1 день, 3 дня, 7 дней, потом вопрос уходит из работы над ошибками', () => {
   const data = emptyProgress();
-  assert.deepEqual(recordAnswer(data, 'Q', false, EVENING), { xp: 0, review: 'added', levelUp: undefined });
+  const first = recordAnswer(data, 'Q', false, EVENING);
+  assert.deepEqual([first.xp, first.review, first.coins], [0, 'added', 0]);
   // Повтор — с начала следующего дня, а не через 24 часа.
   assert.equal(data.questions.Q.review!.due, dayStart(EVENING, 1));
   assert.deepEqual(dueReviews(data, day(0, 23)), []);
@@ -105,8 +106,8 @@ test('глава: точки, доля верных, доставка, звёз�
   assert.equal(currentChapter(data, order), 'ch1');
 
   for (const id of ['A', 'B', 'C', 'D', 'E']) recordAnswer(data, id, id !== 'A', day(0));
-  assert.deepEqual(markPoint(data, 'ch1', 'p1'), { xp: XP.point, levelUp: undefined });
-  assert.equal(markPoint(data, 'ch1', 'p1').xp, 0);
+  assert.equal(markPoint(data, 'ch1', 'p1', day(0)).xp, XP.point);
+  assert.equal(markPoint(data, 'ch1', 'p1', day(0)).xp, 0);
   let r = chapterResult(data, chapter);
   assert.equal(r.pointsDone, 1);
   assert.deepEqual(r.pointsWithMistakes, ['p1']);
@@ -114,7 +115,7 @@ test('глава: точки, доля верных, доставка, звёз�
 
   // 7 верных из 10 — мало, 8 из 10 — можно везти посылку.
   for (const id of ['F', 'G', 'H', 'I', 'J']) recordAnswer(data, id, id !== 'F' && id !== 'G', day(0));
-  markPoint(data, 'ch1', 'p2');
+  markPoint(data, 'ch1', 'p2', day(0));
   r = chapterResult(data, chapter);
   assert.equal(r.correct, 7);
   assert.equal(canDeliver(r), false);

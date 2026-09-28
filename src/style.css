@@ -2103,3 +2103,435 @@ button {
   border-color: var(--line);
   background: var(--card);
 }
+
+/* ---------- Этап 6: статус, готовность, гараж, вид ---------- */
+
+.menu__status {
+  min-height: 48px;
+}
+
+.status {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.2fr 1.2fr;
+  gap: 6px;
+}
+
+.status__pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--on-dark);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status__pill.is-done {
+  background: rgba(31, 138, 67, 0.45);
+}
+
+.progress-actions {
+  margin-bottom: 14px;
+}
+
+.progress-view {
+  margin-top: 14px;
+}
+
+.readiness .big-number {
+  font-size: 40px;
+}
+
+.blocks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blocks li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 2px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.blocks li strong {
+  font-size: 17px;
+  color: var(--text);
+}
+
+.blocks li.is-weak {
+  background: var(--bad-bg);
+}
+
+.readiness__tips-title {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.tip--text {
+  background: var(--surface);
+  font-weight: 500;
+}
+
+.tip__go {
+  flex: none;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.garage__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 16px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: #2b3645;
+}
+
+.garage__car svg {
+  display: block;
+  width: 96px;
+  height: 150px;
+}
+
+.garage__coins {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  color: #ffd166;
+  font-size: 34px;
+  font-weight: 900;
+}
+
+.garage__coins span {
+  font-size: 15px;
+  color: var(--on-dark-muted);
+}
+
+.garage > * + * {
+  margin-top: 12px;
+}
+
+.garage__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.garage__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 10px 6px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: center;
+}
+
+.garage__item.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.garage__swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2), 0 0 0 1px var(--line);
+}
+
+.garage__swatch--car {
+  width: 32px;
+  height: 50px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.garage__swatch--car svg {
+  width: 100%;
+  height: 100%;
+}
+
+.garage__name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.garage__price {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.segment {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.segment__btn {
+  min-height: 48px;
+  padding: 6px 4px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.segment__btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--choice-on);
+}
+
+.backup .choices {
+  margin-top: 10px;
+}
+
+/* ---------- Крупный шрифт ---------- */
+
+:root[data-text='big'] .card__text {
+  font-size: clamp(20px, 6vw, 23px);
+}
+
+:root[data-text='big'] .option__text,
+:root[data-text='big'] .explanation__text,
+:root[data-text='big'] .feedback,
+:root[data-text='big'] .cutscene__text,
+:root[data-text='big'] .tutorial__text {
+  font-size: 20px;
+}
+
+:root[data-text='big'] .intro,
+:root[data-text='big'] .panel__note,
+:root[data-text='big'] .choice__hint,
+:root[data-text='big'] .rewards__line,
+:root[data-text='big'] .answer__text,
+:root[data-text='big'] .chapter-card__topics,
+:root[data-text='big'] .topic__meta {
+  font-size: 17px;
+}
+
+/* ---------- Тёмная тема ---------- */
+
+:root {
+  --choice-on: #fff7e0;
+  --chip: #dde4ec;
+  --chip-text: #2f3b4a;
+  --soft: #e6ebf1;
+  --track: #dfe4ea;
+  --locked: #e6eaef;
+  --secondary-shadow: #b9c2cd;
+  --selected: #dbe7ff;
+  --ok-text: var(--ok);
+  --bad-text: var(--bad);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'],
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --surface: #121820;
+    --card: #1e2733;
+    --text: #e8edf3;
+    --text-muted: #9aa8b8;
+    --line: #334152;
+    --ok-bg: #173a26;
+    --bad-bg: #4a1d24;
+    --warn-bg: #3f3113;
+    --choice-on: #3a3218;
+    --chip: #2c3847;
+    --chip-text: #d6dee8;
+    --soft: #2c3847;
+    --track: #334152;
+    --locked: #19212b;
+    --secondary-shadow: #0b0f14;
+    --selected: #1d3357;
+    --ok-text: #6fd08f;
+    --bad-text: #ff8a95;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface: #121820;
+  --card: #1e2733;
+  --text: #e8edf3;
+  --text-muted: #9aa8b8;
+  --line: #334152;
+  --ok-bg: #173a26;
+  --bad-bg: #4a1d24;
+  --warn-bg: #3f3113;
+  --choice-on: #3a3218;
+  --chip: #2c3847;
+  --chip-text: #d6dee8;
+  --soft: #2c3847;
+  --track: #334152;
+  --locked: #19212b;
+  --secondary-shadow: #0b0f14;
+  --selected: #1d3357;
+  --ok-text: #6fd08f;
+  --bad-text: #ff8a95;
+}
+
+.btn--secondary {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 3px 0 var(--secondary-shadow);
+}
+
+.chip {
+  background: var(--chip);
+  color: var(--chip-text);
+}
+
+.option__num {
+  background: var(--soft);
+}
+
+.option {
+  background: var(--card);
+  color: var(--text);
+}
+
+.option:not(:disabled):active {
+  background: var(--soft);
+}
+
+.choice[aria-pressed='true'],
+.rewards__next,
+.tutorial__icon {
+  background: var(--choice-on);
+}
+
+.bar,
+.legend li::before {
+  background: var(--track);
+}
+
+.chapter-card.is-locked {
+  background: var(--locked);
+  color: var(--text-muted);
+}
+
+.chapter-card.is-locked .chapter-card__num {
+  background: var(--line);
+}
+
+.chapter-card__status.is-locked,
+.row:disabled {
+  color: var(--text-muted);
+}
+
+.cutscene__text.is-narrator {
+  color: var(--text-muted);
+}
+
+.feedback--ok {
+  color: var(--ok-text);
+}
+
+.feedback--bad {
+  color: var(--bad-text);
+}
+
+.chapter-card,
+.card,
+.panel,
+.check,
+.level:not(.level--compact),
+.attempt-row,
+.answer,
+.ticket-btn,
+.modal,
+.cutscene__card {
+  color: var(--text);
+}
+
+.option.is-selected {
+  background: var(--selected);
+}
+
+/* Невысокий или узкий экран (например, 320×568): меню помещается целиком. */
+.menu__row--review .btn {
+  padding-inline: 12px;
+  white-space: nowrap;
+}
+
+@media (max-height: 640px) {
+  .hero__subtitle,
+  .menu__stats {
+    display: none;
+  }
+
+  .hero__title::after {
+    margin-top: 8px;
+  }
+
+  .menu {
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .level--compact {
+    padding: 6px 10px;
+  }
+
+  .menu .btn--lg {
+    min-height: 56px;
+    padding-block: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  .status__pill {
+    font-size: 14px;
+    padding: 0 4px;
+  }
+
+  .level--compact .level__title {
+    font-size: 14px;
+  }
+}

@@ -38,6 +38,8 @@ import { ICONS } from './icons.ts';
 import { levelMeter, starsText } from './progressView.ts';
 import { renderQuestionCard } from './questionCard.ts';
 import { controlHint, settingsPanel } from './settingsPanel.ts';
+import { goalToast } from './dailyView.ts';
+import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 
 export interface CityScreen {
@@ -215,6 +217,16 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     levelUpToast(out.levelUp, false);
     return showModal(`Глава ${chapters[i].number} пройдена!`, body, [
       next ? { label: `Глава ${next.number}`, primary: true, onClick: () => nav.openChapter(next.id) } : { label: 'К финалу', primary: true, onClick: () => nav.openFinale() },
+      {
+        label: 'Поделиться',
+        onClick: () =>
+          void shareResult({
+            kicker: `Глава ${chapters[i].number}: ${chapters[i].title}`,
+            title: 'Глава пройдена!',
+            big: starsText(out.stars),
+            lines: [`Верных ответов: ${percent(r.share)}%`, `Уровень ${level.number}: «${level.title}»`],
+          }),
+      },
       { label: 'Остаться в районе' },
     ]);
   };
@@ -268,6 +280,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
           if (out.review === 'added' || out.review === 'reset') pop('В работу над ошибками', 'bad');
           if (out.review === 'cleared') pop('Ошибка закреплена!');
           levelUpToast(out.levelUp ?? stars?.levelUp);
+          goalToast(out, data);
           if (stars) showToast(`Новая звезда главы: ${starsText(stars.stars)}`);
           updateTask();
 
@@ -303,6 +316,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     onPointDone(pointId) {
       const out = markPoint(progress(), chapterId, pointId);
       saveProgress();
+      goalToast(out, progress());
       if (out.xp) pop(`+${out.xp} за точку`);
       levelUpToast(out.levelUp);
       hint.textContent = baseHint();

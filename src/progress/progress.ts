@@ -47,6 +47,24 @@ export const LEVELS = [
   { title: 'Легенда «Стрелы»', xp: 11500 },
 ] as const;
 
+/** Сколько монет за что (монеты тратятся только на внешний вид машины). */
+export const COINS = {
+  /** Верный ответ. */
+  answer: 1,
+  /** Первый верный ответ на вопрос. */
+  first: 2,
+  /** Цель дня выполнена. */
+  goal: 20,
+  /** Посылка главы доставлена (в первый раз). */
+  delivery: 50,
+  /** Контрольный билет без ошибок. */
+  control: 30,
+  /** Тренировочный экзамен сдан. */
+  exam: 10,
+  /** Экзамен-босс сдан. */
+  boss: 200,
+} as const;
+
 /** Доля верных ответов главы, с которой открывается следующая глава. */
 export const PASS_SHARE = 0.8;
 export const CONTROL_TICKETS = 3;
@@ -80,8 +98,32 @@ export interface ControlSlot {
   passed: boolean;
 }
 
+/** Цель дня: повторить ошибки, пройти точки в городе или ответить верно на вопросы. */
+export type GoalKind = 'review' | 'points' | 'correct';
+
+export interface DailyState {
+  /** Начало дня (мс), к которому относится цель. */
+  day: number;
+  kind: GoalKind;
+  target: number;
+  count: number;
+  done: boolean;
+}
+
+export interface GarageState {
+  paint: string;
+  sticker: string;
+  /** Купленные покраски и наклейки. */
+  owned: string[];
+}
+
 export interface ProgressData {
   xp: number;
+  coins: number;
+  daily?: DailyState;
+  /** Серия дней подряд с выполненной целью дня. */
+  streak: { count: number; best: number; /** Начало последнего дня, когда цель выполнена. */ last?: number };
+  garage: GarageState;
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
   finale: {
@@ -93,8 +135,20 @@ export interface ProgressData {
 }
 
 export function emptyProgress(): ProgressData {
-  return { xp: 0, questions: {}, chapters: {}, finale: { control: [], seen: [] } };
+  return {
+    xp: 0,
+    coins: 0,
+    streak: { count: 0, best: 0 },
+    garage: { paint: DEFAULT_PAINT, sticker: DEFAULT_STICKER, owned: [DEFAULT_PAINT, DEFAULT_STICKER] },
+    questions: {},
+    chapters: {},
+    finale: { control: [], seen: [] },
+  };
 }
+
+export const DEFAULT_PAINT = 'yellow';
+export const DEFAULT_STICKER = 'none';
+const GOAL_KINDS: GoalKind[] = ['review', 'points', 'correct'];
 
 // ─── Проверка сохранённых данных ─────────────────────────────────────────────────
 
@@ -107,6 +161,19 @@ export function sanitizeProgress(raw: unknown): ProgressData {
   const data = emptyProgress();
   if (!isObj(raw)) return data;
   if (isInt(raw.xp)) data.xp = raw.xp;
+  if (isInt(raw.coins)) data.coins = raw.coins;
+  const d = raw.daily;
+  if (isObj(d) && isInt(d.day) && GOAL_KINDS.includes(d.kind as GoalKind) && isInt(d.target, 1) && isInt(d.count) && typeof d.done === 'boolean') {
+    data.daily = { day: d.day, kind: d.kind as GoalKind, target: d.target, count: d.count, done: d.done };
+  }
+  if (isObj(raw.streak) && isInt(raw.streak.count) && isInt(raw.streak.best)) {
+    data.streak = { count: raw.streak.count, best: Math.max(raw.streak.best, raw.streak.count), ...(isInt(raw.streak.last) ? { last: raw.streak.last } : {}) };
+  }
+  if (isObj(raw.garage)) {
+    const owned = [...new Set([DEFAULT_PAINT, DEFAULT_STICKER, ...strings(raw.garage.owned)])];
+    const pick = (v: unknown, fallback: string) => (typeof v === 'string' && owned.includes(v) ? v : fallback);
+    data.garage = { paint: pick(raw.garage.paint, DEFAULT_PAINT), sticker: pick(raw.garage.sticker, DEFAULT_STICKER), owned };
+  }
   if (isObj(raw.questions)) {
     for (const [id, s] of Object.entries(raw.questions)) {
       if (!isObj(s) || !isInt(s.n, 1) || typeof s.ok !== 'boolean' || typeof s.ever !== 'boolean' || !isInt(s.at)) continue;
@@ -174,6 +241,10 @@ export function dayStart(now: number, days = 0): number {
 
 export interface AnswerOutcome {
   xp: number;
+  /** Сколько монет получено. */
+  coins?: number;
+  /** Цель дня только что выполнена. */
+  goal?: DailyState;
   /** Что стало с вопросом в работе над ошибками: попал, повтор засчитан, закреплён, снова ошибка. */
   review?: 'added' | 'advanced' | 'cleared' | 'reset';
   levelUp?: LevelInfo;
@@ -183,6 +254,7 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
   const prev = data.questions[id];
   const s: QuestionState = prev ? { ...prev } : { n: 0, ok: false, ever: false, at: now };
   const due = !!s.review && s.review.due <= now;
+  const daily = ensureDaily(data, now);
   let xp = 0;
   let review: AnswerOutcome['review'];
   if (correct) {
@@ -206,7 +278,55 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
   s.ever ||= correct;
   s.at = now;
   data.questions[id] = s;
-  return { xp, review, levelUp: xp ? gain(data, xp) : undefined };
+  const coins = correct ? (xp === XP.first ? COINS.first : COINS.answer) : 0;
+  data.coins += coins;
+  if ((daily.kind === 'review' && due) || (daily.kind === 'correct' && correct)) daily.count++;
+  const goal = checkGoal(data, now);
+  return { xp, coins: coins + (goal ? COINS.goal : 0), goal, review, levelUp: xp ? gain(data, xp) : undefined };
+}
+
+// ─── Цель дня и серия ────────────────────────────────────────────────────────────
+
+/**
+ * Цель на сегодня (выбирается при первом действии дня и дальше не меняется): есть повторы —
+ * повторить до 10 ошибок; нет — пройти 3 точки в городе; история пройдена — 20 верных ответов.
+ */
+export function ensureDaily(data: ProgressData, now: number): DailyState {
+  const day = dayStart(now);
+  if (data.daily?.day === day) return data.daily;
+  const due = dueReviews(data, now).length;
+  const goal: Pick<DailyState, 'kind' | 'target'> = due > 0 ? { kind: 'review', target: Math.min(due, 10) } : !data.finale.exam ? { kind: 'points', target: 3 } : { kind: 'correct', target: 20 };
+  data.daily = { day, ...goal, count: 0, done: false };
+  return data.daily;
+}
+
+/** Цель выполнена только что: монеты и серия дней. */
+function checkGoal(data: ProgressData, now: number): DailyState | undefined {
+  const d = data.daily;
+  if (!d || d.done || d.count < d.target) return undefined;
+  d.done = true;
+  data.coins += COINS.goal;
+  const today = dayStart(now);
+  const s = data.streak;
+  if (s.last !== today) {
+    s.count = s.last === dayStart(now, -1) ? s.count + 1 : 1;
+    s.last = today;
+    s.best = Math.max(s.best, s.count);
+  }
+  return d;
+}
+
+/** Серия дней на сегодня: если вчера цель не выполнена, серия прервалась. */
+export function currentStreak(data: ProgressData, now: number): number {
+  const last = data.streak.last;
+  return last !== undefined && last >= dayStart(now, -1) ? data.streak.count : 0;
+}
+
+/** Монеты: потратить, если хватает. */
+export function spendCoins(data: ProgressData, price: number): boolean {
+  if (data.coins < price) return false;
+  data.coins -= price;
+  return true;
 }
 
 /** Вопросы в работе над ошибками, от ближайшего срока. */
@@ -306,11 +426,15 @@ export const canDeliver = (r: ChapterResult): boolean => r.pointsDone === r.poin
 export const percent = (share: number): number => Math.floor(share * 100 + 1e-9);
 
 /** Серия точки пройдена. Возвращает опыт (только за первое прохождение). */
-export function markPoint(data: ProgressData, chapterId: string, pointId: string): AnswerOutcome {
+export function markPoint(data: ProgressData, chapterId: string, pointId: string, now = Date.now()): AnswerOutcome {
   const state = chapterState(data, chapterId);
-  if (state.points.includes(pointId)) return { xp: 0 };
+  const daily = ensureDaily(data, now);
+  if (daily.kind === 'points') daily.count++;
+  const goal = checkGoal(data, now);
+  const coins = goal ? COINS.goal : 0;
+  if (state.points.includes(pointId)) return { xp: 0, coins, goal };
   state.points.push(pointId);
-  return { xp: XP.point, levelUp: gain(data, XP.point) };
+  return { xp: XP.point, coins, goal, levelUp: gain(data, XP.point) };
 }
 
 export function markSeen(data: ProgressData, chapterId: string, scene: string): void {
@@ -334,6 +458,7 @@ export function deliver(data: ProgressData, chapter: ChapterInfo, now: number): 
   const newStars = stars - state.stars;
   state.stars = stars;
   const xp = (first ? XP.delivery : 0) + newStars * XP.star;
+  if (first) data.coins += COINS.delivery;
   return { xp, stars, newStars, levelUp: xp ? gain(data, xp) : undefined };
 }
 
@@ -408,6 +533,7 @@ export function recordControl(data: ProgressData, slot: number, mistakes: number
   if (!s || s.passed) return { passed: !!s?.passed, xp: 0 };
   if (mistakes === 0) {
     s.passed = true;
+    data.coins += COINS.control;
     return { passed: true, xp: XP.control, levelUp: gain(data, XP.control) };
   }
   s.ticket = randomTicket(tickets, [...slots.map((x) => x.ticket)], rnd);
@@ -436,9 +562,11 @@ export function recordExamPass(data: ProgressData, boss: boolean, now: number): 
   if (boss) {
     if (data.finale.exam) return { xp: 0 };
     data.finale.exam = now;
-    return { xp: XP.boss, levelUp: gain(data, XP.boss) };
+    data.coins += COINS.boss;
+    return { xp: XP.boss, coins: COINS.boss, levelUp: gain(data, XP.boss) };
   }
-  return { xp: XP.exam, levelUp: gain(data, XP.exam) };
+  data.coins += COINS.exam;
+  return { xp: XP.exam, coins: COINS.exam, levelUp: gain(data, XP.exam) };
 }
 
 // ─── Статистика по темам ─────────────────────────────────────────────────────────

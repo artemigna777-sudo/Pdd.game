@@ -11,10 +11,16 @@ export interface Settings {
   vibration: boolean;
   /** Обучение при первом запуске уже показано. */
   tutorial: boolean;
+  /** Тема: как в телефоне, светлая или тёмная. */
+  theme: Theme;
+  /** Крупный шрифт вопросов и текстов. */
+  bigText: boolean;
 }
 
+export type Theme = 'auto' | 'light' | 'dark';
+
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 const listeners = new Set<(s: Settings) => void>();
@@ -32,4 +38,11 @@ export function updateSettings(patch: Partial<Settings>): void {
 export function onSettingsChange(fn: (s: Settings) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/** Тема и размер шрифта — атрибутами на <html> (их читают стили). */
+export function applyLook(s: Settings = current): void {
+  const root = document.documentElement;
+  root.dataset.theme = s.theme;
+  root.dataset.text = s.bigText ? 'big' : 'normal';
 }

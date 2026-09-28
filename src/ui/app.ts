@@ -4,7 +4,7 @@ import { GAME_SUBTITLE, GAME_TITLE } from '../config.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
-import { EXAM_RULES, answerExam, checkTime, clock, currentItem, extraCount, startExam } from '../exam/exam.ts';
+import { EXAM_RULES, answerExam, blockOf, checkTime, clock, currentItem, extraCount, startExam } from '../exam/exam.ts';
 import { allExams, findExam, recordExam } from '../exam/examHistory.ts';
 import { setGameActive } from '../game/game.ts';
 import {
@@ -21,11 +21,13 @@ import {
   recordAnswer,
   recordControl,
   recordExamPass,
+  ensureDaily,
   reviewQueue,
   saveProgress,
   trainingSet,
   type AnswerOutcome,
 } from '../progress/progress.ts';
+import { readiness, blockLabel, type Tip } from '../progress/readiness.ts';
 import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
@@ -34,6 +36,7 @@ import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
 import { closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
+import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
 import { plural } from './format.ts';
 import { ICONS } from './icons.ts';
@@ -41,6 +44,7 @@ import { dueLabel, levelMeter, progressView, reviewView, starsText } from './pro
 import { renderExamCard, renderQuestionCard, type AnswerResult } from './questionCard.ts';
 import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
+import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 
 /**
@@ -48,7 +52,7 @@ import { showToast } from './toast.ts';
  * контрольными билетами, «Разбор ошибок», «Прогресс», билеты целиком с историей попыток
  * и настройки.
  */
-type DrillMode = 'review' | 'practice' | 'topic' | 'weak';
+type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block';
 type Route =
   | { name: 'menu' }
   | { name: 'chapters' }
@@ -62,7 +66,9 @@ type Route =
   | { name: 'review' }
   | { name: 'progress' }
   /** Серия вопросов: повтор ошибок, тренировка ошибок, темы или недоученных вопросов. */
-  | { name: 'drill'; mode: DrillMode; topic?: string; via: 'review' | 'progress' | 'finale' }
+  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; via: 'review' | 'progress' | 'finale' }
+  /** Гараж: покраска и наклейки машины за монеты. */
+  | { name: 'garage' }
   | { name: 'finale' }
   /** Контрольный билет финала (номер места из трёх). */
   | { name: 'control'; slot: number }
@@ -98,6 +104,7 @@ const DEPTH: Record<RouteName, number> = {
   finale: 2,
   control: 3,
   exam: 1,
+  garage: 1,
   'exam-run': 2,
   'exam-result': 2,
 };
@@ -200,7 +207,7 @@ export class App {
         break;
       }
       case 'settings':
-        screen = this.page('Настройки', settingsPanel(), { back: 'menu' });
+        screen = this.page('Настройки', settingsPanel(true), { back: 'menu' });
         break;
       case 'tickets':
         screen = this.ticketsScreen();
@@ -238,6 +245,9 @@ export class App {
       case 'exam-result':
         screen = this.examResultScreen(route);
         break;
+      case 'garage':
+        screen = this.page('Гараж', garageView(progress(), () => saveProgress()), { back: 'menu' });
+        break;
     }
     this.root.replaceChildren(screen);
     screen.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true });
@@ -248,6 +258,11 @@ export class App {
   private menuScreen(): HTMLElement {
     const data = progress();
     const due = dueReviews(data, Date.now()).length;
+    const now = Date.now();
+    ensureDaily(data, now);
+    saveProgress();
+    const statusActions = { progress: () => this.open({ name: 'progress' }), garage: () => this.open({ name: 'garage' }) };
+    const status = el('div', { class: 'menu__status' }, statusRow(data, data.daily!, undefined, now, statusActions));
     const stats = el('p', { class: 'menu__stats' }, 'Загружаю вопросы…');
     const story = el('button', { class: 'btn btn--primary btn--lg', type: 'button' }, 'Начать историю');
     story.onclick = () => this.open({ name: 'chapters' });
@@ -263,6 +278,8 @@ export class App {
         const answered = questions.filter((q) => data.questions[q.id]).length;
         // Неразрывные пробелы, чтобы строка не рвалась между числом и словом.
         stats.textContent = `Пройдено вопросов: ${answered} из ${questions.length}`;
+        const r = readiness(data, questions, allExams(), now);
+        status.replaceChildren(statusRow(data, data.daily!, r.percent, now, statusActions));
       },
       () => (stats.textContent = 'Не удалось загрузить вопросы. Обновите страницу.'),
     );
@@ -316,6 +333,7 @@ export class App {
         el('div', { class: 'menu__row menu__row--review' }, reviewButton, settingsButton),
         install,
         iosHint,
+        status,
         stats,
       ),
     );
@@ -531,7 +549,37 @@ export class App {
     const route = this.route;
     Promise.all([loadQuestions(), loadMapping()]).then(([questions, mapping]) => {
       if (this.route !== route) return;
+      const data = progress();
+      const now = Date.now();
+      const daily = ensureDaily(data, now);
+      const r = readiness(data, questions, allExams(), now);
+      const order = mapping.chapters.map((c) => c.id);
+      const tip = (t: Tip) => {
+        if (t.action === 'review') this.open({ name: 'review' });
+        else if (t.action === 'block') this.open({ name: 'drill', mode: 'block', block: t.block, via: 'progress' });
+        else if (t.action === 'exam') this.open({ name: 'exam' });
+        else if (t.action === 'story') this.open({ name: 'city', chapter: currentChapter(data, order) });
+      };
+      const level = levelOf(data.xp);
+      const share = el(
+        'button',
+        {
+          class: 'btn btn--secondary',
+          type: 'button',
+          onclick: () =>
+            void shareResult({
+              kicker: 'Мой прогресс',
+              title: `Уровень ${level.number}: «${level.title}»`,
+              big: `${r.percent}%`,
+              lines: ['готовность к экзамену', `Освоено вопросов: ${r.mastered} из ${r.total}`],
+            }),
+        },
+        'Поделиться',
+      );
       body.replaceChildren(
+        readinessCard(r, { tip }),
+        dailyCard(data, daily, now),
+        el('div', { class: 'menu__row progress-actions' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'garage' }) }, `Гараж · 🪙 ${data.coins}`), share),
         progressView(progress(), questions, mapping, {
           train: (topic) => this.open({ name: 'drill', mode: 'topic', topic, via: 'progress' }),
           openChapter: (id) => this.open({ name: 'city', chapter: id }),
@@ -567,12 +615,15 @@ export class App {
       case 'weak':
         ids = trainingSet(data, questions.filter((q) => !data.questions[q.id]?.ok).map((q) => q.id), 20);
         break;
+      case 'block':
+        ids = trainingSet(data, questions.filter((q) => blockOf(q.number) === route.block).map((q) => q.id), 15);
+        break;
     }
     return ids.map((id) => byId.get(id)!).filter(Boolean);
   }
 
   private drillScreen(route: DrillRoute): HTMLElement {
-    const titles: Record<DrillMode, string> = { review: 'Повтор ошибок', practice: 'Тренировка ошибок', topic: route.topic ?? 'Тема', weak: 'Недоученные вопросы' };
+    const titles: Record<DrillMode, string> = { review: 'Повтор ошибок', practice: 'Тренировка ошибок', topic: route.topic ?? 'Тема', weak: 'Недоученные вопросы', block: `Блок: ${blockLabel(route.block ?? 0)}` };
     return this.quizPage(route, titles[route.mode], route.via, (all) => this.drillQuestions(route, all), (results, _ms, list, body) => {
       const right = results.filter((r) => r.isCorrect).length;
       const left = route.mode === 'review' ? dueReviews(progress(), Date.now()).length : 0;
@@ -665,7 +716,7 @@ export class App {
         const outcome = s.outcome!;
         const data = progress();
         // Ответы идут в прогресс только теперь: во время экзамена ничто не подсказывает, верен ли ответ.
-        s.chosen.forEach((chosen, i) => recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now));
+        const outcomes = s.chosen.map((chosen, i) => recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now));
         const reward = outcome.passed ? recordExamPass(data, route.boss, now) : undefined;
         saveProgress();
         const attempt = recordExam({
@@ -680,7 +731,8 @@ export class App {
         });
         playSound(outcome.passed ? 'pass' : 'fail');
         levelUpToast(reward?.levelUp, false);
-        if (reward?.xp) showToast(`+${reward.xp} опыта`);
+        if (reward?.xp) showToast(`+${reward.xp} опыта · +${reward.coins ?? 0} монет`);
+        goalToast(outcomes.find((o) => o.goal), data);
         const result: ExamResultRoute = { name: 'exam-result', at: attempt.at, via: 'run', boss: route.boss };
         const go = () => {
           if (this.route !== route) return;
@@ -754,7 +806,26 @@ export class App {
             : attempt.boss
               ? el('p', { class: 'banner banner--bad' }, 'Ошибок нет, но время вышло. Экзамен-босса можно сдать снова из финала.')
               : null;
-      body.replaceChildren(...[story, examResultView(attempt, byId)].filter((x): x is HTMLElement => !!x));
+      const main = attempt.items.length - attempt.extra;
+      const right = attempt.chosen.filter((c, i) => c === byId.get(attempt.items[i])?.correct).length;
+      const share = attempt.passed
+        ? el(
+            'button',
+            {
+              class: 'btn btn--secondary',
+              type: 'button',
+              onclick: () =>
+                void shareResult({
+                  kicker: attempt.boss ? 'Экзамен в ГИБДД' : 'Тренировочный экзамен',
+                  title: attempt.boss ? 'Права получены!' : 'Экзамен сдан!',
+                  big: `${right} из ${attempt.chosen.length}`,
+                  lines: [`${main} основных вопросов${attempt.extra ? ` и ${attempt.extra} дополнительных` : ''}`, `Время: ${Math.max(1, Math.round(attempt.ms / 60000))} мин`],
+                }),
+            },
+            'Поделиться результатом',
+          )
+        : null;
+      body.replaceChildren(...[story, share, examResultView(attempt, byId)].filter((x): x is HTMLElement => !!x));
     });
     return this.page(attempt.boss ? 'Экзамен в ГИБДД' : 'Экзамен', body, { back, footer });
   }
@@ -929,6 +1000,7 @@ export class App {
             const out = recordAnswer(data, question.id, result.isCorrect, Date.now());
             saveProgress();
             levelUpToast(out.levelUp);
+            goalToast(out, data);
             note.textContent = reviewNote(out, data.questions[question.id].review?.due);
             note.hidden = !note.textContent;
             updateStatus();

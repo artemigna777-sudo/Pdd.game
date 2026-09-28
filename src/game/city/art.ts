@@ -187,14 +187,4 @@ export function drawBuilding(g: Phaser.GameObjects.Graphics, x: number, y: numbe
   g.fillStyle(0x000000, 0.12).fillRect(x + w * 0.2, y + h * 0.3, Math.min(14, w * 0.2), Math.min(10, h * 0.2));
 }
 
-/** Детерминированный генератор случайных чисел (город одинаковый при каждом запуске). */
-export function seeded(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { seeded } from '../../world/random.ts';

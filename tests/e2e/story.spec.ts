@@ -47,7 +47,7 @@ function seed(page: Page, data: unknown) {
     // Только при первой загрузке: после перезагрузки игра должна читать то, что сохранила сама.
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('pdd-game:progress', JSON.stringify(value));
-      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false }));
       sessionStorage.setItem('seeded', '1');
     }
   }, data);
@@ -127,6 +127,16 @@ test('глава 1: обучение, пролог, вступление, точ
   await page.getByRole('button', { name: 'Пропустить' }).tap();
   await expect(dialog).toContainText('Мешок муки');
   await page.getByRole('button', { name: 'Пропустить' }).tap();
+  // Артём вызывает на гонку: выбор пропустить нельзя.
+  await expect(dialog.locator('.cutscene__name')).toHaveText('Марина');
+  await expect(dialog).toContainText('Знакомься: Артём');
+  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await expect(dialog).toContainText('Спорим, доставлю раньше');
+  await expect(page.getByRole('button', { name: 'Пропустить' })).toBeHidden();
+  await page.getByRole('button', { name: 'Я за точность' }).tap();
+  await expect(dialog.locator('.cutscene__name')).toHaveText('Виктор Петрович');
+  await page.getByRole('button', { name: 'Далее' }).tap();
+  await page.getByRole('button', { name: 'Поехали' }).tap();
   await expect(dialog).toHaveCount(0);
   await waitCity(page);
   await expect(page.locator('.city-task')).toContainText('Отвезти мешок муки в пекарню «Калач»');
@@ -170,7 +180,7 @@ test('конец главы 1: флажок доставки, финал, наг
   const questions: Record<string, unknown> = {};
   for (const q of MAPPING.questions) if (q.chapter === 'ch1' && q.point !== ROAD_POINT) questions[q.id] = { n: 1, ok: true, ever: true, at: 1 };
   const points = MAPPING.chapters[0].points.map((p) => p.id).filter((p) => p !== ROAD_POINT);
-  await seed(page, { xp: 700, questions, chapters: { ch1: { points, seen: ['prologue', 'intro', 'beat1', 'beat2'], stars: 0 } }, finale: { control: [], seen: [] } });
+  await seed(page, { xp: 700, questions, chapters: { ch1: { points, seen: ['prologue', 'intro', 'race', 'beat1', 'beat2'], stars: 0, side: { step: 2, done: 1 } } }, finale: { control: [], seen: [] } });
   await page.goto('/');
   await page.getByRole('button', { name: 'Глава 1: Первый день' }).tap();
   await waitCity(page);

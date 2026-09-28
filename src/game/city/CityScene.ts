@@ -23,6 +23,10 @@ import { Player } from './Player.ts';
 import { SceneKit } from './sceneKit.ts';
 import { createScript, sceneConditions, type SceneScript } from './sceneScripts.ts';
 import { TrafficLightView } from './signs.ts';
+import { TrafficView } from './trafficView.ts';
+import { CityAudio } from '../../audio/cityAudio.ts';
+import { EVENTS, EVENT_DELAY, nextEventKind, type EventKind } from '../../world/events.ts';
+import { TrafficSim, type Light, type TrafficEnv, type Zone } from '../../world/traffic.ts';
 
 /** Вопрос в серии точки интереса. */
 export interface SeriesInfo {
@@ -45,6 +49,10 @@ export interface CityHost {
   onPointDone?(pointId: string): void;
   /** Машина доехала до места доставки. */
   onGoal?(): void;
+  /** Машина у отметки побочного задания. */
+  onSide?(): void;
+  /** Событие в пути показано, машина стоит — задать вопрос по теме (потом вызвать endEvent). */
+  onEvent?(kind: EventKind): void;
 }
 
 export interface CityData {
@@ -57,6 +65,8 @@ export interface CityData {
   visited: string[];
   /** Последний ответ на вопрос — ошибка (точка с такими вопросами — красная). */
   isWrong(questionId: string): boolean;
+  /** Случайные события в пути (в автотестах выключаются). */
+  events?: boolean;
 }
 
 /** Состояние точки на карте. */
@@ -75,6 +85,8 @@ interface Poi {
   done: boolean;
   /** Место доставки посылки главы (вопросов нет). */
   goal?: boolean;
+  /** Отметка побочного задания (вопросов нет). */
+  side?: boolean;
   /** Отметка спрятана: у точки идёт сцена или машина только что отъехала. */
   hidden?: boolean;
   marker: Phaser.GameObjects.Container;
@@ -86,6 +98,8 @@ interface Poi {
 interface Signal {
   node: string;
   byLane: Map<string, TrafficLightView>;
+  /** Сигнал для каждой въезжающей полосы — по нему едет поток. */
+  state: Map<string, Light>;
   paused: boolean;
   t: number;
 }
@@ -123,6 +137,18 @@ export class CityScene extends Phaser.Scene {
   private visited = new Set<string>();
   private isWrong: (id: string) => boolean = () => false;
   private goal?: Poi;
+  private side?: Poi;
+  private audio?: CityAudio;
+  private audioPaused = false;
+  private audioClock = 0;
+  private rivalWanted = false;
+  private rivalRespawn = 0;
+  private event?: { kind: EventKind; kit?: SceneKit };
+  private eventClock = 0;
+  private nextEventAt = 60;
+  private lastEvent?: EventKind;
+  private weatherLeft = 0;
+  eventsEnabled = true;
 
   private graph!: RoadGraph;
   private mapView!: MapRenderer;
@@ -130,6 +156,10 @@ export class CityScene extends Phaser.Scene {
   private player!: Player;
   private pois: Poi[] = [];
   private signals: Signal[] = [];
+  private signalByLane = new Map<string, Signal>();
+  private traffic!: TrafficSim;
+  private trafficView!: TrafficView;
+  private trafficClock = 0;
 
   private active?: ActiveScene;
   private leaving?: { kit: SceneKit; anchor: Vec; since: number; signal?: Signal };
@@ -157,8 +187,18 @@ export class CityScene extends Phaser.Scene {
     this.visited = new Set(data.visited);
     this.isWrong = data.isWrong;
     this.goal = undefined;
+    this.side = undefined;
+    this.rivalWanted = false;
+    this.rivalRespawn = 0;
+    this.event = undefined;
+    this.lastEvent = undefined;
+    this.weatherLeft = 0;
+    this.eventsEnabled = data.events ?? true;
     this.pois = [];
     this.signals = [];
+    this.signalByLane = new Map();
+    this.trafficClock = 0;
+    this.extraZones = [];
     this.active = undefined;
     this.leaving = undefined;
     this.pendingPoi = undefined;
@@ -187,6 +227,29 @@ export class CityScene extends Phaser.Scene {
     cam.setZoom(PIXEL_RATIO);
     cam.setBounds(map.bounds.x, map.bounds.y, map.bounds.width, map.bounds.height);
     cam.startFollow(this.player.container, true, 0.1, 0.1);
+    cam.centerOn(this.player.position.x, this.player.position.y);
+
+    // Поток машин и пешеходов вокруг.
+    this.traffic = new TrafficSim(this.graph, this.points);
+    this.trafficView = new TrafficView(this, this.traffic);
+    this.traffic.maintain(this.trafficEnv(), true);
+    this.scheduleEvent(true);
+
+    // Звуки города: мотор и улица. На паузе (сюжетная сцена) — тише.
+    const audio = new CityAudio();
+    this.audio = audio;
+    this.audioPaused = false;
+    audio.start();
+    const onPause = () => audio.setPaused(true);
+    const onResume = () => audio.setPaused(this.audioPaused);
+    this.events.on(Phaser.Scenes.Events.PAUSE, onPause);
+    this.events.on(Phaser.Scenes.Events.RESUME, onResume);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.PAUSE, onPause);
+      this.events.off(Phaser.Scenes.Events.RESUME, onResume);
+      audio.stop();
+      this.audio = undefined;
+    });
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
@@ -281,14 +344,16 @@ export class CityScene extends Phaser.Scene {
   /** Сдвинуть камеру так, чтобы сцена была видна над карточкой (visible — доля высоты экрана сверху). */
   focusVisible(visible: number) {
     const a = this.active;
-    if (!a) return;
-    if (a.interior) {
+    // Во время события в пути — машина игрока и место события.
+    const focus = a?.focus ?? (this.event ? this.player.position : undefined);
+    if (!focus) return;
+    if (a?.interior) {
       a.interior.focus(visible);
       return;
     }
     const cam = this.cameras.main;
     const viewH = cam.height / cam.zoom;
-    const target = { x: a.focus.x, y: a.focus.y + (0.5 - visible / 2) * viewH };
+    const target = { x: focus.x, y: focus.y + (0.5 - visible / 2) * viewH };
     cam.stopFollow();
     // У края карты камера должна иметь возможность сдвинуться за границу.
     cam.removeBounds();
@@ -372,28 +437,8 @@ export class CityScene extends Phaser.Scene {
    */
   showGoal(label: string) {
     if (this.goal) return;
-    const busy = new Set(this.pois.map((p) => p.lane.road.id));
-    const from = this.player.position;
-    const lanes = [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && l.length >= 240 && !busy.has(l.road.id));
-    const pool = lanes.length ? lanes : [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city');
-    const mid = (l: Lane) => this.graph.pointOnLane(l, l.length / 2);
-    const lane = pool.sort((a, b) => distance(mid(b), from) - distance(mid(a), from) || a.id.localeCompare(b.id))[0];
-    if (!lane) return;
-    const s = lane.length / 2;
-    const p = this.graph.pointOnLane(lane, s);
-    const ring = this.add.image(0, 0, '__DEFAULT').setScale(1 / PIXEL_RATIO);
-    this.drawMarker(ring, 0x7b2cbf);
-    const flag = this.add.graphics();
-    flag.lineStyle(3, 0xffffff).lineBetween(-4, 8, -4, -9);
-    flag.fillStyle(0xffffff).fillTriangle(-3, -9, 9, -5, -3, -1);
-    const title = this.add
-      .text(0, 26, label, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#5a189acc', padding: { x: 5, y: 2 } })
-      .setOrigin(0.5, 0)
-      .setResolution(4);
-    const marker = this.add.container(p.x, p.y, [ring, flag, title]).setDepth(4.2);
-    this.tweens.add({ targets: ring, scale: 1.2 / PIXEL_RATIO, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    const dir = lane.dir;
-    this.goal = { point: { id: 'goal', template: 'street', title: label, road: lane.road.id, toward: lane.to.id }, lane, s, anchor: p, dir, queue: [], cooldown: false, done: false, goal: true, marker, ring, mark: title, title };
+    const poi = this.placeSpecial('goal', label, { color: 0x7b2cbf, ink: '#5a189acc' }, Infinity);
+    if (poi) this.goal = { ...poi, goal: true };
   }
 
   /** Посылка доставлена — флажок убрать. */
@@ -402,9 +447,56 @@ export class CityScene extends Phaser.Scene {
     this.goal = undefined;
   }
 
-  /** Все точки, где машина может остановиться: точки интереса и место доставки. */
+  /** Отметка побочного задания (оранжевая звёздочка): забрать или отвезти. */
+  showSide(label: string) {
+    this.removeSide();
+    const poi = this.placeSpecial('side', label, { color: 0xf77f00, ink: '#b35900dd' }, 650);
+    if (poi) this.side = { ...poi, side: true };
+  }
+
+  removeSide() {
+    this.side?.marker.destroy();
+    this.side = undefined;
+  }
+
+  /**
+   * Особая отметка на городской улице без точек интереса: место доставки (подальше от машины,
+   * чтобы проехать через район) или побочного задания (примерно на расстоянии `want`).
+   */
+  private placeSpecial(id: string, label: string, look: { color: number; ink: string }, want: number): Poi | undefined {
+    const busy = new Set([...this.pois, ...(this.goal ? [this.goal] : []), ...(this.side ? [this.side] : [])].map((p) => p.lane.road.id));
+    const from = this.player.position;
+    const lanes = [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && l.length >= 240 && !busy.has(l.road.id));
+    const pool = lanes.length ? lanes : [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && !busy.has(l.road.id));
+    const mid = (l: Lane) => this.graph.pointOnLane(l, l.length / 2);
+    const score = (l: Lane) => (want === Infinity ? -distance(mid(l), from) : Math.abs(distance(mid(l), from) - want));
+    const lane = pool.sort((a, b) => score(a) - score(b) || a.id.localeCompare(b.id))[0];
+    if (!lane) return undefined;
+    const s = lane.length / 2;
+    const p = this.graph.pointOnLane(lane, s);
+    const ring = this.add.image(0, 0, '__DEFAULT').setScale(1 / PIXEL_RATIO);
+    this.drawMarker(ring, look.color);
+    const icon = this.add.graphics();
+    if (id === 'goal') {
+      icon.lineStyle(3, 0xffffff).lineBetween(-4, 8, -4, -9);
+      icon.fillStyle(0xffffff).fillTriangle(-3, -9, 9, -5, -3, -1);
+    } else {
+      // Коробочка поручения.
+      icon.fillStyle(0xffffff).fillRect(-7, -6, 14, 12);
+      icon.fillStyle(look.color).fillRect(-1.5, -6, 3, 12).fillRect(-7, -1.5, 14, 3);
+    }
+    const title = this.add
+      .text(0, 26, label, { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', backgroundColor: look.ink, padding: { x: 5, y: 2 } })
+      .setOrigin(0.5, 0)
+      .setResolution(4);
+    const marker = this.add.container(p.x, p.y, [ring, icon, title]).setDepth(4.2);
+    this.tweens.add({ targets: ring, scale: 1.2 / PIXEL_RATIO, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    return { point: { id, template: 'street', title: label, road: lane.road.id, toward: lane.to.id }, lane, s, anchor: p, dir: lane.dir, queue: [], cooldown: false, done: false, marker, ring, mark: title, title };
+  }
+
+  /** Все точки, где машина может остановиться: точки интереса, место доставки, поручение. */
   private get stops(): Poi[] {
-    return this.goal ? [...this.pois, this.goal] : this.pois;
+    return [...this.pois, ...(this.goal ? [this.goal] : []), ...(this.side ? [this.side] : [])];
   }
 
   private buildSignals() {
@@ -420,7 +512,9 @@ export class CityScene extends Phaser.Scene {
         view.container.setPosition(pos.x, pos.y).setDepth(7);
         byLane.set(lane.id, view);
       }
-      this.signals.push({ node: node.id, byLane, paused: false, t: 0 });
+      const signal: Signal = { node: node.id, byLane, state: new Map(), paused: false, t: 0 };
+      for (const id of byLane.keys()) this.signalByLane.set(id, signal);
+      this.signals.push(signal);
     }
   }
 
@@ -440,7 +534,9 @@ export class CityScene extends Phaser.Scene {
       for (const [id, view] of s.byLane) {
         const vertical = Math.abs(this.graph.lane(id).dir.y) > 0.5;
         const mine = vertical ? ph < 2 : ph >= 2;
-        view.setState(mine ? (ph % 2 === 0 ? 'green' : 'yellow') : 'red');
+        const state: Light = mine ? (ph % 2 === 0 ? 'green' : 'yellow') : 'red';
+        s.state.set(id, state);
+        view.setState(state);
       }
     }
   }
@@ -453,7 +549,7 @@ export class CityScene extends Phaser.Scene {
    */
   private clip(parts: PathPart[]): { parts: PathPart[]; poi?: Poi } {
     const target = this.destination;
-    const passable = (poi: Poi) => !poi.goal && this.poiState(poi) === 'done' && !(target && target.lane === poi.lane && Math.abs(target.s - poi.s) < 2);
+    const passable = (poi: Poi) => !poi.goal && !poi.side && this.poiState(poi) === 'done' && !(target && target.lane === poi.lane && Math.abs(target.s - poi.s) < 2);
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (part.kind !== 'lane') continue;
@@ -546,6 +642,11 @@ export class CityScene extends Phaser.Scene {
     if (poi.goal) {
       poi.cooldown = true;
       this.host.onGoal?.();
+      return;
+    }
+    if (poi.side) {
+      poi.cooldown = true;
+      this.host.onSide?.();
       return;
     }
     // В точке с ошибками повторяются только вопросы, где в последний раз была ошибка.
@@ -683,7 +784,7 @@ export class CityScene extends Phaser.Scene {
 
   private onPointerDown(pointer: Phaser.Input.Pointer) {
     this.pointerDown = { x: pointer.x, y: pointer.y, time: this.time.now };
-    if (this.control === 'joystick' && !this.active && !this.overview) {
+    if (this.control === 'joystick' && !this.active && !this.event && !this.overview) {
       this.joy = { active: true, dir: this.joy.dir, mag: 0, knob: { x: 0, y: 0 } };
     }
   }
@@ -704,7 +805,7 @@ export class CityScene extends Phaser.Scene {
     this.pointerDown = undefined;
     this.joy.active = false;
     this.joy.mag = 0;
-    if (!down || this.active) return;
+    if (!down || this.active || this.event) return;
     const moved = Math.hypot(pointer.x - down.x, pointer.y - down.y) / PIXEL_RATIO;
     if (moved > TAP_MOVE_LIMIT) return;
     if (this.control === 'tap' || this.overview) this.handleTap(this.cameras.main.getWorldPoint(pointer.x, pointer.y));
@@ -731,7 +832,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   private driveJoystick() {
-    if (this.active) return;
+    if (this.active || this.event) return;
     if (!this.joy.active || this.joy.mag < 0.25) {
       if (this.joyWasActive) {
         this.joyWasActive = false;
@@ -824,6 +925,162 @@ export class CityScene extends Phaser.Scene {
     this.host.onOverviewChange?.(on);
   }
 
+  // ─── Гонка с Артёмом ─────────────────────────────────────────────────────────
+
+  /** Артём на фиолетовом мопеде ездит по району, пока везёт свою посылку. */
+  setRival(on: boolean) {
+    this.rivalWanted = on;
+    if (!on) for (const c of this.traffic.cars) if (c.rival) c.fading = true;
+  }
+
+  /** Мопед Артёма исчез (разъехались с игроком) — через пару секунд он появится снова за кадром. */
+  private keepRival(dt: number) {
+    if (!this.rivalWanted || this.traffic.cars.some((c) => c.rival && !c.gone)) return;
+    this.rivalRespawn -= dt;
+    if (this.rivalRespawn > 0) return;
+    this.rivalRespawn = 3;
+    const env = this.trafficEnv();
+    const view = this.cameras.main.worldView;
+    const from = this.player.position;
+    const lanes = [...this.graph.lanes.values()].filter((l) => l.length > 160);
+    for (let i = 0; i < 30; i++) {
+      const lane = lanes[Math.floor(Math.random() * lanes.length)];
+      const s = 40 + Math.random() * (lane.length - 80);
+      const p = this.graph.pointOnLane(lane, s);
+      const d = distance(p, from);
+      if (d < 320 || d > 950 || view.contains(p.x, p.y)) continue;
+      if (this.traffic.cars.some((c) => distance(c.pos, p) < 80) || env.zones.some((z) => distance(p, z) < z.r + 60)) continue;
+      this.traffic.spawnCar(lane, s, { kind: 'moto', color: 0x8e44ad, rival: true, cruise: 0.95 }, env.zones);
+      return;
+    }
+  }
+
+  // ─── События в пути ──────────────────────────────────────────────────────────
+
+  private scheduleEvent(first: boolean) {
+    const [a, b] = first ? EVENT_DELAY.first : EVENT_DELAY.next;
+    this.nextEventAt = a + Math.random() * (b - a);
+    this.eventClock = 0;
+  }
+
+  /** Событие случается на прямом участке, вдали от точек и отметок. */
+  private canStartEvent(): boolean {
+    const lp = this.player.lanePosition();
+    if (!lp || lp.s < 70 || lp.lane.length - lp.s < 220) return false;
+    const pos = this.player.position;
+    return this.stops.every((p) => distance(p.anchor, pos) > 320);
+  }
+
+  /** Идёт событие в пути (для интерфейса и тестов). */
+  get eventKind(): EventKind | undefined {
+    return this.event?.kind;
+  }
+
+  /** Начать событие: короткая сценка на дороге, машина останавливается, потом — вопрос. */
+  async triggerEvent(kind: EventKind): Promise<void> {
+    if (this.event || this.active) return;
+    const event: { kind: EventKind; kit?: SceneKit } = { kind };
+    this.event = event;
+    this.lastEvent = kind;
+    this.joy.active = false;
+    this.pendingPoi = undefined;
+    const kit = new SceneKit(this, this.player.position, this.player.angle);
+    event.kit = kit;
+
+    if (kind === 'ambulance') {
+      // Встречная полоса освобождается: скорая обгоняет по ней.
+      this.extraZones = [{ ...this.player.position, r: 260 }];
+      this.audio?.sirenOn(0.35);
+      const amb = kit.vehicle('ambulance', 0, 340, 0);
+      kit.say('Сзади — скорая с сиреной! Уступаем дорогу.', 0, -80, 'bad', 3000);
+      this.player.stopSoon();
+      this.player.setNudge(8);
+      kit.after(600, () => this.audio?.sirenOn(1));
+      await kit.move(amb, [{ x: 0, y: 180 }, { x: -30, y: 80 }, { x: -30, y: -100 }, { x: 0, y: -200 }, { x: 0, y: -560 }], 250);
+      this.audio?.sirenOff();
+      this.player.setNudge(0);
+    } else if (kind === 'ball') {
+      this.extraZones = [{ ...this.player.position, r: 170 }];
+      this.player.stopSoon();
+      const g = this.add.graphics();
+      g.fillStyle(0x000000, 0.2).fillCircle(2, 2, 6);
+      g.fillStyle(0xe63946).fillCircle(0, 0, 6);
+      g.fillStyle(0xffffff).fillRect(-6, -1.2, 12, 2.4);
+      const ballObj = this.add.container(34, -150, [g]);
+      kit.root.add(ballObj);
+      const ball = { obj: ballObj, kind: 'pedestrian' as const, headlights: false };
+      const kid = kit.pedestrian(48, -118, 270);
+      kid.obj.setScale(0.8);
+      kit.say('Мяч! За ним может выбежать ребёнок.', 0, -210, 'bad', 3000);
+      void kit.move(ball, [{ x: -90, y: -140 }], 95, false);
+      await kit.wait(300);
+      await kit.move(kid, [{ x: 26, y: -122 }], 45);
+      await kit.wait(900);
+    } else {
+      this.atmosphere.setBase({ weather: kind });
+      this.weatherLeft = 80;
+      kit.say(`${EVENTS[kind].title}!`, 0, -80, 'info', 2400);
+      this.player.stopSoon();
+      await kit.wait(1500);
+    }
+    // Дождаться полной остановки.
+    for (let i = 0; i < 30 && this.player.speed > 1; i++) await kit.wait(100);
+    if (this.event !== event) return;
+    if (this.host.onEvent) this.host.onEvent(kind);
+    else this.endEvent();
+  }
+
+  /** Событие закончилось (вопрос отвечен или пропущен): едем дальше. */
+  endEvent() {
+    const e = this.event;
+    if (!e) return;
+    this.event = undefined;
+    this.extraZones = [];
+    this.audio?.sirenOff();
+    this.player.setNudge(0);
+    if (e.kit) void e.kit.fadeOut(400);
+    this.scheduleEvent(false);
+    const b = this.graph.map.bounds;
+    this.cameras.main.setBounds(b.x, b.y, b.width, b.height);
+    this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
+    if (this.destination && this.control === 'tap') this.driveTo(this.destination);
+  }
+
+  private updateEvents(dt: number) {
+    this.event?.kit?.update(dt);
+    if (this.weatherLeft > 0) {
+      this.weatherLeft -= dt;
+      if (this.weatherLeft <= 0) this.atmosphere.setBase({});
+    }
+    if (!this.eventsEnabled || this.event || this.active || this.overview || !this.cameras.main.visible || this.player.speed < 30) return;
+    this.eventClock += dt;
+    if (this.eventClock >= this.nextEventAt && this.canStartEvent()) void this.triggerEvent(nextEventKind(this.lastEvent, Math.random));
+  }
+
+  // ─── Поток ───────────────────────────────────────────────────────────────────
+
+  /** Где сейчас игрок, где идут сцены и что горит на светофорах — для модели потока. */
+  private trafficEnv(): TrafficEnv {
+    const lp = this.player.lanePosition();
+    const zones: Zone[] = [];
+    if (this.active) zones.push({ ...this.active.poi.anchor, r: 300 });
+    if (this.leaving) zones.push({ ...this.leaving.anchor, r: 260 });
+    // Перед точкой с вопросом место сцены освобождается заранее.
+    const pending = this.pendingPoi;
+    if (pending && !pending.goal && distance(this.player.position, pending.anchor) < 480) zones.push({ ...pending.anchor, r: 240 });
+    zones.push(...this.extraZones);
+    const v = this.cameras.main.worldView;
+    return {
+      player: { pos: this.player.position, lane: lp?.lane, s: lp?.s, speed: this.player.speed, heading: { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) } },
+      zones,
+      signal: (id) => this.signalByLane.get(id)?.state.get(id),
+      view: { x: v.x, y: v.y, w: v.width, h: v.height },
+    };
+  }
+
+  /** Дополнительные зоны без потока (например, место события в пути). */
+  private extraZones: Zone[] = [];
+
   // ─── Кадр ────────────────────────────────────────────────────────────────────
 
   update(_time: number, deltaMs: number) {
@@ -832,6 +1089,33 @@ export class CityScene extends Phaser.Scene {
     this.player.update(dt);
     this.active?.kit?.update(dt);
     this.updateSignals(dt);
+
+    const cam0 = this.cameras.main;
+    if (cam0.visible) {
+      const env = this.trafficEnv();
+      this.traffic.update(dt, env);
+      this.trafficClock += dt;
+      if (this.trafficClock > 0.5) {
+        this.trafficClock = 0;
+        this.traffic.maintain(env);
+      }
+      this.keepRival(dt);
+    }
+    this.updateEvents(dt);
+
+    // Мотор: высота звука по скорости; в мини-игре (город не виден) — тишина.
+    if (this.audio) {
+      const hidden = !cam0.visible;
+      if (hidden !== this.audioPaused) {
+        this.audioPaused = hidden;
+        this.audio.setPaused(hidden);
+      }
+      this.audioClock += dt;
+      if (this.audioClock > 0.1) {
+        this.audioClock = 0;
+        this.audio.setSpeed(this.player.speed);
+      }
+    }
 
     if (this.leaving) {
       this.leaving.kit.update(dt);
@@ -858,14 +1142,18 @@ export class CityScene extends Phaser.Scene {
       // В обзоре подписаны только здания мини-игр, иначе подписи налезают друг на друга.
       poi.title.setAlpha(worldZoom < 0.6 && TEMPLATES[poi.point.template].minigame ? 1 : 0);
     }
-    if (this.goal) this.goal.marker.setScale(k).setVisible(inView(this.goal.marker.x, this.goal.marker.y));
+    for (const special of [this.goal, this.side]) if (special) special.marker.setScale(k).setVisible(inView(special.marker.x, special.marker.y));
     for (const signal of this.signals) {
       // На обзорной карте светофоры меньше пикселя — их не рисуем совсем.
       for (const light of signal.byLane.values()) light.container.setVisible(worldZoom >= 0.6 && inView(light.container.x, light.container.y));
     }
 
+    // На обзорной карте поток не рисуем: машины там меньше пикселя.
+    this.trafficView.update(cam.visible && worldZoom >= 0.6, view);
+
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
     if (this.active?.kit) sources.push(...this.active.kit.headlightSources());
+    if (this.event?.kit) sources.push(...this.event.kit.headlightSources());
     if (this.leaving) sources.push(...this.leaving.kit.headlightSources());
     this.atmosphere.update(dt, sources);
 

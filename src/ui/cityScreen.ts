@@ -33,7 +33,7 @@ import { PROLOGUE, STORY, beatThresholds, fill, type Line } from '../story/story
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
 import { playCutscene, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
-import { plural } from './format.ts';
+import { durationLabel, plural } from './format.ts';
 import { ICONS } from './icons.ts';
 import { levelMeter, starsText } from './progressView.ts';
 import { renderQuestionCard } from './questionCard.ts';
@@ -41,6 +41,10 @@ import { controlHint, settingsPanel } from './settingsPanel.ts';
 import { goalToast } from './dailyView.ts';
 import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
+import type { Question } from '../data/types.ts';
+import { acceptSide, advanceSide, raceActive, raceAnswer, raceTick, rivalProgress, settleRace, sideStatus, sideStep, type RaceResult } from '../progress/race.ts';
+import { RIVALS, SIDE_QUESTS, raceReaction, sideDone } from '../story/extras.ts';
+import { EVENTS, pickEventQuestion } from '../world/events.ts';
 
 export interface CityScreen {
   element: HTMLElement;
@@ -76,6 +80,15 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   let stopped = false;
   let goalShown = false;
   const story = STORY[chapterId];
+  const rival = RIVALS[chapterId];
+  const quest = SIDE_QUESTS[chapterId];
+  /** Поручение предлагали в этот заезд, и игрок отказался (предложим в следующий раз). */
+  let sideDeclined = false;
+  let questionsById = new Map<string, Question>();
+  /** Карточка внизу: вопрос точки или вопрос события в пути. */
+  let sheetMode: 'point' | 'event' = 'point';
+  const recentEvents: string[] = [];
+  let rivalDone = false;
 
   const score = el('span', { class: 'topbar__score', 'aria-label': 'Правильных ответов' });
   const title = el('h1', { class: 'topbar__title', tabindex: -1, 'data-focus': true }, 'Загрузка…');
@@ -89,8 +102,11 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   const sheetTitle = el('p', { class: 'sheet__title' });
   const sheetBody = el('div', { class: 'sheet__body' });
   const go = el('button', { class: 'btn btn--primary btn--lg', type: 'button' }, 'Поехали');
+  const skipEvent = el('button', { class: 'btn btn--quiet', type: 'button' }, 'Пропустить вопрос');
   const sheetFoot = el('footer', { class: 'sheet__foot', hidden: true }, go);
-  const sheet = el('section', { class: 'sheet', 'aria-label': 'Вопрос', 'aria-hidden': 'true' }, sheetTitle, sheetBody, sheetFoot);
+  // Вопрос события можно пропустить (вопрос точки — нет).
+  const eventFoot = el('footer', { class: 'sheet__alt', hidden: true }, skipEvent);
+  const sheet = el('section', { class: 'sheet', 'aria-label': 'Вопрос', 'aria-hidden': 'true' }, sheetTitle, sheetBody, sheetFoot, eventFoot);
   const settings = el('div', { class: 'popover', hidden: true }, settingsPanel());
   const mapButton = iconButton(ICONS.map, 'Карта района', () => {
     if (!scene) return;
@@ -118,6 +134,10 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     else if (story) taskGoal.textContent = story.task;
     const parts = [`Точки ${r.pointsDone} из ${r.points}`, `верных ${percent(r.share)}%`];
     if (r.pointsWithMistakes.length) parts.push(`с ошибками: ${r.pointsWithMistakes.length}`);
+    if (rival && raceActive(data, chapterId) && seen('race')) {
+      const k = rivalProgress(data, info, rival);
+      parts.push(k >= 1 ? '🛵 Артём доставил' : `🛵 Артём ${Math.floor(k * 100)}%`);
+    }
     taskMeta.textContent = parts.join(' · ');
     task.classList.toggle('is-goal', goalShown);
   };
@@ -147,7 +167,15 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (pause && game.scene.isPaused('city')) game.scene.resume('city');
     return true;
   };
-  const cutscene = (lines: Line[], last?: string) => paused(() => playCutscene(lines, { last }));
+  const cutscene = (lines: Line[], last?: string) => paused(() => playCutscene(lines, { last }).then(() => undefined));
+  /** Сцена с выбором: undefined — экран закрыт. */
+  const choose = async (lines: Line[], last?: string): Promise<string | null | undefined> => {
+    let value: string | undefined;
+    const ok = await paused(async () => {
+      value = await playCutscene(lines, { last });
+    });
+    return ok ? (value ?? null) : undefined;
+  };
 
   const seen = (id: string) => chapterState(progress(), chapterId).seen.includes(id);
   const see = (id: string) => {
@@ -169,6 +197,10 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       }
     }
     if (data.chapters[chapterId]?.delivered || goalShown) return;
+    // Поручение персонажа — после первой сюжетной сцены главы, пока посылку ещё рано везти.
+    if (quest && seen('beat1') && sideStatus(data, chapterId) === 'none' && !sideDeclined && !canDeliver(r)) {
+      if (!(await offerSide())) return;
+    }
     if (canDeliver(r)) {
       if (!seen('ready')) {
         if (!(await cutscene(fill(story.ready, { percent: percent(r.share) }), 'Везу!'))) return;
@@ -184,20 +216,149 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     }
   };
 
+  // ─── Гонка с Артёмом ─────────────────────────────────────────────────────────
+
+  /** Вызов Артёма в начале главы (один раз). false — экран закрыт. */
+  const raceIntro = async (): Promise<boolean> => {
+    if (!rival || !info || seen('race') || !raceActive(progress(), chapterId)) return true;
+    const r = chapterResult(progress(), info);
+    if (r.pointsDone >= r.points) return true;
+    const value = await choose(rival.challenge, 'Поехали');
+    if (value === undefined) return false;
+    see('race');
+    if (value) see(`race:${value}`);
+    updateTask();
+    return true;
+  };
+
+  /** Время в районе: секунда за секундой, пока город открыт и не на паузе. */
+  let ticks = 0;
+  const raceTimer = window.setInterval(() => {
+    if (stopped || !info || !rival || !seen('race') || document.hidden || !game.scene.isActive('city')) return;
+    const data = progress();
+    if (!raceActive(data, chapterId)) return;
+    raceTick(data, chapterId, 1);
+    const done = rivalProgress(data, info, rival) >= 1;
+    if (done && !rivalDone) {
+      rivalDone = true;
+      scene?.setRival(false);
+      showToast(`Артём уже доставил ${rival.parcel}! Но гонку решает ещё и точность.`);
+    }
+    if (++ticks % 10 === 0) saveProgress();
+    updateTask();
+  }, 1000);
+
+  const raceView = (result: RaceResult) => {
+    const cell = (text: string, win: boolean) => el('td', { class: win ? 'is-win' : '' }, text);
+    const minutes = (sec: number) => durationLabel(sec * 1000);
+    return el(
+      'section',
+      { class: 'race', 'aria-label': 'Гонка с Артёмом' },
+      el('p', { class: 'race__title' }, '🛵 Гонка с Артёмом'),
+      el(
+        'table',
+        { class: 'race__table' },
+        el('tr', {}, el('th', {}, ''), el('th', {}, 'Время'), el('th', {}, 'Точность')),
+        el('tr', {}, el('th', {}, 'Ты'), cell(minutes(result.you.time), result.faster === 'you'), cell(`${result.you.accuracy}%`, result.accurate === 'you')),
+        el('tr', {}, el('th', {}, 'Артём'), cell(minutes(result.artem.time), result.faster === 'artem'), cell(`${result.artem.accuracy}%`, result.accurate === 'artem')),
+      ),
+      el('p', { class: 'race__quote' }, `Артём: «${raceReaction(result.faster, result.accurate).text}»`),
+      result.coins ? el('p', { class: 'rewards__line rewards__xp' }, `+${result.coins} монет за гонку`) : null,
+    );
+  };
+
+  // ─── Поручения ───────────────────────────────────────────────────────────────
+
+  /** Предложить поручение. false — экран закрыт. */
+  const offerSide = async (): Promise<boolean> => {
+    if (!quest) return true;
+    const value = await choose(quest.offer, 'Поехали');
+    if (value === undefined) return false;
+    if (value === 'accept') {
+      acceptSide(progress(), chapterId);
+      saveProgress();
+      showSideMarker();
+    } else sideDeclined = true;
+    updateTask();
+    return true;
+  };
+
+  const showSideMarker = () => {
+    if (!quest || !scene || sideStatus(progress(), chapterId) !== 'taken') return;
+    scene.showSide(quest.stops[Math.min(1, sideStep(progress(), chapterId))].label);
+  };
+
+  const onSide = async () => {
+    if (!quest || sideStatus(progress(), chapterId) !== 'taken') return;
+    const step = sideStep(progress(), chapterId);
+    if (!(await cutscene(step === 0 ? quest.stops[0].lines : sideDone(quest), step === 0 ? 'Везу!' : 'Поехали'))) return;
+    const out = advanceSide(progress(), chapterId, Date.now());
+    saveProgress();
+    scene?.removeSide();
+    if (out.done) {
+      if (out.coins) pop(`+${out.coins} монет`);
+      if (out.xp) pop(`+${out.xp} опыта`);
+      levelUpToast(out.levelUp);
+      playSound('reward');
+    } else showSideMarker();
+    updateTask();
+  };
+
+  // ─── События в пути ──────────────────────────────────────────────────────────
+
+  const onEvent = (kind: keyof typeof EVENTS) => {
+    const ev = EVENTS[kind];
+    const id = pickEventQuestion(kind, (qid) => progress().questions[qid], Math.random, recentEvents);
+    const question = questionsById.get(id);
+    if (stopped || !question) {
+      scene?.endEvent();
+      return;
+    }
+    recentEvents.unshift(id);
+    recentEvents.length = Math.min(recentEvents.length, 4);
+    sheetMode = 'event';
+    sheetTitle.textContent = ev.title;
+    sheetFoot.hidden = true;
+    eventFoot.hidden = false;
+    sheetBody.scrollTop = 0;
+    sheetBody.replaceChildren(
+      el('p', { class: 'event-intro' }, ev.intro),
+      renderQuestionCard(question, (result) => {
+        answered++;
+        if (result.isCorrect) correct++;
+        updateScore();
+        const data = progress();
+        const out = recordAnswer(data, question.id, result.isCorrect, Date.now());
+        saveProgress();
+        if (out.xp) pop(`+${out.xp} опыта`);
+        if (out.coins) pop(`+${out.coins} монет`);
+        if (out.review === 'added' || out.review === 'reset') pop('В работу над ошибками', 'bad');
+        if (out.review === 'cleared') pop('Ошибка закреплена!');
+        levelUpToast(out.levelUp);
+        goalToast(out, data);
+        eventFoot.hidden = true;
+        showGo('Поехали');
+      }),
+    );
+    openSheet();
+  };
+
   /** Посылка доставлена: финал главы, награды, следующая глава. */
   const onGoal = async () => {
     if (!info || !story || !mapping) return;
     if (!(await cutscene(story.finale, 'Награда'))) return;
     const out = deliver(progress(), info, Date.now());
+    const race = rival ? settleRace(progress(), info, rival, Date.now()) : undefined;
     saveProgress();
     goalShown = false;
     scene?.removeGoal();
+    scene?.setRival(false);
     hint.textContent = baseHint();
     updateTask();
-    await paused(() => rewards(out));
+    await paused(() => rewards(out, race));
   };
 
-  const rewards = (out: DeliveryOutcome) => {
+  const rewards = (out: DeliveryOutcome, race?: RaceResult) => {
     const chapters = mapping!.chapters;
     const i = chapters.findIndex((c) => c.id === chapterId);
     const next = chapters[i + 1];
@@ -208,6 +369,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       el('p', { class: 'rewards__line' }, `Верных ответов в главе: ${percent(r.share)}%`),
       out.xp ? el('p', { class: 'rewards__line rewards__xp' }, `+${out.xp} опыта`) : null,
       levelMeter(level, progress().xp),
+      race ? raceView(race) : null,
       el('p', { class: 'rewards__next' }, next ? `Открыта глава ${next.number}: «${next.title}»` : 'Открыт финал: подготовка к экзамену в ГИБДД'),
     ];
     const body = el('div', { class: 'rewards' }, ...lines);
@@ -245,6 +407,13 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         ? el('p', { class: 'rewards__line' }, `Красные точки — там были ошибки (${r.pointsWithMistakes.length}). В них повторятся только вопросы с ошибкой.`)
         : null,
       state?.delivered ? el('p', { class: 'rewards__line' }, `Глава пройдена: ${starsText(state.stars)}.`) : null,
+      rival && raceActive(progress(), chapterId) && seen('race')
+        ? el('p', { class: 'rewards__line' }, `Гонка: Артём везёт ${rival.parcel} — ${rivalProgress(progress(), info, rival) >= 1 ? 'уже доставил' : `проехал ${Math.floor(rivalProgress(progress(), info, rival) * 100)}% пути`}. Итог — при доставке посылки: кто быстрее и кто точнее.`)
+        : null,
+      quest && sideStatus(progress(), chapterId) === 'taken'
+        ? el('p', { class: 'rewards__line' }, `Поручение «${quest.title}»: оранжевая отметка «${quest.stops[Math.min(1, sideStep(progress(), chapterId))].label}».`)
+        : null,
+      quest && sideStatus(progress(), chapterId) === 'done' ? el('p', { class: 'rewards__line' }, `Поручение «${quest.title}» выполнено.`) : null,
       el(
         'p',
         { class: 'rewards__hint' },
@@ -252,18 +421,27 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       ),
     ];
     let again = false;
+    let takeSide = false;
+    const canTake = !!quest && !state?.delivered && seen('beat1') && sideStatus(progress(), chapterId) === 'none';
     await paused(() =>
       showModal('Задание главы', el('div', { class: 'rewards' }, ...rows), [
         { label: 'Понятно', primary: true },
+        ...(canTake ? [{ label: `Поручение: «${quest!.title}»`, onClick: () => (takeSide = true) }] : []),
         { label: 'Вступление ещё раз', onClick: () => (again = true) },
       ]),
     );
+    if (takeSide) {
+      sideDeclined = false;
+      await offerSide();
+    }
     if (again) await cutscene(story.intro);
   };
 
   const host: CityData['host'] = {
     showQuestion(question, _placement, template, series) {
       if (stopped) return;
+      sheetMode = 'point';
+      eventFoot.hidden = true;
       sheetTitle.textContent = series.caption ?? (series.total > 1 ? `${template.title} · вопрос ${series.index + 1} из ${series.total}` : template.title);
       sheetFoot.hidden = true;
       sheetBody.scrollTop = 0;
@@ -274,6 +452,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
           updateScore();
           const data = progress();
           const out = recordAnswer(data, question.id, result.isCorrect, Date.now());
+          raceAnswer(data, chapterId, result.isCorrect);
           const stars = info ? refreshStars(data, info) : undefined;
           saveProgress();
           if (out.xp) pop(`+${out.xp} опыта`);
@@ -326,6 +505,12 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     onGoal() {
       void onGoal();
     },
+    onSide() {
+      void onSide();
+    },
+    onEvent(kind) {
+      onEvent(kind);
+    },
   };
 
   function showGo(label: string) {
@@ -334,7 +519,21 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     go.focus({ preventScroll: true });
   }
 
+  const endEvent = () => {
+    eventFoot.hidden = true;
+    closeSheet();
+    sheetMode = 'point';
+    hint.textContent = baseHint();
+    hint.hidden = false;
+    scene?.endEvent();
+  };
+  skipEvent.addEventListener('click', endEvent);
+
   go.addEventListener('click', () => {
+    if (sheetMode === 'event') {
+      endEvent();
+      return;
+    }
     closeSheet();
     hint.textContent = baseHint();
     // Следующий вопрос серии: подсказку не показываем, карточка скоро выедет снова.
@@ -365,12 +564,14 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
 
   const unsubscribe = onSettingsChange((s) => {
     scene?.setControl(s.control);
+    if (scene) scene.eventsEnabled = s.events;
     hint.textContent = baseHint();
   });
 
   void Promise.all([loadQuestions(), loadMapping()]).then(async ([questions, loaded]) => {
     if (stopped) return;
     mapping = loaded;
+    questionsById = new Map(questions.map((q) => [q.id, q]));
     const chapter = mapping.chapters.find((c) => c.id === chapterId);
     title.textContent = chapter?.title ?? 'Город';
     info = chapterInfo(mapping, chapterId);
@@ -385,6 +586,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         const s = progress().questions[id];
         return !!s && !s.ok;
       },
+      events: getSettings().events,
     };
     game.scene.sleep('street');
     const city = game.scene.getScene('city') as CityScene;
@@ -403,14 +605,22 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       if (!(await cutscene(story.intro))) return;
       see('intro');
     }
+    if (!(await raceIntro())) return;
     await created;
-    if (!stopped) await advanceStory();
+    if (stopped) return;
+    // Артём ездит по району, пока не доставил свою посылку.
+    if (rival && info && seen('race') && raceActive(progress(), chapterId) && rivalProgress(progress(), info, rival) < 1) scene.setRival(true);
+    else rivalDone = true;
+    showSideMarker();
+    await advanceStory();
   });
 
   return {
     element,
     cleanup() {
       stopped = true;
+      window.clearInterval(raceTimer);
+      saveProgress();
       unsubscribe();
       if (game.scene.isActive('interior') || game.scene.isPaused('interior')) game.scene.stop('interior');
       if (game.scene.isActive('city') || game.scene.isPaused('city')) game.scene.stop('city');

@@ -37,7 +37,7 @@ test('вся история: 10 глав по очереди, финал, кон
   await page.addInitScript(
     (value) => {
       if (sessionStorage.getItem('seeded')) return;
-      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false }));
       localStorage.setItem('pdd-game:progress', JSON.stringify(value));
       sessionStorage.setItem('seeded', '1');
     },

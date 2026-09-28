@@ -30,6 +30,9 @@ export class Player {
   private heading = 0;
   private arrived = true;
   private blinkTime = 0;
+  /** Сдвиг вправо от полосы (прижаться к обочине, пропуская скорую). */
+  private nudge = 0;
+  private nudgeTarget = 0;
   onArrive?: () => void;
 
   constructor(
@@ -191,13 +194,20 @@ export class Player {
       const diff = Phaser.Math.Angle.Wrap(targetAngle - this.heading);
       this.heading += diff * Math.min(1, dt * 12);
     }
+    this.nudge += Math.max(-20 * dt, Math.min(20 * dt, this.nudgeTarget - this.nudge));
     this.place();
     this.updateBlinkers(dt, index);
   }
 
+  /** Прижаться вправо на `px` (0 — вернуться в полосу). */
+  setNudge(px: number) {
+    this.nudgeTarget = px;
+  }
+
   private place() {
     const p = this.position;
-    this.container.setPosition(p.x, p.y).setRotation(this.heading);
+    const right = { x: Math.cos(this.heading), y: Math.sin(this.heading) };
+    this.container.setPosition(p.x + right.x * this.nudge, p.y + right.y * this.nudge).setRotation(this.heading);
   }
 
   /** Указатель поворота: за BLINK_BEFORE до поворота и во время него. */

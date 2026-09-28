@@ -28,11 +28,16 @@ function unmount(root: HTMLElement) {
   root.remove();
 }
 
-/** Показать реплики по одной. Промис выполняется, когда сцена закончилась или пропущена. */
-export function playCutscene(lines: readonly Line[], opts: { last?: string } = {}): Promise<void> {
-  if (!lines.length) return Promise.resolve();
+/**
+ * Показать реплики по одной. Промис выполняется, когда сцена закончилась или пропущена, и
+ * возвращает выбор игрока, если в сцене был выбор (реплика с вариантами ответа).
+ */
+export function playCutscene(source: readonly Line[], opts: { last?: string } = {}): Promise<string | undefined> {
+  if (!source.length) return Promise.resolve(undefined);
   return new Promise((resolve) => {
+    const lines = [...source];
     let index = 0;
+    let chosen: string | undefined;
     const avatar = el('span', { class: 'avatar', 'aria-hidden': 'true' });
     const name = el('span', { class: 'cutscene__name' });
     const role = el('span', { class: 'cutscene__role' });
@@ -41,12 +46,20 @@ export function playCutscene(lines: readonly Line[], opts: { last?: string } = {
     const textEl = el('p', { class: 'cutscene__text', 'aria-live': 'polite' });
     const next = el('button', { class: 'btn btn--primary', type: 'button', 'data-focus': true });
     const skip = el('button', { class: 'btn btn--quiet', type: 'button' }, 'Пропустить');
-    const card = el('div', { class: 'cutscene__card' }, el('div', { class: 'cutscene__head' }, who, count), textEl, el('div', { class: 'cutscene__actions' }, skip, next));
+    const actions = el('div', { class: 'cutscene__actions' }, skip, next);
+    const choices = el('div', { class: 'cutscene__choices', role: 'group', 'aria-label': 'Ваш ответ', hidden: true });
+    const card = el('div', { class: 'cutscene__card' }, el('div', { class: 'cutscene__head' }, who, count), textEl, actions, choices);
     const root = el('div', { class: 'cutscene', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Сюжет' }, card);
 
     const finish = () => {
       unmount(root);
-      resolve();
+      resolve(chosen);
+    };
+    const advance = () => {
+      if (index < lines.length - 1) {
+        index++;
+        show();
+      } else finish();
     };
     const show = () => {
       const line = lines[index];
@@ -65,19 +78,45 @@ export function playCutscene(lines: readonly Line[], opts: { last?: string } = {
       const last = index === lines.length - 1;
       next.textContent = last ? (opts.last ?? 'Поехали') : 'Далее';
       skip.hidden = last;
+      // Выбор: вместо «Далее» — варианты ответа; пропустить выбор нельзя.
+      const options = line.choices ?? [];
+      actions.hidden = options.length > 0;
+      choices.hidden = options.length === 0;
+      choices.replaceChildren(
+        ...options.map((o, i) =>
+          el(
+            'button',
+            {
+              class: `btn ${i === 0 ? 'btn--primary' : 'btn--secondary'}`,
+              type: 'button',
+              onclick: () => {
+                chosen = o.value;
+                lines.splice(index + 1, 0, ...(o.reply ?? []));
+                advance();
+              },
+            },
+            o.label,
+          ),
+        ),
+      );
       card.classList.remove('is-in');
       void card.offsetWidth;
       card.classList.add('is-in');
+      if (options.length) choices.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
     };
-    next.addEventListener('click', () => {
-      if (index < lines.length - 1) {
-        index++;
-        show();
-      } else finish();
+    next.addEventListener('click', advance);
+    // «Пропустить» — к ближайшему выбору (его пропустить нельзя) или к концу сцены.
+    skip.addEventListener('click', () => {
+      const stop = lines.findIndex((l, i) => i > index && l.choices?.length);
+      if (stop < 0) return finish();
+      index = stop;
+      show();
     });
-    skip.addEventListener('click', finish);
     // Касание текста — тоже «Далее»: читать и листать одним пальцем.
-    textEl.addEventListener('click', () => next.click());
+    textEl.addEventListener('click', () => {
+      if (actions.hidden) return;
+      next.click();
+    });
     show();
     mount(root);
   });

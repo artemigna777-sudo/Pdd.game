@@ -71,6 +71,39 @@ export function drawCar(g: Phaser.GameObjects.Graphics, color: number, courier =
   lights(g, w, h);
 }
 
+export type CarSticker = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker';
+
+/** Машина курьера с покраской и наклейкой из гаража (размер как у легковой). */
+export function drawPlayerCar(g: Phaser.GameObjects.Graphics, color: number, sticker: CarSticker) {
+  drawCar(g, color, true);
+  const { w, h } = VEHICLE_SIZE.car;
+  const hood = -h / 2 + 4;
+  switch (sticker) {
+    case 'stripes':
+      g.fillStyle(0xffffff, 0.9).fillRect(-4, -h / 2, 2.5, h).fillRect(1.5, -h / 2, 2.5, h);
+      break;
+    case 'flash':
+      g.fillStyle(0xffd60a).fillTriangle(1, hood - 3, -3, hood + 1.5, 0, hood + 1.5).fillTriangle(0, hood + 0.5, 3, hood + 0.5, -1, hood + 5);
+      break;
+    case 'star':
+      g.fillStyle(0xffffff).fillTriangle(0, hood - 3, -3, hood + 2.5, 3, hood + 2.5).fillTriangle(0, hood + 4, -3, hood - 1, 3, hood - 1);
+      break;
+    case 'heart':
+      g.fillStyle(0xff4d6d).fillCircle(-1.3, hood - 0.5, 1.6).fillCircle(1.3, hood - 0.5, 1.6).fillTriangle(-2.9, hood, 2.9, hood, 0, hood + 3.2);
+      break;
+    case 'flames':
+      g.fillStyle(0xff5400).fillTriangle(-w / 2 + 1, -h / 2 + 2, -w / 2 + 5, -h / 2 + 2, -w / 2 + 2, -h / 2 + 14).fillTriangle(w / 2 - 1, -h / 2 + 2, w / 2 - 5, -h / 2 + 2, w / 2 - 2, -h / 2 + 14);
+      g.fillStyle(0xffbd00).fillTriangle(-w / 2 + 1.5, -h / 2 + 2, -w / 2 + 4, -h / 2 + 2, -w / 2 + 2.3, -h / 2 + 9).fillTriangle(w / 2 - 1.5, -h / 2 + 2, w / 2 - 4, -h / 2 + 2, w / 2 - 2.3, -h / 2 + 9);
+      break;
+    case 'checker':
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2 === 0) g.fillStyle(0x1b1b1b).fillRect(-4 + i * 2, hood - 2 + j * 2, 2, 2);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2 === 1) g.fillStyle(0xffffff).fillRect(-4 + i * 2, hood - 2 + j * 2, 2, 2);
+      break;
+    case 'none':
+      break;
+  }
+}
+
 export function drawVehicle(g: Phaser.GameObjects.Graphics, kind: VehicleKind, color?: number) {
   const { w, h } = VEHICLE_SIZE[kind];
   switch (kind) {

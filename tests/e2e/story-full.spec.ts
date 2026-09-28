@@ -73,7 +73,7 @@ test('вся история: 10 глав по очереди, финал, кон
     await page.locator('.slots .btn').nth(slot).tap();
     for (let i = 1; i <= 20; i++) {
       await answerCard(page);
-      await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше' }).tap();
+      await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше', exact: true }).tap();
     }
     await expect(page.locator('.banner')).toHaveText('Контрольный билет пройден без ошибок!');
     await page.getByRole('button', { name: 'К финалу' }).tap();

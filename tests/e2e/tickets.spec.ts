@@ -18,7 +18,7 @@ async function passTicketWithFirstOptions(page: Page, ticket: number) {
   for (let i = 1; i <= 20; i++) {
     await expect(page.locator('.card__meta')).toContainText(`Вопрос ${i}`);
     await page.locator('.option').first().tap();
-    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше' }).tap();
+    await page.getByRole('button', { name: i === 20 ? 'Показать результат' : 'Дальше', exact: true }).tap();
   }
 }
 

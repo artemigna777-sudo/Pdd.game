@@ -149,6 +149,8 @@ const SIGNAL_CYCLE = 16;
 const LOOK_AHEAD = 110;
 const TAP_MOVE_LIMIT = 10;
 const JOY_RADIUS = 56;
+/** Палец дальше края джойстика в столько раз — «газ» (быстрее обычного хода). */
+const JOY_GAS_REACH = 1.5;
 
 export class CityScene extends Phaser.Scene {
   private host!: CityHost;
@@ -205,7 +207,10 @@ export class CityScene extends Phaser.Scene {
   private pinGfx!: Phaser.GameObjects.Graphics;
   private joyGfx!: Phaser.GameObjects.Graphics;
   private pointerDown?: { x: number; y: number; time: number };
-  private joy = { active: false, dir: { x: 0, y: -1 } as Vec, mag: 0, knob: { x: 0, y: 0 } };
+  /** Джойстик: направление, сила (0…1) и насколько далеко палец (в радиусах, без ограничения). */
+  private joy = { active: false, dir: { x: 0, y: -1 } as Vec, mag: 0, reach: 0, knob: { x: 0, y: 0 } };
+  /** Нажата педаль «Газ». */
+  private pedalGas = false;
   private joyWasActive = false;
 
   constructor() {
@@ -334,7 +339,12 @@ export class CityScene extends Phaser.Scene {
   /** Педаль нажата или отпущена. */
   setPedal(kind: 'brake' | 'gas', on: boolean) {
     if (kind === 'brake') this.player.brake = on;
-    else this.player.gas = on;
+    else this.pedalGas = on;
+  }
+
+  /** «Газ» с джойстика: палец отведён дальше края круга. */
+  private get joyGas(): boolean {
+    return this.control === 'joystick' && this.joy.active && this.joy.reach >= JOY_GAS_REACH;
   }
 
   /** Новичку — подсказки перед нарушением, опытному — без них. */
@@ -913,7 +923,7 @@ export class CityScene extends Phaser.Scene {
   private onPointerDown(pointer: Phaser.Input.Pointer) {
     this.pointerDown = { x: pointer.x, y: pointer.y, time: this.time.now };
     if (this.control === 'joystick' && !this.active && !this.event && !this.overview) {
-      this.joy = { active: true, dir: this.joy.dir, mag: 0, knob: { x: 0, y: 0 } };
+      this.joy = { active: true, dir: this.joy.dir, mag: 0, reach: 0, knob: { x: 0, y: 0 } };
     }
   }
 
@@ -925,6 +935,7 @@ export class CityScene extends Phaser.Scene {
     const k = l > JOY_RADIUS ? JOY_RADIUS / l : 1;
     this.joy.knob = { x: dx * k, y: dy * k };
     this.joy.mag = Math.min(1, l / JOY_RADIUS);
+    this.joy.reach = l / JOY_RADIUS;
     if (l > 4) this.joy.dir = normalize({ x: dx, y: dy });
   }
 
@@ -933,6 +944,7 @@ export class CityScene extends Phaser.Scene {
     this.pointerDown = undefined;
     this.joy.active = false;
     this.joy.mag = 0;
+    this.joy.reach = 0;
     if (!down || this.active || this.event) return;
     const moved = Math.hypot(pointer.x - down.x, pointer.y - down.y) / PIXEL_RATIO;
     if (moved > TAP_MOVE_LIMIT) return;
@@ -963,7 +975,7 @@ export class CityScene extends Phaser.Scene {
     if (this.active || this.event || this.violation) return;
     const heading = { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) };
     // Палец на джойстике — едем, куда он ведёт; палец убран, но нажат «газ» — едем вперёд по дороге.
-    const stick = this.joy.active && this.joy.mag >= 0.25 ? { dir: this.joy.dir, mag: this.joy.mag } : this.player.gas ? { dir: heading, mag: 1 } : undefined;
+    const stick = this.joy.active && this.joy.mag >= 0.25 ? { dir: this.joy.dir, mag: this.joy.mag } : this.pedalGas ? { dir: heading, mag: 1 } : undefined;
     if (!stick) {
       if (this.joyWasActive) {
         this.joyWasActive = false;
@@ -1356,6 +1368,7 @@ export class CityScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number) {
     const dt = Math.min(deltaMs, 50) / 1000;
+    this.player.gas = this.pedalGas || this.joyGas;
     if (this.control === 'joystick') this.driveJoystick();
     this.player.update(dt);
     this.active?.kit?.update(dt);
@@ -1461,9 +1474,12 @@ export class CityScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const scaleK = PIXEL_RATIO / cam.zoom;
     const base = cam.getWorldPoint(this.pointerDown.x, this.pointerDown.y);
+    const gas = this.joyGas;
     g.fillStyle(0x000000, 0.25).fillCircle(base.x, base.y, JOY_RADIUS * scaleK);
     g.lineStyle(2 * scaleK, 0xffffff, 0.6).strokeCircle(base.x, base.y, JOY_RADIUS * scaleK);
-    g.fillStyle(0xffb703, 0.9).fillCircle(base.x + this.joy.knob.x * scaleK, base.y + this.joy.knob.y * scaleK, 22 * scaleK);
+    // Внешнее кольцо — «газ»: палец за ним — машина разгоняется выше обычного хода.
+    g.lineStyle(3 * scaleK, 0xf77f00, gas ? 0.95 : 0.4).strokeCircle(base.x, base.y, JOY_RADIUS * JOY_GAS_REACH * scaleK);
+    g.fillStyle(gas ? 0xf77f00 : 0xffb703, 0.9).fillCircle(base.x + this.joy.knob.x * scaleK, base.y + this.joy.knob.y * scaleK, 22 * scaleK);
   }
 
   private drawPin(p: Vec) {

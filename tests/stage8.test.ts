@@ -43,10 +43,10 @@ test('чистая езда: счётчик растёт, нарушение с�
   addCleanDistance(data, 'ch1', Number.NaN);
   addCleanDistance(data, 'ch1', -5);
   assert.equal(data.drive!.total, 1300, 'мусор не считается');
-  // 150 px/s — 60 км/ч, поэтому 9000 px — ровно километр.
-  assert.equal(distanceLabel(9000), '1 км');
-  assert.equal(distanceLabel(12_000), '1,3 км');
-  assert.equal(distanceLabel(2000), '220 м');
+  // 180 px/s — 60 км/ч, поэтому 10 800 px — ровно километр.
+  assert.equal(distanceLabel(10_800), '1 км');
+  assert.equal(distanceLabel(14_400), '1,3 км');
+  assert.equal(distanceLabel(2000), '180 м');
 });
 
 test('доставка без нарушений: +1 звезда (не больше трёх) и +100 опыта', () => {

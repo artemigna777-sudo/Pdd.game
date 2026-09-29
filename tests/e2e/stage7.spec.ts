@@ -4,6 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { RIVALS, rivalSeconds } from '../../src/story/extras.ts';
 
 const QUESTIONS: { id: string; correct: number }[] = JSON.parse(readFileSync('data/questions.json', 'utf8'));
 const CORRECT = new Map(QUESTIONS.map((q) => [q.id, q.correct]));
@@ -138,8 +139,8 @@ test('гонка с Артёмом: вызов с выбором, мопед н�
   const questions: Record<string, unknown> = {};
   for (const q of MAPPING.questions) if (q.chapter === 'ch1' && q.point !== ROAD_POINT) questions[q.id] = { n: 1, ok: true, ever: true, at: 1 };
   const points = MAPPING.chapters[0].points.map((p) => p.id).filter((p) => p !== ROAD_POINT);
-  // Время Артёма в главе 1 (src/story/extras.ts): 22 с на вопрос и 15 с на точку.
-  const artem = MAPPING.questions.filter((q) => q.chapter === 'ch1').length * 22 + MAPPING.chapters[0].points.length * 15;
+  // Время Артёма в главе 1 (src/story/extras.ts).
+  const artem = rivalSeconds(RIVALS.ch1, MAPPING.questions.filter((q) => q.chapter === 'ch1').length, MAPPING.chapters[0].points.length);
   await seed(page, {
     xp: 700,
     coins: 0,

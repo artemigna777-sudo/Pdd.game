@@ -438,7 +438,8 @@ export class TrafficSim {
     const stop = this.stopS(lane, car.half);
     const behind = this.playerBehind(car, env);
     const escort = behind < 150;
-    let target = lane.speed * (escort ? Math.max(1.15, car.cruise) : car.cruise);
+    // Игрок сзади: машина прибавляет, чтобы не мешать (игрок едет на 20% быстрее потока).
+    let target = lane.speed * (escort ? Math.max(1.35, car.cruise) : car.cruise);
 
     const gap = this.leaderGap(car, env);
     if (gap < Infinity) target = Math.min(target, Math.sqrt(2 * BRAKE * Math.max(0, gap - MIN_GAP)));

@@ -165,7 +165,7 @@ test('красный: тормоз перед стоп-линией — без �
 test('газ: быстрее разрешённого на 20 км/ч — превышение и вопрос о скорости; верный ответ — предупреждение', async ({ page }) => {
   await seed(page, progressCh1());
   await openChapter1(page);
-  // Длинная городская улица без светофора, перехода и точек впереди; машина уже едет 72 км/ч.
+  // Длинная городская улица без светофора, перехода и точек впереди; машина уже едет 78 км/ч.
   await city(page, (s) => {
     const busy = new Set([...s.rules.crossings.map((c: Any) => c.road), ...s.rules.noStop.map((z: Any) => z.road)]);
     const l = [...s.graph.lanes.values()].find(
@@ -174,10 +174,10 @@ test('газ: быстрее разрешённого на 20 км/ч — пре
     s.player.placeAt(l, 30);
     s.destination = { lane: l, s: l.length - 10 };
     s.driveTo(s.destination);
-    s.player.speed = 180;
+    s.player.speed = 234;
   });
   await pedal(page, 'gas', true);
-  await expect(page.locator('.rule-hint')).toContainText('отпустите «Газ»', SLOW);
+  await expect(page.locator('.rule-hint')).toContainText('сбавьте скорость', SLOW);
   await expect.poll(() => violation(page), SLOW).toBe('speeding');
   await expect(page.locator('.sheet__title')).toHaveText('Нарушение: Превышение скорости', SLOW);
   await expect(page.locator('.violation-intro')).toContainText('можно 60');
@@ -323,4 +323,34 @@ test('«Чистая езда»: глава без нарушений — при
   const saved = await readProgress(page);
   expect(saved.chapters.ch1.stars).toBe(2);
   expect(saved.chapters.ch1.drive.star).toBe(true);
+});
+
+test('джойстик: палец за оранжевым кольцом — «газ», быстрее 60 км/ч; дальше — превышение', async ({ page, context }) => {
+  await seed(page, progressCh1(), { control: 'joystick' });
+  await openChapter1(page);
+  // Длинная прямая через весь район: самый длинный ряд перекрёстков без светофоров и переходов впереди.
+  const heading = await city(page, (s) => {
+    const busy = new Set([...s.rules.crossings.map((c: Any) => c.road), ...s.rules.noStop.map((z: Any) => z.road)]);
+    const l = [...s.graph.lanes.values()].find(
+      (x: Any) => (x.road.kind ?? 'city') === 'city' && x.length > 330 && !busy.has(x.road.id) && !s.rules.signals.includes(x.to.id) && !s.pois.some((p: Any) => p.lane === x),
+    );
+    s.player.placeAt(l, 20);
+    return [l.dir.x, l.dir.y] as [number, number];
+  });
+  const cdp = await context.newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x = 0, y = 0) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  // Палец — до края круга: обычный ход, не быстрее 60 км/ч.
+  await touch('touchStart', 195, 500);
+  for (let i = 1; i <= 5; i++) await touch('touchMove', 195 + heading[0] * i * 12, 500 + heading[1] * i * 12);
+  await page.waitForTimeout(1500);
+  expect(await city(page, (s) => s.drive.kmh)).toBeLessThanOrEqual(60);
+  // Дальше оранжевого кольца — «газ».
+  for (let i = 6; i <= 10; i++) await touch('touchMove', 195 + heading[0] * i * 12, 500 + heading[1] * i * 12);
+  await expect.poll(() => city(page, (s) => s.drive.kmh), SLOW).toBeGreaterThan(62);
+  await expect(page.locator('.rule-hint')).toContainText('сбавьте скорость', SLOW);
+  // Не отпускаем — превышение.
+  await expect.poll(() => violation(page), SLOW).toBe('speeding');
+  await touch('touchEnd');
+  await expect(page.locator('.sheet__title')).toHaveText('Нарушение: Превышение скорости', SLOW);
 });

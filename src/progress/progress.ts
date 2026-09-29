@@ -9,6 +9,7 @@
  * уходит из работы над ошибками. Дни календарные: ошибка вечером — повтор завтра с утра.
  */
 import { load, save } from '../storage.ts';
+import { KMH_PER_PX } from '../world/rules.ts';
 
 export const REVIEW_DAYS = [1, 3, 7] as const;
 
@@ -39,8 +40,8 @@ export const XP = {
  * (но не больше трёх) и +100 опыта; одно нарушение — +50 опыта, два — +25, больше — ничего.
  */
 export const CLEAN_XP = [100, 50, 25] as const;
-/** Метров в пикселе карты (по спидометру: 150 px/s — 60 км/ч). */
-export const METERS_PER_PX = 0.4 / 3.6;
+/** Метров в пикселе карты (по спидометру машины игрока). */
+export const METERS_PER_PX = KMH_PER_PX / 3.6;
 
 export const LEVELS = [
   { title: 'Ученик', xp: 0 },

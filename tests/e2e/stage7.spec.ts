@@ -162,7 +162,7 @@ test('гонка с Артёмом: вызов с выбором, мопед н�
 
   // Время идёт — Артём доставил свою посылку раньше.
   await expect(page.locator('#toast')).toContainText('Артём уже доставил', SLOW);
-  await expect(page.locator('.city-task')).toContainText('Артём доставил');
+  await expect(page.locator('.city-task')).toContainText('🛵 доставил');
 
   // Последняя точка — и доставка.
   await page.evaluate((id) => {

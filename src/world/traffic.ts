@@ -138,6 +138,10 @@ const WALK_DESPAWN = 950;
 const WALK_SPAWN_MAX = 620;
 
 const SIZES: Record<CarKind, number> = { car: 20, truck: 31, bus: 43, moto: 12 };
+/** Заездные карманы у точек (длина, как на карте): тротуар здесь идёт за карманом. */
+const POCKETS: Partial<Record<string, number>> = { 'bus-stop': 150, parking: 190, inspector: 120, 'first-aid': 120 };
+/** Ширина кармана: на столько тротуар за ним дальше от дороги. */
+const POCKET_WIDTH = 28;
 const COLORS = [0xe63946, 0x457b9d, 0x2a9d8f, 0xf4a261, 0x8d99ae, 0x6a4c93, 0xf1faee, 0x264653];
 
 const inRect = (p: Vec, r: { x: number; y: number; w: number; h: number }, m = 0) => p.x > r.x - m && p.x < r.x + r.w + m && p.y > r.y - m && p.y < r.y + r.h + m;
@@ -153,6 +157,8 @@ export class TrafficSim {
   private readonly busy = new Map<string, number>();
   /** Переходы на участках дорог (id точки → переход), чтобы пешеход мог его заметить. */
   private readonly roadCrossings = new Map<string, Array<{ key: string; center: Vec }>>();
+  /** Карманы на дорогах: середина кармана на оси дороги, сторона, половина длины. */
+  private readonly pockets = new Map<string, Array<{ center: Vec; side: Vec; dir: Vec; half: number }>>();
   private readonly signalized = new Set<string>();
   private readonly cityRoads: MapRoad[];
   readonly carTarget: number;
@@ -169,6 +175,13 @@ export class TrafficSim {
     for (const point of points) {
       if (point.template === 'signalized') this.signalized.add(point.toward);
       if (point.template === 'crosswalk') this.addRoadCrossing(point);
+      const pocket = POCKETS[point.template];
+      if (pocket) {
+        const stop = graph.pointStop(point);
+        const list = this.pockets.get(stop.lane.road.id) ?? [];
+        list.push({ center: stop.anchor, side: stop.lane.normal, dir: stop.lane.dir, half: pocket / 2 });
+        this.pockets.set(stop.lane.road.id, list);
+      }
     }
     for (const nodeId of this.signalized) this.addJunctionCrossings(nodeId);
     this.cityRoads = graph.map.roads.filter((r) => (r.kind ?? 'city') === 'city' && r.lanes !== 2);
@@ -356,6 +369,11 @@ export class TrafficSim {
     for (const o of this.occupants(node, car)) {
       const ot = this.turnOf(o);
       if (ot.from === lane) return false;
+      // На кольце едут несколько машин: въезжать можно, если у места въезда никого нет.
+      if (node.kind === 'roundabout') {
+        if (distance(o.pos, lane.end) < 100) return false;
+        continue;
+      }
       const okind = ot.kind;
       const opposite = dot(ot.from.dir, lane.dir) < -0.7;
       const pair = opposite && ((kind === 'straight' && okind === 'straight') || (kind === 'right' && okind === 'right'));
@@ -530,8 +548,28 @@ export class TrafficSim {
       return;
     }
     const d = w.len ? scale(sub(w.b, w.a), 1 / w.len) : { x: 0, y: -1 };
-    w.pos = add(w.a, scale(d, w.s));
+    const p = add(w.a, scale(d, w.s));
+    // У кармана остановки или парковки тротуар проходит за карманом.
+    const out = scale(rightNormal(d), w.side);
+    let extra = 0;
+    for (const pk of this.pockets.get(w.road.id) ?? []) {
+      if (dot(out, pk.side) < 0.5) continue;
+      const along = Math.abs(dot(sub(p, pk.center), pk.dir));
+      extra = Math.max(extra, POCKET_WIDTH * Math.max(0, Math.min(1, (pk.half + 18 - along) / 16)));
+    }
+    w.pos = add(p, scale(out, extra));
     w.heading = headingAngle(d);
+  }
+
+  /** Сдвиг тротуара от оси дороги в точке p этой дороги на стороне side (для тестов). */
+  pocketAt(roadId: string, p: Vec, side: Vec): { half: number; along: number } | undefined {
+    let best: { half: number; along: number } | undefined;
+    for (const pk of this.pockets.get(roadId) ?? []) {
+      if (dot(side, pk.side) < 0.5) continue;
+      const along = Math.abs(dot(sub(p, pk.center), pk.dir));
+      if (!best || along - pk.half < best.along - best.half) best = { half: pk.half, along };
+    }
+    return best;
   }
 
   /** Городская дорога из узла в направлении dir. */
@@ -550,7 +588,11 @@ export class TrafficSim {
 
   /** Можно ли пешеходу сейчас переходить по этому переходу. */
   private mayCross(zebra: Zebra, env: TrafficEnv): boolean {
-    if (distance(env.player.pos, zebra.center) < 280) return false;
+    // Игрок правил пока не соблюдает (этап 8), поэтому пешеход не выходит у него перед носом.
+    const p = env.player;
+    const dp = distance(p.pos, zebra.center);
+    if (dp < 220) return false;
+    if (dp < 420 && p.speed > 5 && dot(p.heading, sub(zebra.center, p.pos)) > 0) return false;
     if (this.inZone(zebra.center, env.zones, 40)) return false;
     if (zebra.signalLane) {
       if (env.signal(zebra.signalLane) !== 'red') return false;
@@ -599,22 +641,43 @@ export class TrafficSim {
       }
     }
     w.wait = 0;
-    if (sideCity) return this.setWalk(w, sideCity, node, this.otherEnd(sideCity, node), w.side, 0);
+    // Вокруг перекрёстка тротуар идёт по краю перекрёстка (у широкой дороги он дальше от оси).
+    const edge = this.graph.radius(node.id) + SIDEWALK / 2;
+    const corner = (along: number) => add(add(node, scale(d, along)), scale(n, edge));
+    if (sideCity) {
+      const next = this.otherEnd(sideCity, node);
+      return this.walkVia(w, [w.b, corner(-edge), this.walkLine(sideCity, node, next, w.side).a], { road: sideCity, from: node, to: next, side: w.side, s: 0 });
+    }
     if (!sideAny && straight) {
       const next = this.otherEnd(straight, node);
-      const start = this.walkLine(straight, node, next, w.side).a;
-      w.path = new Polyline([w.b, start]);
-      w.pathT = 0;
-      w.after = { road: straight, from: node, to: next, side: w.side, s: 0 };
-      return;
+      return this.walkVia(w, [w.b, corner(-edge), corner(edge), this.walkLine(straight, node, next, w.side).a], { road: straight, from: node, to: next, side: w.side, s: 0 });
     }
     back();
+  }
+
+  /** Пройти по ломаной (угол квартала), потом — по тротуару `after`. */
+  private walkVia(w: Walker, points: Vec[], after: NonNullable<Walker['after']>) {
+    const pts = points.filter((p, i) => i === 0 || distance(p, points[i - 1]) > 0.5);
+    if (pts.length < 2) return this.setWalk(w, after.road, after.from, after.to, after.side, after.s);
+    w.path = new Polyline(pts);
+    w.pathT = 0;
+    w.after = after;
   }
 
   private stepWalker(w: Walker, dt: number, env: TrafficEnv) {
     w.step += dt * w.speed * 0.25;
     if (w.path) {
-      w.pathT += w.speed * dt;
+      // На переходе игрок едет прямо на пешехода — пешеход ускоряет шаг, а совсем рядом исчезает.
+      let hurry = 1;
+      if (w.crossing) {
+        const p = env.player;
+        const dp = distance(p.pos, w.pos);
+        if (dp < 28) {
+          w.fading = true;
+          this.yielded++;
+        } else if (dp < 240 && p.speed > 5 && dot(p.heading, sub(w.pos, p.pos)) > 0) hurry = 2.6;
+      }
+      w.pathT += w.speed * hurry * dt;
       if (w.pathT >= w.path.length) {
         if (w.crossing) this.busy.set(w.crossing, Math.max(0, (this.busy.get(w.crossing) ?? 1) - 1));
         w.crossing = undefined;

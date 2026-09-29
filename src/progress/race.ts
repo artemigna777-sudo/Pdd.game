@@ -38,6 +38,24 @@ export function raceActive(data: ProgressData, chapterId: string): boolean {
   return !data.chapters[chapterId]?.delivered;
 }
 
+/** Время Артёма в этой главе: вся глава или её часть, оставшаяся на момент вызова. */
+export function rivalTime(data: ProgressData, chapter: ChapterInfo, rival: Rival): number {
+  const from = data.chapters[chapter.id]?.race?.from ?? 0;
+  return Math.max(60, Math.round(rivalSeconds(rival, questionsOf(chapter), chapter.points.length) * (1 - from)));
+}
+
+/**
+ * Гонка началась (вызов Артёма). Если часть точек главы уже пройдена (глава начата до гонки),
+ * Артём проезжает только оставшуюся часть, иначе сравнение было бы нечестным.
+ */
+export function startRace(data: ProgressData, chapterId: string, doneShare: number): void {
+  if (!raceActive(data, chapterId)) return;
+  const state = chapterState(data, chapterId);
+  if (state.race) return;
+  const from = Math.max(0, Math.min(0.95, doneShare));
+  state.race = { time: 0, answers: 0, correct: 0, ...(from > 0 ? { from } : {}) };
+}
+
 /** Время в районе (секунды). */
 export function raceTick(data: ProgressData, chapterId: string, seconds: number): void {
   if (!raceActive(data, chapterId)) return;
@@ -58,7 +76,7 @@ export function raceAnswer(data: ProgressData, chapterId: string, correct: boole
 /** Сколько проехал Артём: доля от 0 до 1 (1 — посылка Артёма доставлена). */
 export function rivalProgress(data: ProgressData, chapter: ChapterInfo, rival: Rival): number {
   const time = data.chapters[chapter.id]?.race?.time ?? 0;
-  return Math.min(1, time / rivalSeconds(rival, questionsOf(chapter), chapter.points.length));
+  return Math.min(1, time / rivalTime(data, chapter, rival));
 }
 
 const winner = (you: number, artem: number, lessIsBetter: boolean, eps: number): Winner =>
@@ -69,7 +87,7 @@ export function raceResult(data: ProgressData, chapter: ChapterInfo, rival: Riva
   const race = data.chapters[chapter.id]?.race;
   if (!race || race.answers < MIN_ANSWERS) return undefined;
   const you = { time: race.time, accuracy: Math.round((race.correct / race.answers) * 100) };
-  const artem = { time: rivalSeconds(rival, questionsOf(chapter), chapter.points.length), accuracy: rival.accuracy };
+  const artem = { time: rivalTime(data, chapter, rival), accuracy: rival.accuracy };
   const faster = winner(you.time, artem.time, true, 30);
   const accurate = winner(you.accuracy, artem.accuracy, false, 0);
   const coins = (faster === 'you' ? RACE_COINS.faster : 0) + (accurate === 'you' ? RACE_COINS.accurate : 0);

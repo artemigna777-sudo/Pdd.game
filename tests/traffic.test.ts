@@ -79,8 +79,12 @@ test('поток: машины не наезжают друг на друга, �
   }
 });
 
-test('пешеходы: только тротуары и переходы; на переходе машины ждут', () => {
-  const { graph, sim, signal, tick } = setup('ch3', 3);
+test('пешеходы: только тротуары (за карманами остановок — тоже) и переходы; на переходе машины ждут', () => {
+  for (const chapterId of ['ch3', 'ch9']) walkersOn(chapterId);
+});
+
+function walkersOn(chapterId: string) {
+  const { graph, sim, signal, tick } = setup(chapterId, 3);
   const lane = [...graph.lanes.values()].find((l) => l.length > 300)!;
   // Игрок далеко за краем района — пешеходам ничего не мешает переходить.
   const env = envFor(graph, lane, 0, signal);
@@ -90,6 +94,7 @@ test('пешеходы: только тротуары и переходы; на 
   assert.ok(sim.walkers.length >= 6);
   let crossings = 0;
   let waitedForWalker = 0;
+  let pocketWalks = 0;
   const seen = new Set<string>();
   for (let i = 0; i < 30 * 120; i++) {
     const dt = 1 / 30;
@@ -111,7 +116,15 @@ test('пешеходы: только тротуары и переходы; на 
       const b = graph.node(w.road.to);
       const axis = projectOnSegment(w.pos, a, b).point;
       const off = distance(axis, w.pos);
-      assert.ok(Math.abs(off - (roadHalfWidth(w.road) + SIDEWALK / 2)) < 1.5, `пешеход ${w.id} не на тротуаре (${off.toFixed(1)})`);
+      const walk = roadHalfWidth(w.road) + SIDEWALK / 2;
+      const side = { x: (w.pos.x - axis.x) / (off || 1), y: (w.pos.y - axis.y) / (off || 1) };
+      const pocket = sim.pocketAt(w.road.id, axis, side);
+      if (pocket && pocket.along < pocket.half + 20) {
+        // У кармана остановки или парковки — тротуар за карманом, но не асфальт самого кармана.
+        assert.ok(off > walk - 1.5 && off < walk + 28 + 1.5, `пешеход ${w.id} у кармана не на тротуаре (${off.toFixed(1)})`);
+        if (pocket.along < pocket.half) assert.ok(off > walk + 28 - 1.5, `пешеход ${w.id} идёт по карману (${off.toFixed(1)})`);
+        pocketWalks++;
+      } else assert.ok(Math.abs(off - walk) < 1.5, `пешеход ${w.id} не на тротуаре (${off.toFixed(1)})`);
     }
     for (const c of sim.cars) {
       if (c.fading || c.speed > 1) continue;
@@ -123,9 +136,13 @@ test('пешеходы: только тротуары и переходы; на 
       for (const c of sim.cars) if (!c.fading) assert.ok(distance(c.pos, w.pos) > 12, `машина ${c.id} наехала на пешехода ${w.id}`);
     }
   }
-  assert.ok(crossings >= 3, `переходов: ${crossings}`);
-  assert.ok(waitedForWalker > 0, 'ни одна машина не пропустила пешехода');
-});
+  if (chapterId === 'ch3') {
+    assert.ok(crossings >= 3, `переходов: ${crossings}`);
+    assert.ok(waitedForWalker > 0, 'ни одна машина не пропустила пешехода');
+  }
+  // В Промзоне много стоянок: пешеходы обходят карманы по тротуару.
+  if (chapterId === 'ch9') assert.ok(pocketWalks > 0, 'пешеходы не проходили мимо карманов');
+}
 
 test('в зоне сцены потока нет; машина прямо перед игроком исчезает, а не мешает', () => {
   const { graph, sim, signal, tick } = setup('ch1', 5);

@@ -155,3 +155,23 @@ test('мотор: чем быстрее, тем выше и громче', () =>
   assert.deepEqual(engineParams(220), engineParams(1000), 'выше предела не растёт');
   assert.ok(fast.gain < 0.06, 'мотор тихий');
 });
+
+test('гонка, начатая посреди главы: Артёму засчитывается только оставшаяся часть', async () => {
+  const { startRace, rivalTime } = await import('../src/progress/race.ts');
+  const rival = RIVALS.ch1;
+  const full = rivalSeconds(rival, 30, 10);
+  const fresh = emptyProgress();
+  startRace(fresh, 'ch1', 0);
+  assert.equal(rivalTime(fresh, chapter, rival), full);
+  const late = emptyProgress();
+  startRace(late, 'ch1', 0.6);
+  assert.equal(rivalTime(late, chapter, rival), Math.round(full * 0.4));
+  // Повторный вызов ничего не меняет; значение переживает сохранение.
+  startRace(late, 'ch1', 0);
+  assert.equal(sanitizeProgress(JSON.parse(JSON.stringify(late))).chapters.ch1.race!.from, 0.6);
+  // Пройденная глава — гонки нет.
+  const done = emptyProgress();
+  done.chapters.ch1 = { points: [], seen: [], stars: 3, delivered: 1 };
+  startRace(done, 'ch1', 0.3);
+  assert.equal(done.chapters.ch1.race, undefined);
+});

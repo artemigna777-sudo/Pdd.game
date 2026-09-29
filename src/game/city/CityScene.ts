@@ -342,7 +342,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   /** Сдвинуть камеру так, чтобы сцена была видна над карточкой (visible — доля высоты экрана сверху). */
-  focusVisible(visible: number) {
+  focusVisible(visible: number, top = 0) {
     const a = this.active;
     // Во время события в пути — машина игрока и место события.
     const focus = a?.focus ?? (this.event ? this.player.position : undefined);
@@ -353,7 +353,9 @@ export class CityScene extends Phaser.Scene {
     }
     const cam = this.cameras.main;
     const viewH = cam.height / cam.zoom;
-    const target = { x: focus.x, y: focus.y + (0.5 - visible / 2) * viewH };
+    // Сцена — посередине свободной полосы между верхней панелью (top) и карточкой (visible).
+    const upper = Math.min(top, Math.max(0, visible - 0.15));
+    const target = { x: focus.x, y: focus.y + (0.5 - (upper + visible) / 2) * viewH };
     cam.stopFollow();
     // У края карты камера должна иметь возможность сдвинуться за границу.
     cam.removeBounds();
@@ -988,15 +990,19 @@ export class CityScene extends Phaser.Scene {
     event.kit = kit;
 
     if (kind === 'ambulance') {
-      // Встречная полоса освобождается: скорая обгоняет по ней.
-      this.extraZones = [{ ...this.player.position, r: 260 }];
+      // Встречная полоса впереди освобождается: скорая обгоняет по ней и уезжает.
+      const ahead = kit.toWorld({ x: 0, y: -80 });
+      this.extraZones = [{ ...ahead, r: 340 }];
       this.audio?.sirenOn(0.35);
       const amb = kit.vehicle('ambulance', 0, 340, 0);
       kit.say('Сзади — скорая с сиреной! Уступаем дорогу.', 0, -80, 'bad', 3000);
       this.player.stopSoon();
       this.player.setNudge(8);
       kit.after(600, () => this.audio?.sirenOn(1));
-      await kit.move(amb, [{ x: 0, y: 180 }, { x: -30, y: 80 }, { x: -30, y: -100 }, { x: 0, y: -200 }, { x: 0, y: -560 }], 250);
+      // Уезжая, скорая скрывается — во время вопроса посреди дороги она не стоит.
+      kit.after(2400, () => this.tweens.add({ targets: amb.obj, alpha: 0, duration: 600 }));
+      await kit.move(amb, [{ x: 0, y: 180 }, { x: -30, y: 80 }, { x: -30, y: -100 }, { x: 0, y: -200 }, { x: 0, y: -420 }], 250);
+      amb.obj.setVisible(false);
       this.audio?.sirenOff();
       this.player.setNudge(0);
     } else if (kind === 'ball') {

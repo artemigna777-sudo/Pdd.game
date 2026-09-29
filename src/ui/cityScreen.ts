@@ -42,7 +42,7 @@ import { goalToast } from './dailyView.ts';
 import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 import type { Question } from '../data/types.ts';
-import { acceptSide, advanceSide, raceActive, raceAnswer, raceTick, rivalProgress, settleRace, sideStatus, sideStep, type RaceResult } from '../progress/race.ts';
+import { acceptSide, advanceSide, raceActive, raceAnswer, raceTick, rivalProgress, settleRace, sideStatus, sideStep, startRace, type RaceResult } from '../progress/race.ts';
 import { RIVALS, SIDE_QUESTS, raceReaction, sideDone } from '../story/extras.ts';
 import { EVENTS, pickEventQuestion } from '../world/events.ts';
 
@@ -132,11 +132,13 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (state?.delivered) taskGoal.textContent = `Глава пройдена · ${starsText(state.stars)}`;
     else if (goalShown && story) taskGoal.textContent = `Вези посылку: ${story.goal}`;
     else if (story) taskGoal.textContent = story.task;
-    const parts = [`Точки ${r.pointsDone} из ${r.points}`, `верных ${percent(r.share)}%`];
-    if (r.pointsWithMistakes.length) parts.push(`с ошибками: ${r.pointsWithMistakes.length}`);
+    // На узком экране — короче, чтобы строка не переносилась.
+    const narrow = window.innerWidth < 400;
+    const parts = [narrow ? `Точки ${r.pointsDone}/${r.points}` : `Точки ${r.pointsDone} из ${r.points}`, `верных ${percent(r.share)}%`];
+    if (r.pointsWithMistakes.length) parts.push(narrow ? `ошибки: ${r.pointsWithMistakes.length}` : `с ошибками: ${r.pointsWithMistakes.length}`);
     if (rival && raceActive(data, chapterId) && seen('race')) {
       const k = rivalProgress(data, info, rival);
-      parts.push(k >= 1 ? '🛵 Артём доставил' : `🛵 Артём ${Math.floor(k * 100)}%`);
+      parts.push(k >= 1 ? (narrow ? '🛵 доставил' : '🛵 Артём доставил') : narrow ? `🛵 ${Math.floor(k * 100)}%` : `🛵 Артём ${Math.floor(k * 100)}%`);
     }
     taskMeta.textContent = parts.join(' · ');
     task.classList.toggle('is-goal', goalShown);
@@ -150,7 +152,9 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     window.setTimeout(() => {
       if (stopped || !scene) return;
       const top = sheet.getBoundingClientRect().top;
-      scene.focusVisible(Math.max(0.2, top / window.innerHeight));
+      // Свободная полоса — между панелью задания сверху и карточкой снизу.
+      const head = task.getBoundingClientRect().bottom;
+      scene.focusVisible(Math.max(0.2, top / window.innerHeight), head / window.innerHeight);
     }, 320);
   };
   const closeSheet = () => {
@@ -225,6 +229,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (r.pointsDone >= r.points) return true;
     const value = await choose(rival.challenge, 'Поехали');
     if (value === undefined) return false;
+    startRace(progress(), chapterId, r.points ? r.pointsDone / r.points : 0);
     see('race');
     if (value) see(`race:${value}`);
     updateTask();
@@ -408,7 +413,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         : null,
       state?.delivered ? el('p', { class: 'rewards__line' }, `Глава пройдена: ${starsText(state.stars)}.`) : null,
       rival && raceActive(progress(), chapterId) && seen('race')
-        ? el('p', { class: 'rewards__line' }, `Гонка: Артём везёт ${rival.parcel} — ${rivalProgress(progress(), info, rival) >= 1 ? 'уже доставил' : `проехал ${Math.floor(rivalProgress(progress(), info, rival) * 100)}% пути`}. Итог — при доставке посылки: кто быстрее и кто точнее.`)
+        ? el('p', { class: 'rewards__line' }, `Гонка: Артём везёт ${rival.parcel} — ${rivalProgress(progress(), info, rival) >= 1 ? 'уже доставил' : `проехал ${Math.floor(rivalProgress(progress(), info, rival) * 100)}% пути (🛵)`}. Итог — при доставке.`)
         : null,
       quest && sideStatus(progress(), chapterId) === 'taken'
         ? el('p', { class: 'rewards__line' }, `Поручение «${quest.title}»: оранжевая отметка «${quest.stops[Math.min(1, sideStep(progress(), chapterId))].label}».`)

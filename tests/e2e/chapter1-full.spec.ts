@@ -23,7 +23,8 @@ async function readCutscenes(page: Page): Promise<number> {
   const dialog = page.locator('.cutscene:not(.cutscene--modal)');
   let lines = 0;
   while (await dialog.count()) {
-    await dialog.locator('.btn--primary').tap();
+    // «Далее» или первый вариант ответа, если реплика с выбором (вызов Артёма, поручение).
+    await dialog.locator('.btn--primary:visible').first().tap();
     lines++;
     await page.waitForTimeout(120);
   }
@@ -83,7 +84,7 @@ test('глава 1 целиком: от пролога до доставки и 
   // Первый проход: каждый четвёртый ответ — ошибка, верных меньше 80%.
   for (const id of POINTS) await playPoint(page, id, 4);
   expect(answered).toBe(81);
-  await expect(page.locator('.city-task')).toContainText('Точки 26 из 26 · верных 75%');
+  await expect(page.locator('.city-task')).toContainText('Точки 26/26 · верных 75%');
   const red = (await city(page, (scene) => scene.pois.filter((p: Any) => scene.poiState(p) === 'mistakes').map((p: Any) => p.point.id))) as string[];
   expect(red.length).toBeGreaterThan(0);
 

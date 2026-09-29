@@ -1,4 +1,5 @@
 import { load, save } from './storage.ts';
+import type { Difficulty } from './world/rules.ts';
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -17,14 +18,22 @@ export interface Settings {
   bigText: boolean;
   /** Случайные события в пути: скорая, мяч на дороге, смена погоды. */
   events: boolean;
+  /** Правила за рулём: новичку — подсказки перед нарушением, опытному — без них. */
+  difficulty: Difficulty;
+  /**
+   * Город замечает нарушения игрока (этап 8). В настройках его нет: выключают только
+   * автотесты прежних этапов, где машина ездит по району сама.
+   */
+  rules: boolean;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
+if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

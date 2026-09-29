@@ -31,7 +31,7 @@ function seed(page: Page, progress: unknown, settings: Record<string, unknown> =
   return page.addInitScript(
     ([p, s]) => {
       if (sessionStorage.getItem('seeded')) return;
-      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, ...s }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false, ...s }));
       localStorage.setItem('pdd-game:progress', JSON.stringify(p));
       sessionStorage.setItem('seeded', '1');
     },
@@ -361,7 +361,7 @@ test('звуки города: мотор и улица, когда звук в�
 
   // Звук выключен — город молчит.
   await page.evaluate(() => {
-    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false, sound: false }));
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false, sound: false, rules: false }));
   });
   await page.reload();
   await page.evaluate(() => {

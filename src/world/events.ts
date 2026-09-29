@@ -69,20 +69,24 @@ export function nextEventKind(last: EventKind | undefined, rnd: () => number): E
 }
 
 /**
- * Вопрос для события: сначала те, где последний ответ — ошибка, потом ещё не встречавшиеся,
+ * Вопрос из списка: сначала те, где последний ответ — ошибка, потом ещё не встречавшиеся,
  * потом остальные. Внутри группы — случайный, но не только что заданный.
  */
-export function pickEventQuestion(
-  kind: EventKind,
-  state: (id: string) => { ok: boolean } | undefined,
-  rnd: () => number,
-  recent: readonly string[] = [],
-): string {
-  const ids = EVENTS[kind].questions;
+export function pickQuestion(ids: readonly string[], state: (id: string) => { ok: boolean } | undefined, rnd: () => number, recent: readonly string[] = []): string {
   const fresh = ids.filter((id) => !recent.includes(id));
   const pool = fresh.length ? fresh : ids;
   const wrong = pool.filter((id) => state(id)?.ok === false);
   const unseen = pool.filter((id) => !state(id));
   const group = wrong.length ? wrong : unseen.length ? unseen : pool;
   return group[Math.floor(rnd() * group.length)];
+}
+
+/** Вопрос для события (см. pickQuestion). */
+export function pickEventQuestion(
+  kind: EventKind,
+  state: (id: string) => { ok: boolean } | undefined,
+  rnd: () => number,
+  recent: readonly string[] = [],
+): string {
+  return pickQuestion(EVENTS[kind].questions, state, rnd, recent);
 }

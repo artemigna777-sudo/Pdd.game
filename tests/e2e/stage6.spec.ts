@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 /** Засеять хранилище один раз за сессию вкладки (после перезагрузки — то, что сохранила игра). */
-function seed(page: Page, progress?: unknown, settings: unknown = { tutorial: true }) {
+function seed(page: Page, progress?: unknown, settings: unknown = { tutorial: true, rules: false }) {
   return page.addInitScript(
     ([p, s]) => {
       if (sessionStorage.getItem('seeded')) return;
@@ -161,7 +161,7 @@ test('гараж: покраска и наклейка за монеты, выб
 test('резервная копия: сохранить в файл и восстановить на «другом телефоне»', async ({ page, browser }) => {
   const questions: Record<string, unknown> = {};
   for (const q of QUESTIONS.slice(0, 40)) questions[q.id] = { n: 1, ok: true, ever: true, at: 1 };
-  await seed(page, { xp: 1234, coins: 99, questions, chapters: {}, finale: { control: [], seen: [] } }, { tutorial: true, theme: 'dark' });
+  await seed(page, { xp: 1234, coins: 99, questions, chapters: {}, finale: { control: [], seen: [] } }, { tutorial: true, theme: 'dark', rules: false });
   await noShare(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Настройки' }).tap();

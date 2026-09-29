@@ -10,18 +10,22 @@
 import type * as Phaser from 'phaser';
 import { playSound } from '../audio/feedback.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
-import type { CityData, CityScene } from '../game/city/CityScene.ts';
+import type { CityData, CityScene, RuleHint } from '../game/city/CityScene.ts';
 import {
+  addCleanDistance,
   canDeliver,
   chapterResult,
   chapterState,
   deliver,
+  distanceLabel,
+  driveState,
   levelOf,
   markPoint,
   markSeen,
   percent,
   progress,
   recordAnswer,
+  recordViolation,
   refreshStars,
   saveProgress,
   type ChapterInfo,
@@ -43,8 +47,11 @@ import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 import type { Question } from '../data/types.ts';
 import { acceptSide, advanceSide, raceActive, raceAnswer, raceTick, rivalProgress, settleRace, sideStatus, sideStep, startRace, type RaceResult } from '../progress/race.ts';
-import { RIVALS, SIDE_QUESTS, raceReaction, sideDone } from '../story/extras.ts';
-import { EVENTS, pickEventQuestion } from '../world/events.ts';
+import { RIVALS, RULES_INTRO, SIDE_QUESTS, raceReaction, sideDone } from '../story/extras.ts';
+import { EVENTS, pickEventQuestion, pickQuestion } from '../world/events.ts';
+import { CLEAN_XP } from '../progress/progress.ts';
+import { RULES, questionsFor, type Violation } from '../world/rules.ts';
+import { vibrateError } from '../audio/feedback.ts';
 
 export interface CityScreen {
   element: HTMLElement;
@@ -85,9 +92,12 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   /** Поручение предлагали в этот заезд, и игрок отказался (предложим в следующий раз). */
   let sideDeclined = false;
   let questionsById = new Map<string, Question>();
-  /** Карточка внизу: вопрос точки или вопрос события в пути. */
-  let sheetMode: 'point' | 'event' = 'point';
+  /** Карточка внизу: вопрос точки, вопрос события в пути или вопрос инспектора о нарушении. */
+  let sheetMode: 'point' | 'event' | 'violation' = 'point';
   const recentEvents: string[] = [];
+  const recentRules: string[] = [];
+  /** Город замечает нарушения (этап 8; автотесты прежних этапов выключают). */
+  const rulesOn = getSettings().rules;
   let rivalDone = false;
 
   const score = el('span', { class: 'topbar__score', 'aria-label': 'Правильных ответов' });
@@ -112,6 +122,83 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (!scene) return;
     scene.toggleOverview();
   });
+
+  // ─── Педали, спидометр, «Чистая езда» (этап 8) ───────────────────────────────
+
+  const pedal = (kind: 'brake' | 'gas', label: string) => {
+    const b = el('button', { class: `pedal pedal--${kind}`, type: 'button', 'aria-label': label, 'aria-pressed': 'false' }, el('span', { class: 'pedal__label' }, label));
+    const set = (on: boolean) => {
+      b.setAttribute('aria-pressed', String(on));
+      scene?.setPedal(kind, on);
+    };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try {
+        // Палец чуть сполз с кнопки — педаль всё ещё нажата.
+        b.setPointerCapture(e.pointerId);
+      } catch {
+        // Синтетическое событие без настоящего указателя — захват не нужен.
+      }
+      set(true);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) b.addEventListener(ev, () => set(false));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    return { el: b, release: () => set(false) };
+  };
+  const brake = pedal('brake', 'Тормоз');
+  const gas = pedal('gas', 'Газ');
+  const speed = el('span', { class: 'speedo__speed' }, '0');
+  const limit = el('span', { class: 'speedo__limit', 'aria-label': 'Разрешённая скорость' }, '60');
+  const clean = el('span', { class: 'speedo__clean' });
+  const speedo = el('div', { class: 'speedo', role: 'status', 'aria-label': 'Спидометр' }, el('span', { class: 'speedo__row' }, speed, el('span', { class: 'speedo__unit' }, 'км/ч'), limit), clean);
+  const drive = el('div', { class: 'drive', hidden: !rulesOn }, brake.el, speedo, gas.el);
+  const ruleHint = el('p', { class: 'rule-hint', hidden: true, 'aria-live': 'polite' });
+
+  /** Педали видны, когда машина едет сама по себе (не у точки, не в обзоре, не в разговоре). */
+  let overviewOn = false;
+  const updateDrive = () => {
+    const show = rulesOn && !sheet.classList.contains('is-open') && !overviewOn;
+    if (drive.hidden === show) drive.hidden = !show;
+    if (!show) {
+      brake.release();
+      gas.release();
+    }
+  };
+
+  const updateClean = () => {
+    clean.textContent = `🛡 ${distanceLabel(driveState(progress()).clean)}`;
+    clean.setAttribute('aria-label', `Чистая езда: ${distanceLabel(driveState(progress()).clean)} без нарушений`);
+  };
+  updateClean();
+  let cleanTicks = 0;
+  const driveTimer = window.setInterval(() => {
+    if (stopped || !scene || !rulesOn || !game.scene.isActive('city')) return;
+    const info = scene.drive;
+    speed.textContent = String(info.kmh);
+    limit.textContent = String(info.limit);
+    speedo.classList.toggle('is-over', info.kmh > info.limit);
+    const px = scene.takeClean();
+    if (px > 0) {
+      addCleanDistance(progress(), chapterId, px);
+      updateClean();
+      if (++cleanTicks % 30 === 0) saveProgress();
+    }
+  }, 150);
+
+  const HINTS: Record<RuleHint['kind'], (h: RuleHint) => string> = {
+    'red-light': () => 'Впереди красный — тормозите до стоп-линии.',
+    pedestrian: () => 'Пешеход на переходе — остановитесь и пропустите.',
+    speeding: (h) => `Здесь можно ${h.kind === 'speeding' ? h.limit : 60} км/ч — отпустите «Газ».`,
+    'no-stopping': (h) =>
+      h.kind === 'no-stopping'
+        ? `Здесь стоять нельзя (${{ crosswalk: 'переход', junction: 'перекрёсток', railway: 'переезд', zone: 'знак «Остановка запрещена»' }[h.place]}) — проезжайте.`
+        : '',
+    oncoming: () => 'Сплошная линия: разворот через неё — выезд на встречную. Потяните назад ещё раз, если всё-таки нужно.',
+  };
+  const showRuleHint = (h: RuleHint | undefined) => {
+    ruleHint.hidden = !h;
+    if (h) ruleHint.textContent = `💡 ${HINTS[h.kind](h)}`;
+  };
 
   const updateScore = () => {
     score.textContent = answered ? `${correct}/${answered}` : '';
@@ -148,6 +235,8 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     sheet.classList.add('is-open');
     sheet.setAttribute('aria-hidden', 'false');
     hint.hidden = true;
+    ruleHint.hidden = true;
+    updateDrive();
     // После анимации — сдвинуть камеру, чтобы сцена была видна над карточкой.
     window.setTimeout(() => {
       if (stopped || !scene) return;
@@ -160,6 +249,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   const closeSheet = () => {
     sheet.classList.remove('is-open');
     sheet.setAttribute('aria-hidden', 'true');
+    updateDrive();
   };
 
   /** Сцена или окно поверх города; город на это время замирает. false — экран уже закрыт. */
@@ -348,6 +438,52 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     openSheet();
   };
 
+  // ─── Нарушения ───────────────────────────────────────────────────────────────
+
+  /** Лейтенант Соколов остановил машину: вопрос из базы про нарушенное правило. */
+  const onViolation = (v: Violation) => {
+    const data = progress();
+    recordViolation(data, chapterId);
+    saveProgress();
+    updateClean();
+    vibrateError();
+    playSound('wrong');
+    pop('Чистая езда — с нуля', 'bad');
+    const id = pickQuestion(questionsFor(v), (qid) => progress().questions[qid], Math.random, recentRules);
+    const question = questionsById.get(id);
+    if (stopped || !question) {
+      scene?.endViolation();
+      return;
+    }
+    recentRules.unshift(id);
+    recentRules.length = Math.min(recentRules.length, 4);
+    sheetMode = 'violation';
+    sheetTitle.textContent = `Нарушение: ${RULES[v.kind].title}`;
+    sheetFoot.hidden = true;
+    eventFoot.hidden = true;
+    sheetBody.scrollTop = 0;
+    sheetBody.replaceChildren(
+      el('p', { class: 'event-intro violation-intro' }, `Лейтенант Соколов: «${RULES[v.kind].says(v)} Проверим, знаете ли вы это правило».`),
+      renderQuestionCard(question, (result) => {
+        answered++;
+        if (result.isCorrect) correct++;
+        updateScore();
+        const d = progress();
+        const out = recordAnswer(d, question.id, result.isCorrect, Date.now());
+        saveProgress();
+        if (out.xp) pop(`+${out.xp} опыта`);
+        if (out.coins) pop(`+${out.coins} монет`);
+        if (out.review === 'added' || out.review === 'reset') pop('В работу над ошибками', 'bad');
+        if (out.review === 'cleared') pop('Ошибка закреплена!');
+        levelUpToast(out.levelUp);
+        goalToast(out, d);
+        showToast(result.isCorrect ? 'Соколов: «Правило знаете. На этот раз — предупреждение».' : 'Соколов: «Правило стоит повторить». Вопрос — в работе над ошибками.');
+        showGo('Поехали');
+      }),
+    );
+    openSheet();
+  };
+
   /** Посылка доставлена: финал главы, награды, следующая глава. */
   const onGoal = async () => {
     if (!info || !story || !mapping) return;
@@ -363,6 +499,11 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     await paused(() => rewards(out, race));
   };
 
+  const cleanLine = (c: NonNullable<DeliveryOutcome['clean']>) =>
+    c.star
+      ? `🛡 Чистая езда: без нарушений — +1 ★ и +${c.xp} опыта`
+      : `🛡 Чистая езда: ${c.violations} ${plural(c.violations, ['нарушение', 'нарушения', 'нарушений'])} — ${c.xp ? `+${c.xp} опыта` : 'без бонуса'}`;
+
   const rewards = (out: DeliveryOutcome, race?: RaceResult) => {
     const chapters = mapping!.chapters;
     const i = chapters.findIndex((c) => c.id === chapterId);
@@ -373,6 +514,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       el('p', { class: 'rewards__stars', 'aria-label': `Звёзд: ${out.stars} из 3` }, starsText(out.stars)),
       el('p', { class: 'rewards__line' }, `Верных ответов в главе: ${percent(r.share)}%`),
       out.xp ? el('p', { class: 'rewards__line rewards__xp' }, `+${out.xp} опыта`) : null,
+      out.clean ? el('p', { class: 'rewards__line rewards__clean' }, cleanLine(out.clean)) : null,
       levelMeter(level, progress().xp),
       race ? raceView(race) : null,
       el('p', { class: 'rewards__next' }, next ? `Открыта глава ${next.number}: «${next.title}»` : 'Открыт финал: подготовка к экзамену в ГИБДД'),
@@ -398,6 +540,16 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     ]);
   };
 
+  /** «Чистая езда» в задании главы: счётчик, нарушения в главе и бонус при доставке. */
+  const cleanTask = () => {
+    const now = distanceLabel(driveState(progress()).clean);
+    const n = progress().chapters[chapterId]?.drive?.violations ?? 0;
+    const head = `🛡 Чистая езда: ${now} без нарушений. В этой главе ${n ? `${n} ${plural(n, ['нарушение', 'нарушения', 'нарушений'])}` : 'нарушений нет'}.`;
+    if (progress().chapters[chapterId]?.delivered) return head;
+    const xp = CLEAN_XP[n] ?? 0;
+    return `${head} ${n === 0 ? `Без нарушений до доставки — +1 ★ и +${xp} опыта.` : xp ? `При доставке — +${xp} опыта.` : 'Бонуса за чистую езду в этой главе уже не будет.'}`;
+  };
+
   /** Касание задания: подробности и вступление ещё раз. */
   const showTask = async () => {
     if (!info || !story) return;
@@ -412,6 +564,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         ? el('p', { class: 'rewards__line' }, `Красные точки — там были ошибки (${r.pointsWithMistakes.length}). В них повторятся только вопросы с ошибкой.`)
         : null,
       state?.delivered ? el('p', { class: 'rewards__line' }, `Глава пройдена: ${starsText(state.stars)}.`) : null,
+      rulesOn ? el('p', { class: 'rewards__line' }, cleanTask()) : null,
       rival && raceActive(progress(), chapterId) && seen('race')
         ? el('p', { class: 'rewards__line' }, `Гонка: Артём везёт ${rival.parcel} — ${rivalProgress(progress(), info, rival) >= 1 ? 'уже доставил' : `проехал ${Math.floor(rivalProgress(progress(), info, rival) * 100)}% пути (🛵)`}. Итог — при доставке.`)
         : null,
@@ -488,6 +641,8 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       openSheet();
     },
     onOverviewChange(on) {
+      overviewOn = on;
+      updateDrive();
       mapButton.classList.toggle('is-active', on);
       mapButton.setAttribute('aria-pressed', String(on));
       hint.textContent = on ? 'Коснитесь места на карте, куда ехать.' : baseHint();
@@ -516,6 +671,13 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     onEvent(kind) {
       onEvent(kind);
     },
+    onViolation(v) {
+      onViolation(v);
+    },
+    onHint(h) {
+      if (!sheet.classList.contains('is-open')) showRuleHint(h);
+      else ruleHint.hidden = true;
+    },
   };
 
   function showGo(label: string) {
@@ -537,6 +699,14 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   go.addEventListener('click', () => {
     if (sheetMode === 'event') {
       endEvent();
+      return;
+    }
+    if (sheetMode === 'violation') {
+      closeSheet();
+      sheetMode = 'point';
+      hint.textContent = baseHint();
+      hint.hidden = false;
+      scene?.endViolation();
       return;
     }
     closeSheet();
@@ -561,15 +731,20 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       }),
     ),
     task,
+    ruleHint,
     pops,
     settings,
     hint,
+    drive,
     sheet,
   );
+  element.classList.toggle('has-pedals', rulesOn);
 
   const unsubscribe = onSettingsChange((s) => {
     scene?.setControl(s.control);
     if (scene) scene.eventsEnabled = s.events;
+    scene?.setDifficulty(s.difficulty);
+    if (s.difficulty === 'expert') ruleHint.hidden = true;
     hint.textContent = baseHint();
   });
 
@@ -592,6 +767,8 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         return !!s && !s.ok;
       },
       events: getSettings().events,
+      rules: rulesOn,
+      difficulty: getSettings().difficulty,
     };
     game.scene.sleep('street');
     const city = game.scene.getScene('city') as CityScene;
@@ -613,6 +790,12 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (!(await raceIntro())) return;
     await created;
     if (stopped) return;
+    // Правила за рулём: один раз лейтенант Соколов рассказывает, что город теперь замечает нарушения.
+    if (rulesOn && !progress().drive?.intro) {
+      if (!(await cutscene(RULES_INTRO, 'Поехали'))) return;
+      driveState(progress()).intro = Date.now();
+      saveProgress();
+    }
     // Артём ездит по району, пока не доставил свою посылку.
     if (rival && info && seen('race') && raceActive(progress(), chapterId) && rivalProgress(progress(), info, rival) < 1) scene.setRival(true);
     else rivalDone = true;
@@ -625,6 +808,9 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     cleanup() {
       stopped = true;
       window.clearInterval(raceTimer);
+      window.clearInterval(driveTimer);
+      const px = scene?.takeClean() ?? 0;
+      if (px > 0) addCleanDistance(progress(), chapterId, px);
       saveProgress();
       unsubscribe();
       if (game.scene.isActive('interior') || game.scene.isPaused('interior')) game.scene.stop('interior');

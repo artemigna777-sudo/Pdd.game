@@ -8,7 +8,8 @@ import { seeded } from '../src/world/random.ts';
 import { distance, projectOnSegment } from '../src/world/geometry.ts';
 import { MAPS, type Mapping } from '../src/world/mapping.ts';
 import { RoadGraph, SIDEWALK, roadHalfWidth, type Lane } from '../src/world/roadGraph.ts';
-import { TrafficSim, type Light, type TrafficEnv, type Zone } from '../src/world/traffic.ts';
+import { TrafficSim, playerStopDistance, type Light, type TrafficEnv, type Zone } from '../src/world/traffic.ts';
+import { districtRules } from '../src/world/districtRules.ts';
 
 const MAPPING: Mapping = JSON.parse(readFileSync('data/mapping.json', 'utf8'));
 
@@ -16,7 +17,8 @@ function setup(chapterId: string, seed = 1) {
   const chapter = MAPPING.chapters.find((c) => c.id === chapterId)!;
   const graph = new RoadGraph(MAPS[chapter.map]);
   const sim = new TrafficSim(graph, chapter.points, seeded(seed));
-  const signalNodes = new Set(chapter.points.filter((p) => p.template === 'signalized').map((p) => p.toward));
+  // Светофоры — у точек «Регулируемый перекрёсток» и городские (правила района, этап 8).
+  const signalNodes = new Set(districtRules(graph, chapter.points).signals);
   let clock = 0;
   // Как в городе: 6 с зелёный вертикальным, 2 с жёлтый, 6 с зелёный горизонтальным, 2 с жёлтый.
   const signal = (laneId: string): Light | undefined => {
@@ -80,7 +82,40 @@ test('поток: машины не наезжают друг на друга, �
 });
 
 test('пешеходы: только тротуары (за карманами остановок — тоже) и переходы; на переходе машины ждут', () => {
-  for (const chapterId of ['ch3', 'ch9']) walkersOn(chapterId);
+  for (const chapterId of ['ch3', 'ch9', 'ch1']) walkersOn(chapterId);
+});
+
+test('пешеход не выходит на переход перед машиной игрока, которая не успеет затормозить', () => {
+  for (const chapterId of ['ch1', 'ch3']) {
+    const { graph, sim, signal, tick } = setup(chapterId, 4);
+    const lanes = [...graph.lanes.values()].filter((l) => l.length > 300);
+    const env = envFor(graph, lanes[0], 0, signal);
+    sim.maintain(env, true);
+    let crossings = 0;
+    const started = new Set<string>();
+    let lane = lanes[0];
+    let s = 0;
+    for (let i = 0; i < 30 * 180; i++) {
+      const dt = 1 / 30;
+      tick(dt);
+      // Игрок едет по району 60 км/ч, от полосы к полосе.
+      s += 150 * dt;
+      if (s > lane.length) {
+        lane = graph.exits(lane)[i % graph.exits(lane).length];
+        s = 0;
+      }
+      env.player = { pos: graph.pointOnLane(lane, s), lane, s, speed: 150, heading: lane.dir };
+      sim.update(dt, env);
+      if (i % 30 === 0) sim.maintain(env);
+      for (const w of sim.walkers) {
+        if (!w.crossing || w.fading || started.has(`${w.id}:${w.crossing}`)) continue;
+        started.add(`${w.id}:${w.crossing}`);
+        crossings++;
+        assert.ok(distance(w.pos, env.player.pos) >= playerStopDistance(150) - 40, `${chapterId}: пешеход ${w.id} вышел перед машиной (${distance(w.pos, env.player.pos).toFixed(0)})`);
+      }
+    }
+    assert.ok(crossings > 0, `${chapterId}: никто не переходил`);
+  }
 });
 
 function walkersOn(chapterId: string) {
@@ -136,9 +171,9 @@ function walkersOn(chapterId: string) {
       for (const c of sim.cars) if (!c.fading) assert.ok(distance(c.pos, w.pos) > 12, `машина ${c.id} наехала на пешехода ${w.id}`);
     }
   }
-  if (chapterId === 'ch3') {
-    assert.ok(crossings >= 3, `переходов: ${crossings}`);
-    assert.ok(waitedForWalker > 0, 'ни одна машина не пропустила пешехода');
+  if (chapterId !== 'ch9') {
+    assert.ok(crossings >= 3, `${chapterId}: переходов: ${crossings}`);
+    assert.ok(waitedForWalker > 0, `${chapterId}: ни одна машина не пропустила пешехода`);
   }
   // В Промзоне много стоянок: пешеходы обходят карманы по тротуару.
   if (chapterId === 'ch9') assert.ok(pocketWalks > 0, 'пешеходы не проходили мимо карманов');

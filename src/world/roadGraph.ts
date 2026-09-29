@@ -60,6 +60,8 @@ export interface Turn {
   kind: TurnKind;
   path: Polyline;
   speed: number;
+  /** Разворот посреди дороги (через осевую линию), а не в узле. */
+  onRoad?: boolean;
 }
 
 /** Часть маршрута: отрезок полосы или проезд через узел. */
@@ -348,7 +350,7 @@ export class RoadGraph {
     const q = this.pointOnLane(back, backS);
     const k = 30;
     const points = cubicBezier(p, add(p, scale(lane.dir, k)), add(q, scale(lane.dir, k)), q, 14);
-    const turn: Turn = { from: lane, to: back, kind: 'uturn', path: new Polyline(points), speed: SPEED.uturn };
+    const turn: Turn = { from: lane, to: back, kind: 'uturn', path: new Polyline(points), speed: SPEED.uturn, onRoad: true };
     return [this.turnPart(turn), this.lanePart(back, backS, backS)];
   }
 

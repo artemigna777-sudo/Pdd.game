@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 function seed(page: Page, progress?: unknown) {
   return page.addInitScript((value) => {
     if (sessionStorage.getItem('seeded')) return;
-    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false }));
     if (value) localStorage.setItem('pdd-game:progress', JSON.stringify(value));
     sessionStorage.setItem('seeded', '1');
   }, progress);

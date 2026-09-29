@@ -12,6 +12,7 @@ import * as Phaser from 'phaser';
 import { PIXEL_RATIO } from '../display.ts';
 import type { CityMap, MapPoint, MapRoad } from '../../world/map.ts';
 import { DEAD_END_RADIUS, LANE_WIDTH, MEDIAN_WIDTH, RING_INNER, RING_OUTER, RoadGraph, SIDEWALK, laneOffset, roadHalfWidth } from '../../world/roadGraph.ts';
+import { STOP_LINE, districtZebras, noStopLane, type DistrictRules } from '../../world/districtRules.ts';
 import { COLORS, ROOF_COLORS, drawBuilding, drawTree, seeded } from './art.ts';
 
 const CHUNK = 512;
@@ -73,6 +74,7 @@ export class MapRenderer {
     scene: Phaser.Scene,
     graph: RoadGraph,
     private readonly points: MapPoint[],
+    private readonly rules: DistrictRules,
   ) {
     this.scene = scene;
     this.graph = graph;
@@ -91,6 +93,7 @@ export class MapRenderer {
     for (const road of this.map.roads) this.drawRoad(road);
     for (const node of this.map.nodes) this.drawNode(node.id);
     for (const road of this.map.roads) this.drawMarkings(road);
+    this.drawRules();
     this.drawPointFeatures(scene);
     this.drawBlocks(bounds);
   }
@@ -309,17 +312,49 @@ export class MapRenderer {
       }
       return;
     }
-    // Двухполосная дорога: прерывистая ось, у перекрёстков — короткая сплошная.
-    for (let s = 24; s < len - 24; s += 34) dash(c0, s, Math.min(18, len - 24 - s), 0);
-    dash(c0, 0, 18, 0);
-    dash(c0, len - 18, 18, 0);
+    // Двухполосная дорога: прерывистая ось, у перекрёстков — короткая сплошная. На дороге со
+    // сплошной осевой (1.1) — сплошная по всей длине.
+    if (this.rules.solid.includes(road.id)) dash(c0, 0, len, 0, 2.5);
+    else {
+      for (let s = 24; s < len - 24; s += 34) dash(c0, s, Math.min(18, len - 24 - s), 0);
+      dash(c0, 0, 18, 0);
+      dash(c0, len - 18, 18, 0);
+    }
     if (road.kind === 'country') {
       dash(c0, 0, len, LANE_WIDTH - 3, 1.5);
       dash(c0, 0, len, -LANE_WIDTH + 3, 1.5);
     }
   }
 
-  /** Постоянные элементы у точек интереса: переходы, стоп-линии, остановка, парковка, здания мини-игр. */
+  /**
+   * Правила района: переходы у регулируемых перекрёстков и на участках дорог, стоп-линии,
+   * жёлтая линия 1.4 вдоль зоны «Остановка запрещена» (знаки ставит CityScene).
+   */
+  private drawRules() {
+    for (const z of districtZebras(this.graph, this.rules)) this.zebra(z.center, z.along, { x: -z.along.y, y: z.along.x }, z.halfWidth);
+    for (const nodeId of this.rules.signals) {
+      const node = this.graph.node(nodeId);
+      const r = this.graph.radius(nodeId);
+      for (const out of this.graph.outgoing.get(nodeId) ?? []) {
+        // Стоп-линия поперёк подъезжающей полосы.
+        const dir = out.dir;
+        const nn = out.normal;
+        const off = laneOffset(out.road);
+        const sl = { x: node.x + dir.x * (r + STOP_LINE) - nn.x * off, y: node.y + dir.y * (r + STOP_LINE) - nn.y * off };
+        this.bar(sl, nn, LANE_WIDTH - 2, 3);
+      }
+    }
+    for (const zone of this.rules.noStop) {
+      const { lane, s0, s1 } = noStopLane(this.graph, zone);
+      const edge = (s: number) => ({ x: lane.start.x + lane.dir.x * s + lane.normal.x * (LANE_WIDTH / 2 - 2), y: lane.start.y + lane.dir.y * s + lane.normal.y * (LANE_WIDTH / 2 - 2) });
+      const a = edge(s0);
+      const b = edge(s1);
+      const rect = { x: Math.min(a.x, b.x) - 1.5, y: Math.min(a.y, b.y) - 1.5, w: Math.abs(a.x - b.x) + 3, h: Math.abs(a.y - b.y) + 3 };
+      this.marks.draw(rect, (g) => g.fillStyle(COLORS.markingYellow).fillRect(rect.x, rect.y, rect.w, rect.h));
+    }
+  }
+
+  /** Постоянные элементы у точек интереса: остановка, парковка, здания мини-игр. */
   private drawPointFeatures(scene: Phaser.Scene) {
     for (const point of this.points) {
       const stop = this.graph.pointStop(point);
@@ -328,23 +363,6 @@ export class MapRenderer {
       const n = lane.normal;
       const a = stop.anchor;
       switch (point.template) {
-        case 'signalized': {
-          const node = this.graph.node(point.toward);
-          const r = this.graph.radius(node.id);
-          for (const out of this.graph.outgoing.get(node.id) ?? []) {
-            // Переход и стоп-линия на каждом подходе к перекрёстку.
-            const dir = out.dir;
-            const nn = out.normal;
-            const zc = { x: node.x + dir.x * (r + 12), y: node.y + dir.y * (r + 12) };
-            this.zebra(zc, dir, nn, LANE_WIDTH);
-            const sl = { x: node.x + dir.x * (r + 26) - nn.x * 15, y: node.y + dir.y * (r + 26) - nn.y * 15 };
-            this.bar(sl, nn, 28, 3);
-          }
-          break;
-        }
-        case 'crosswalk':
-          this.zebra(a, d, n, LANE_WIDTH);
-          break;
         case 'bus-stop': {
           // Заездной карман справа, за ним тротуар с павильоном.
           this.pocket(a, d, n, 150);

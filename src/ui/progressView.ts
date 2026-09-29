@@ -4,6 +4,7 @@
  */
 import type { Question } from '../data/types.ts';
 import {
+  distanceLabel,
   REVIEW_DAYS,
   chapterResult,
   dueReviews,
@@ -151,7 +152,20 @@ export function progressView(data: ProgressData, questions: readonly Question[],
     ...stats.map(topicRow),
   );
 
-  return el('div', { class: 'progress-view' }, levelMeter(levelOf(data.xp), data.xp), summary, chapters, weakPanel, topics);
+  // «Чистая езда» (этап 8) — когда в городе уже ездили по новым правилам.
+  const d = data.drive;
+  const drive = d
+    ? el(
+        'section',
+        { class: 'panel' },
+        el('h2', { class: 'panel__title' }, 'Чистая езда'),
+        el('p', { class: 'big-number' }, nbsp(`🛡 ${distanceLabel(d.clean)}`), el('span', {}, 'без нарушений')),
+        el('p', { class: 'panel__note' }, `Рекорд — ${distanceLabel(d.best)}. Всего проехано ${distanceLabel(d.total)}, нарушений — ${d.violations}.`),
+        el('p', { class: 'panel__note' }, 'Глава без нарушений — при доставке посылки ещё одна звезда и +100 опыта.'),
+      )
+    : null;
+
+  return el('div', { class: 'progress-view' }, levelMeter(levelOf(data.xp), data.xp), summary, chapters, drive, weakPanel, topics);
 }
 
 export interface ReviewActions {

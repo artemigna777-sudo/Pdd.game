@@ -2,6 +2,10 @@
  * Машина игрока: едет по маршруту из частей (полосы и проезды узлов), плавно разгоняется,
  * тормозит перед поворотами и точно останавливается в конце маршрута. Перед поворотом
  * сама включает указатель поворота.
+ *
+ * Педали (этап 8): «Тормоз» — пока нажат, машина стоит; «Газ» — едет быстрее обычного, до
+ * разрешённой скорости +40 км/ч (превышение — забота игрока). Без педалей машина держит
+ * скорость по дороге, как круиз-контроль, а на красный и перед пешеходами тормозит игрок.
  */
 import * as Phaser from 'phaser';
 import { Polyline, headingAngle, type Vec } from '../../world/geometry.ts';
@@ -9,10 +13,19 @@ import { partLength, type Lane, type PathPart, type RoadGraph } from '../../worl
 import { bakedImage } from '../bake.ts';
 import { carLook } from '../../progress/garage.ts';
 import { progress } from '../../progress/progress.ts';
+import { KMH_PER_PX, speedLimit } from '../../world/rules.ts';
 import { drawPlayerCar } from './art.ts';
 
 const ACCEL = 150;
 const BRAKE = 190;
+/** Торможение педалью. */
+export const PEDAL_BRAKE = BRAKE * 1.6;
+/** Разгон на «газу» выше обычной скорости — плавный, чтобы было время отпустить. */
+const GAS_ACCEL = 42;
+/** Экстренная остановка (свисток инспектора). */
+const HALT_BRAKE = 1400;
+/** «Газ»: до разрешённой скорости + столько км/ч. */
+const GAS_OVER = 40;
 const LOOKAHEAD = 260;
 const BLINK_BEFORE = 90;
 
@@ -27,6 +40,12 @@ export class Player {
   speed = 0;
   /** Ограничение скорости от джойстика (0…1). */
   throttle = 1;
+  /** Педаль тормоза нажата. */
+  brake = false;
+  /** Педаль газа нажата. */
+  gas = false;
+  /** Экстренная остановка: машина стоит, пока её не отпустят. */
+  halted = false;
   private heading = 0;
   private arrived = true;
   private blinkTime = 0;
@@ -125,6 +144,11 @@ export class Player {
     this.arrived = false;
   }
 
+  /** Машина останавливается по своей воле: тормоз, конец маршрута впереди. */
+  get stopping(): boolean {
+    return this.brake || this.halted || this.remaining() < (this.speed * this.speed) / (2 * BRAKE) + 12;
+  }
+
   /** Остановиться как можно раньше (с плавным торможением). */
   stopSoon() {
     const brakeDistance = (this.speed * this.speed) / (2 * BRAKE) + 2;
@@ -168,7 +192,10 @@ export class Player {
 
   update(dt: number) {
     const { part, index } = this.current();
-    let target = part.speed * this.throttle;
+    const cruise = part.speed * this.throttle;
+    let target = cruise;
+    // «Газ» — только на прямой полосе, в повороте скорость как обычно.
+    if (this.gas && part.kind === 'lane') target = Math.max(target, (speedLimit(part.lane) + GAS_OVER) / KMH_PER_PX);
     const remaining = this.remaining();
     target = Math.min(target, Math.sqrt(2 * BRAKE * Math.max(0, remaining - 0.3)));
     for (let j = index + 1; j < this.parts.length; j++) {
@@ -176,7 +203,15 @@ export class Player {
       if (dist > LOOKAHEAD) break;
       target = Math.min(target, Math.sqrt(this.parts[j].speed ** 2 + 2 * BRAKE * Math.max(0, dist)));
     }
-    this.speed = this.speed < target ? Math.min(target, this.speed + ACCEL * dt) : Math.max(target, this.speed - BRAKE * 1.6 * dt);
+    if (this.brake || this.halted) target = 0;
+    if (this.speed < target) {
+      // Выше обычной скорости машина разгоняется медленно.
+      const accel = this.speed >= cruise ? GAS_ACCEL : ACCEL;
+      this.speed = Math.min(target, this.speed + accel * dt);
+    } else {
+      const decel = this.halted ? HALT_BRAKE : this.brake ? PEDAL_BRAKE : BRAKE * 1.6;
+      this.speed = Math.max(target, this.speed - decel * dt);
+    }
     this.s = Math.min(this.line.length, this.s + this.speed * dt);
 
     if (this.remaining() < 0.4 && this.speed < 6) {

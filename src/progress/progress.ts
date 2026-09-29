@@ -34,6 +34,14 @@ export const XP = {
   boss: 500,
 } as const;
 
+/**
+ * «Чистая езда» (этап 8): бонус при доставке посылки главы. Без нарушений в главе — +1 звезда
+ * (но не больше трёх) и +100 опыта; одно нарушение — +50 опыта, два — +25, больше — ничего.
+ */
+export const CLEAN_XP = [100, 50, 25] as const;
+/** Метров в пикселе карты (по спидометру: 150 px/s — 60 км/ч). */
+export const METERS_PER_PX = 0.4 / 3.6;
+
 export const LEVELS = [
   { title: 'Ученик', xp: 0 },
   { title: 'Новичок за рулём', xp: 200 },
@@ -95,6 +103,20 @@ export interface ChapterState {
   race?: { time: number; answers: number; correct: number; settled?: number; /** Доля точек главы, пройденных до начала гонки. */ from?: number };
   /** Побочное задание: сколько остановок пройдено (0 — задание взято); когда выполнено. */
   side?: { step: number; done?: number };
+  /** Езда по правилам в районе главы: нарушений, проехано (px); звезда за чистую езду получена. */
+  drive?: { violations: number; distance: number; star?: boolean };
+}
+
+/** Езда по правилам за всю игру (px). */
+export interface DriveState {
+  /** Проехано с последнего нарушения — счётчик «Чистая езда». */
+  clean: number;
+  /** Лучший результат счётчика. */
+  best: number;
+  total: number;
+  violations: number;
+  /** Когда лейтенант Соколов рассказал о правилах за рулём. */
+  intro?: number;
 }
 
 export interface ControlSlot {
@@ -128,6 +150,7 @@ export interface ProgressData {
   /** Серия дней подряд с выполненной целью дня. */
   streak: { count: number; best: number; /** Начало последнего дня, когда цель выполнена. */ last?: number };
   garage: GarageState;
+  drive?: DriveState;
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
   finale: {
@@ -157,6 +180,7 @@ const GOAL_KINDS: GoalKind[] = ['review', 'points', 'correct'];
 // ─── Проверка сохранённых данных ─────────────────────────────────────────────────
 
 const isInt = (v: unknown, min = 0): v is number => Number.isInteger(v) && (v as number) >= min;
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
@@ -177,6 +201,10 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     const owned = [...new Set([DEFAULT_PAINT, DEFAULT_STICKER, ...strings(raw.garage.owned)])];
     const pick = (v: unknown, fallback: string) => (typeof v === 'string' && owned.includes(v) ? v : fallback);
     data.garage = { paint: pick(raw.garage.paint, DEFAULT_PAINT), sticker: pick(raw.garage.sticker, DEFAULT_STICKER), owned };
+  }
+  const dr = raw.drive;
+  if (isObj(dr) && isNum(dr.clean) && isNum(dr.best) && isNum(dr.total) && isInt(dr.violations)) {
+    data.drive = { clean: dr.clean, best: Math.max(dr.best, dr.clean), total: Math.max(dr.total, dr.clean), violations: dr.violations, ...(isInt(dr.intro) ? { intro: dr.intro } : {}) };
   }
   if (isObj(raw.questions)) {
     for (const [id, s] of Object.entries(raw.questions)) {
@@ -199,6 +227,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       }
       const side = c.side;
       if (isObj(side) && isInt(side.step) && side.step <= 2) state.side = { step: side.step, ...(isInt(side.done) ? { done: side.done } : {}) };
+      const drive = c.drive;
+      if (isObj(drive) && isInt(drive.violations) && isNum(drive.distance)) state.drive = { violations: drive.violations, distance: drive.distance, ...(drive.star === true ? { star: true } : {}) };
       data.chapters[id] = state;
     }
   }
@@ -458,31 +488,84 @@ export interface DeliveryOutcome {
   stars: number;
   newStars: number;
   levelUp?: LevelInfo;
+  /** «Чистая езда» при доставке: нарушений в главе, опыт и звезда за аккуратную езду. */
+  clean?: { violations: number; xp: number; star: boolean };
 }
 
-/** Посылка доставлена: глава пройдена, звёзды и опыт. */
+/** Звёзды главы: за верные ответы и ещё одна за чистую езду (не больше трёх). */
+export function chapterStars(state: ChapterState | undefined, share: number): number {
+  const base = starsFor(share);
+  return Math.min(3, base + (base && state?.drive?.star ? 1 : 0));
+}
+
+/**
+ * Посылка доставлена: глава пройдена, звёзды и опыт. При первой доставке — бонус «Чистая езда»,
+ * если в районе главы ездили по правилам (город их замечает с этапа 8).
+ */
 export function deliver(data: ProgressData, chapter: ChapterInfo, now: number): DeliveryOutcome {
   const state = chapterState(data, chapter.id);
   const first = !state.delivered;
   state.delivered ??= now;
-  const stars = Math.max(state.stars, starsFor(chapterResult(data, chapter).share));
+  let clean: DeliveryOutcome['clean'];
+  if (first && state.drive) {
+    const violations = state.drive.violations;
+    const star = violations === 0;
+    if (star) state.drive.star = true;
+    clean = { violations, xp: CLEAN_XP[violations] ?? 0, star };
+  }
+  const stars = Math.max(state.stars, chapterStars(state, chapterResult(data, chapter).share));
   const newStars = stars - state.stars;
   state.stars = stars;
-  const xp = (first ? XP.delivery : 0) + newStars * XP.star;
+  const xp = (first ? XP.delivery : 0) + newStars * XP.star + (clean?.xp ?? 0);
   if (first) data.coins += COINS.delivery;
-  return { xp, stars, newStars, levelUp: xp ? gain(data, xp) : undefined };
+  return { xp, stars, newStars, levelUp: xp ? gain(data, xp) : undefined, ...(clean ? { clean } : {}) };
 }
 
 /** После доставки звёзды главы растут вместе с результатом (и никогда не убывают). */
 export function refreshStars(data: ProgressData, chapter: ChapterInfo): DeliveryOutcome | undefined {
   const state = data.chapters[chapter.id];
   if (!state?.delivered) return undefined;
-  const stars = starsFor(chapterResult(data, chapter).share);
+  const stars = chapterStars(state, chapterResult(data, chapter).share);
   if (stars <= state.stars) return undefined;
   const newStars = stars - state.stars;
   state.stars = stars;
   const xp = newStars * XP.star;
   return { xp, stars, newStars, levelUp: gain(data, xp) };
+}
+
+// ─── Чистая езда ─────────────────────────────────────────────────────────────────
+
+export function driveState(data: ProgressData): DriveState {
+  return (data.drive ??= { clean: 0, best: 0, total: 0, violations: 0 });
+}
+
+/** Проехано без нарушений (px) в районе главы. */
+export function addCleanDistance(data: ProgressData, chapterId: string, px: number): void {
+  if (!(px > 0)) return;
+  const d = driveState(data);
+  d.clean += px;
+  d.total += px;
+  d.best = Math.max(d.best, d.clean);
+  const c = chapterState(data, chapterId);
+  c.drive ??= { violations: 0, distance: 0 };
+  c.drive.distance += px;
+}
+
+/** Нарушение: счётчик «Чистая езда» — с нуля, в главе нарушением больше. */
+export function recordViolation(data: ProgressData, chapterId: string): void {
+  const d = driveState(data);
+  d.clean = 0;
+  d.violations++;
+  const c = chapterState(data, chapterId);
+  c.drive ??= { violations: 0, distance: 0 };
+  c.drive.violations++;
+}
+
+/** Расстояние для показа: «350 м», «1,2 км». */
+export function distanceLabel(px: number): string {
+  const m = px * METERS_PER_PX;
+  if (m < 1000) return `${Math.floor(m / 10) * 10} м`;
+  return `${(Math.floor(m / 100) / 10).toLocaleString('ru-RU')} км`;
 }
 
 /** Глава открыта: первая всегда, остальные — когда пройдена предыдущая. */

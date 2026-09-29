@@ -42,8 +42,13 @@ export type Hint =
   | { kind: 'speeding'; limit: number }
   | { kind: 'no-stopping'; place: StopPlace; left: number };
 
-/** Перевод скорости: пиксели в секунду → км/ч (60 км/ч в городе — 150 px/s). */
-export const KMH_PER_PX = 0.4;
+/**
+ * Машина игрока едет на 20% быстрее обычной скорости дороги (её держит поток): так по району
+ * ездится бодрее. Обычный ход машины в городе — 180 px/s, и на спидометре это 60 км/ч.
+ */
+export const PLAYER_PACE = 1.2;
+/** Перевод скорости машины игрока: пиксели в секунду → км/ч. */
+export const KMH_PER_PX = 60 / (150 * PLAYER_PACE);
 /** Разрешённая скорость, км/ч (ПДД, п. 10.2–10.3). */
 export const SPEED_LIMITS: Record<RoadKind, number> = { city: 60, country: 90, highway: 110 };
 /** Превышение с этого запаса — нарушение (как штраф по КоАП 12.9). */
@@ -161,9 +166,9 @@ export interface WatchResult {
   clean: number;
 }
 
-/** Подсказки: красный — за столько до стоп-линии, пешеход — за столько до перехода. */
-const HINT_RED = 210;
-const HINT_WALKER = 190;
+/** Подсказки: красный — за столько до стоп-линии, пешеход — за столько до перехода (px). */
+const HINT_RED = 250;
+const HINT_WALKER = 230;
 /** Пешеход «на переходе», если он в прямоугольнике «зебры» с таким запасом. */
 const WALKER_MARGIN = 3;
 

@@ -188,7 +188,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   const HINTS: Record<RuleHint['kind'], (h: RuleHint) => string> = {
     'red-light': () => 'Впереди красный — тормозите до стоп-линии.',
     pedestrian: () => 'Пешеход на переходе — остановитесь и пропустите.',
-    speeding: (h) => `Здесь можно ${h.kind === 'speeding' ? h.limit : 60} км/ч — отпустите «Газ».`,
+    speeding: (h) => `Здесь можно ${h.kind === 'speeding' ? h.limit : 60} км/ч — сбавьте скорость.`,
     'no-stopping': (h) =>
       h.kind === 'no-stopping'
         ? `Здесь стоять нельзя (${{ crosswalk: 'переход', junction: 'перекрёсток', railway: 'переезд', zone: 'знак «Остановка запрещена»' }[h.place]}) — проезжайте.`

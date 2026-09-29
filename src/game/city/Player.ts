@@ -13,15 +13,15 @@ import { partLength, type Lane, type PathPart, type RoadGraph } from '../../worl
 import { bakedImage } from '../bake.ts';
 import { carLook } from '../../progress/garage.ts';
 import { progress } from '../../progress/progress.ts';
-import { KMH_PER_PX, speedLimit } from '../../world/rules.ts';
+import { KMH_PER_PX, PLAYER_PACE, speedLimit } from '../../world/rules.ts';
 import { drawPlayerCar } from './art.ts';
 
 const ACCEL = 150;
 const BRAKE = 190;
 /** Торможение педалью. */
 export const PEDAL_BRAKE = BRAKE * 1.6;
-/** Разгон на «газу» выше обычной скорости — плавный, чтобы было время отпустить. */
-const GAS_ACCEL = 42;
+/** Разгон на «газу» выше обычной скорости — плавный (7 км/ч в секунду), чтобы было время отпустить. */
+const GAS_ACCEL = 7 / KMH_PER_PX;
 /** Экстренная остановка (свисток инспектора). */
 const HALT_BRAKE = 1400;
 /** «Газ»: до разрешённой скорости + столько км/ч. */
@@ -151,7 +151,7 @@ export class Player {
 
   /** Остановиться как можно раньше (с плавным торможением). */
   stopSoon() {
-    const brakeDistance = (this.speed * this.speed) / (2 * BRAKE) + 2;
+    const brakeDistance = (this.speed * this.speed) / (2 * PEDAL_BRAKE) + 2;
     this.truncate(this.s + brakeDistance);
   }
 
@@ -190,18 +190,28 @@ export class Player {
     this.line = new Polyline(points);
   }
 
+  /**
+   * Скорость, которую машина держит на части маршрута: обычная (на 20% быстрее потока), а на
+   * «газу» — до разрешённой +40 км/ч, в том числе прямо через перекрёсток. В повороте — как обычно.
+   */
+  private allowed(part: PathPart): number {
+    const normal = part.speed * PLAYER_PACE;
+    if (!this.gas) return normal;
+    if (part.kind === 'lane') return Math.max(normal, (speedLimit(part.lane) + GAS_OVER) / KMH_PER_PX);
+    if (part.turn.kind === 'straight') return Math.max(normal, (speedLimit(part.turn.from) + GAS_OVER) / KMH_PER_PX);
+    return normal;
+  }
+
   update(dt: number) {
     const { part, index } = this.current();
-    const cruise = part.speed * this.throttle;
-    let target = cruise;
-    // «Газ» — только на прямой полосе, в повороте скорость как обычно.
-    if (this.gas && part.kind === 'lane') target = Math.max(target, (speedLimit(part.lane) + GAS_OVER) / KMH_PER_PX);
+    const cruise = part.speed * PLAYER_PACE * this.throttle;
+    let target = Math.max(cruise, this.allowed(part) * (this.gas ? 1 : this.throttle));
     const remaining = this.remaining();
     target = Math.min(target, Math.sqrt(2 * BRAKE * Math.max(0, remaining - 0.3)));
     for (let j = index + 1; j < this.parts.length; j++) {
       const dist = this.starts[j] - this.s;
       if (dist > LOOKAHEAD) break;
-      target = Math.min(target, Math.sqrt(this.parts[j].speed ** 2 + 2 * BRAKE * Math.max(0, dist)));
+      target = Math.min(target, Math.sqrt(this.allowed(this.parts[j]) ** 2 + 2 * BRAKE * Math.max(0, dist)));
     }
     if (this.brake || this.halted) target = 0;
     if (this.speed < target) {

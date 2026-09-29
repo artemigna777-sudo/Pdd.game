@@ -96,7 +96,8 @@ test('вопросы про каждое правило — из базы и п�
 });
 
 test('скорость: в городе 60, за городом 90, на автомагистрали 110; нарушение — от +20 км/ч', () => {
-  assert.equal(kmh(150), 60);
+  // Обычный ход машины игрока в городе — 180 px/s (на 20% быстрее потока), это 60 км/ч.
+  assert.equal(kmh(180), 60);
   assert.deepEqual(SPEED_LIMITS, { city: 60, country: 90, highway: 110 });
   assert.equal(isSpeeding(79, 60), false);
   assert.equal(isSpeeding(80, 60), true);
@@ -237,15 +238,15 @@ test('пешеход на переходе у регулируемого пер�
 test('скорость: 80 км/ч в городе — нарушение, 78 — нет (новичку — подсказка)', () => {
   const sc = scenario('ch1', 'novice');
   const lane = [...sc.graph.lanes.values()].find((l) => l.length > 300 && !sc.rules.signals.includes(l.to.id))!;
-  const slow = drive(sc, lane, 50, 250, 195);
+  const slow = drive(sc, lane, 50, 250, 234);
   assert.equal(slow.violation, undefined);
   assert.ok(slow.hints.includes('speeding'));
-  const fast = drive(sc, lane, 50, 250, 200);
+  const fast = drive(sc, lane, 50, 250, 240);
   assert.deepEqual(fast.violation, { kind: 'speeding', kmh: 80, limit: 60, road: 'city' });
   // Пока идёт разговор с инспектором — ничего не проверяется.
-  assert.equal(drive(sc, lane, 50, 250, 300).violation, undefined);
+  assert.equal(drive(sc, lane, 50, 250, 330).violation, undefined);
   sc.watcher.resume(lane.start);
-  assert.equal(drive(sc, lane, 50, 250, 300).violation?.kind, 'speeding');
+  assert.equal(drive(sc, lane, 50, 250, 330).violation?.kind, 'speeding');
 });
 
 test('разворот через сплошную — выезд на встречную; через прерывистую — можно', () => {
@@ -338,6 +339,6 @@ test('во всех районах город замечает красный, �
     // Скорость — на городской улице.
     const sc = scenario(c.id);
     const lane = [...sc.graph.lanes.values()].find((l) => (l.road.kind ?? 'city') === 'city' && l.length > 300)!;
-    assert.equal(drive(sc, lane, 20, 200, 210).violation?.kind, 'speeding', `${c.id}: скорость`);
+    assert.equal(drive(sc, lane, 20, 200, 250).violation?.kind, 'speeding', `${c.id}: скорость`);
   }
 });

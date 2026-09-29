@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { engineParams } from '../src/audio/cityAudio.ts';
 import { RACE_COINS, acceptSide, advanceSide, raceAnswer, raceResult, raceTick, rivalProgress, settleRace, sideStatus, sideStep } from '../src/progress/race.ts';
 import { emptyProgress, levelOf, sanitizeProgress, type ChapterInfo } from '../src/progress/progress.ts';
-import { RIVALS, SIDE_QUESTS, SIDE_REWARD, raceReaction, rivalSeconds, sideDone } from '../src/story/extras.ts';
+import { RIVALS, RIVAL_TIME, SIDE_QUESTS, SIDE_REWARD, raceReaction, rivalSeconds, sideDone } from '../src/story/extras.ts';
 import { STORY, type Line } from '../src/story/story.ts';
 import { CHAPTERS } from '../src/world/chapters.ts';
 import { EVENTS, EVENT_KINDS, nextEventKind, pickEventQuestion } from '../src/world/events.ts';
@@ -22,7 +22,7 @@ const chapter: ChapterInfo = { id: 'ch1', points: Array.from({ length: 10 }, (_,
 test('гонка: время и точность; итог — кто быстрее и кто точнее; монеты один раз', () => {
   const rival = RIVALS.ch1;
   const artemTime = rivalSeconds(rival, 30, 10);
-  assert.equal(artemTime, Math.round((30 * 22 + 10 * 15) * rival.pace));
+  assert.equal(artemTime, Math.round((30 * RIVAL_TIME.question + 10 * RIVAL_TIME.point) * rival.pace));
 
   const data = emptyProgress();
   assert.equal(raceResult(data, chapter, rival), undefined, 'без ответов итога нет');
@@ -94,7 +94,7 @@ test('у каждой главы — гонка с Артёмом и поруч�
   for (const c of CHAPTERS) {
     const rival = RIVALS[c.id];
     assert.ok(rival?.parcel, c.id);
-    assert.ok(rival.accuracy > 50 && rival.accuracy < 100 && rival.pace > 0.5 && rival.pace < 1.5, c.id);
+    assert.ok(rival.accuracy > 50 && rival.accuracy < 100 && rival.pace >= 1 && rival.pace < 1.5, c.id);
     const bet = choiceLines(rival.challenge);
     assert.equal(bet.length, 1, `${c.id}: в вызове один выбор`);
     assert.deepEqual(bet[0].choices!.map((ch) => ch.value), ['bet', 'calm']);

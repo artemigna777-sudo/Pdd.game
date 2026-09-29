@@ -34,6 +34,16 @@ export const CHARACTERS: Record<Exclude<CharacterId, 'narrator'>, Character> = {
 export interface Line {
   who: CharacterId;
   text: string;
+  /** Выбор игрока после реплики: кнопки вместо «Далее». */
+  choices?: Choice[];
+}
+
+/** Вариант ответа в диалоге: что сказать и что ответят. */
+export interface Choice {
+  label: string;
+  /** Что выбрано — сцена возвращает это значение. */
+  value: string;
+  reply?: Line[];
 }
 
 export interface ChapterStory {
@@ -88,7 +98,7 @@ export const STORY: Record<string, ChapterStory> = {
     ],
     beats: [
       [
-        artem('О, новичок на машине с «ушком»! Я Артём, лучший курьер «Стрелы». Спорим, к вечеру у меня будет вдвое больше доставок?'),
+        artem('Эй, новичок на машине с «ушком»! Как успехи? У меня уже полрайона позади!'),
         victor('Не слушай его. Кто спешит, тот потом платит штрафы.'),
       ],
       [

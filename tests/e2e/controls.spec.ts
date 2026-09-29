@@ -20,9 +20,10 @@ interface CitySceneDebug {
  * эти тесты проверяют управление, а не сюжет.
  */
 function openAllChapters() {
-  const seen = ['prologue', 'intro', 'beat1', 'beat2', 'ready', 'low'];
+  // Гонка и поручение главы уже позади, чтобы сюжет не мешал проверять управление.
+  const seen = ['prologue', 'intro', 'race', 'beat1', 'beat2', 'ready', 'low'];
   const chapters: Record<string, unknown> = {};
-  for (let i = 1; i <= 10; i++) chapters[`ch${i}`] = { points: [], seen, stars: 1, ...(i < 10 ? { delivered: 1 } : {}) };
+  for (let i = 1; i <= 10; i++) chapters[`ch${i}`] = { points: [], seen, stars: 1, side: { step: 2, done: 1 }, ...(i < 10 ? { delivered: 1 } : {}) };
   localStorage.setItem('pdd-game:progress', JSON.stringify({ xp: 0, questions: {}, chapters, finale: { control: [], seen: [] } }));
 }
 
@@ -32,7 +33,7 @@ async function openCity(page: Page, control: 'tap' | 'joystick', chapter = 1) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_SLOW) });
   }
-  await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode, tutorial: true })), control);
+  await page.addInitScript((mode) => localStorage.setItem('pdd-game:settings', JSON.stringify({ control: mode, tutorial: true, events: false })), control);
   await page.addInitScript(openAllChapters);
   await page.goto('/');
   await page.getByRole('button', { name: 'Главы' }).tap();

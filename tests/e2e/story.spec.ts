@@ -47,7 +47,7 @@ function seed(page: Page, data: unknown) {
     // Только при первой загрузке: после перезагрузки игра должна читать то, что сохранила сама.
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('pdd-game:progress', JSON.stringify(value));
-      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false }));
       sessionStorage.setItem('seeded', '1');
     }
   }, data);
@@ -127,15 +127,25 @@ test('глава 1: обучение, пролог, вступление, точ
   await page.getByRole('button', { name: 'Пропустить' }).tap();
   await expect(dialog).toContainText('Мешок муки');
   await page.getByRole('button', { name: 'Пропустить' }).tap();
+  // Артём вызывает на гонку: выбор пропустить нельзя.
+  await expect(dialog.locator('.cutscene__name')).toHaveText('Марина');
+  await expect(dialog).toContainText('Знакомься: Артём');
+  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await expect(dialog).toContainText('Спорим, доставлю раньше');
+  await expect(page.getByRole('button', { name: 'Пропустить' })).toBeHidden();
+  await page.getByRole('button', { name: 'Я за точность' }).tap();
+  await expect(dialog.locator('.cutscene__name')).toHaveText('Виктор Петрович');
+  await page.getByRole('button', { name: 'Далее' }).tap();
+  await page.getByRole('button', { name: 'Поехали' }).tap();
   await expect(dialog).toHaveCount(0);
   await waitCity(page);
   await expect(page.locator('.city-task')).toContainText('Отвезти мешок муки в пекарню «Калач»');
-  await expect(page.locator('.city-task')).toContainText('Точки 0 из 26');
+  await expect(page.locator('.city-task')).toContainText('Точки 0/26');
 
   await startPoint(page, ROAD_POINT);
   const answered = await answerSeriesCorrectly(page);
   expect(answered).toBe(pointQuestions(ROAD_POINT).length);
-  await expect(page.locator('.city-task')).toContainText('Точки 1 из 26');
+  await expect(page.locator('.city-task')).toContainText('Точки 1/26');
 
   // Закрыли игру и открыли снова: прогресс на месте, обучение и вступление не повторяются.
   await page.reload();
@@ -151,7 +161,7 @@ test('глава 1: обучение, пролог, вступление, точ
   await waitCity(page);
   await page.waitForTimeout(800);
   await expect(page.locator('.cutscene')).toHaveCount(0);
-  await expect(page.locator('.city-task')).toContainText('Точки 1 из 26');
+  await expect(page.locator('.city-task')).toContainText('Точки 1/26');
   const state = await page.evaluate((id) => {
     const scene = (window as unknown as { __game: { scene: { getScene(k: string): any } } }).__game.scene.getScene('city');
     return scene.poiState(scene.pois.find((p: { point: { id: string } }) => p.point.id === id));
@@ -170,11 +180,11 @@ test('конец главы 1: флажок доставки, финал, наг
   const questions: Record<string, unknown> = {};
   for (const q of MAPPING.questions) if (q.chapter === 'ch1' && q.point !== ROAD_POINT) questions[q.id] = { n: 1, ok: true, ever: true, at: 1 };
   const points = MAPPING.chapters[0].points.map((p) => p.id).filter((p) => p !== ROAD_POINT);
-  await seed(page, { xp: 700, questions, chapters: { ch1: { points, seen: ['prologue', 'intro', 'beat1', 'beat2'], stars: 0 } }, finale: { control: [], seen: [] } });
+  await seed(page, { xp: 700, questions, chapters: { ch1: { points, seen: ['prologue', 'intro', 'race', 'beat1', 'beat2'], stars: 0, side: { step: 2, done: 1 } } }, finale: { control: [], seen: [] } });
   await page.goto('/');
   await page.getByRole('button', { name: 'Глава 1: Первый день' }).tap();
   await waitCity(page);
-  await expect(page.locator('.city-task')).toContainText('Точки 25 из 26');
+  await expect(page.locator('.city-task')).toContainText('Точки 25/26');
 
   await startPoint(page, ROAD_POINT);
   await answerSeriesCorrectly(page);

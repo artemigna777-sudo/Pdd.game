@@ -62,7 +62,8 @@ const SOUNDS: Record<SoundName, Note[]> = {
 
 let ctx: AudioContext | undefined;
 
-function context(): AudioContext | undefined {
+/** Общий аудиоконтекст игры (создаётся при первом звуке). */
+export function context(): AudioContext | undefined {
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return undefined;

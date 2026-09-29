@@ -2535,3 +2535,70 @@ button {
     font-size: 14px;
   }
 }
+
+/* ---------- Этап 7: выбор в диалоге, гонка, поручения, события ---------- */
+
+.cutscene__choices {
+  display: grid;
+  gap: 10px;
+}
+
+.race {
+  margin: 4px 0 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--soft);
+}
+
+.race__title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.race__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.race__table th,
+.race__table td {
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.race__table th {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.race__table td.is-win {
+  font-weight: 800;
+  color: var(--ok-text, #1f8a43);
+}
+
+.race__quote {
+  margin: 10px 0 0;
+  font-style: italic;
+}
+
+.event-intro {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--warn-bg, #fff3d6);
+  font-weight: 700;
+}
+
+.sheet__alt {
+  padding: 6px 16px calc(10px + var(--safe-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.sheet__alt > * {
+  max-width: 640px;
+  margin: 0 auto;
+}

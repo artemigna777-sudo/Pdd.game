@@ -27,15 +27,40 @@ export class Atmosphere {
     this.particles = scene.add.graphics().setDepth(8.6);
   }
 
-  set(conditions: Conditions) {
+  /** Погода во всём районе (событие в пути). Сцена у точки её перекрывает, пока идёт. */
+  private base: Conditions = {};
+  private override = false;
+
+  private apply(conditions: Conditions) {
     this.conditions = conditions;
     const active = conditions.time === 'night' || (conditions.weather && conditions.weather !== 'clear');
     this.target = active ? 1 : 0;
     this.drops = [];
   }
 
+  /** Условия сцены у точки. */
+  set(conditions: Conditions) {
+    this.override = true;
+    this.apply(conditions);
+  }
+
+  /** Сцена закончилась: вернуть погоду района (или плавно убрать всё). */
   clear() {
-    this.target = 0;
+    this.override = false;
+    if (this.base.weather || this.base.time) this.apply(this.base);
+    else this.target = 0;
+  }
+
+  /** Погода района (пусто — ясно). */
+  setBase(conditions: Conditions) {
+    this.base = conditions;
+    if (this.override) return;
+    if (conditions.weather || conditions.time) this.apply(conditions);
+    else this.target = 0;
+  }
+
+  get baseWeather(): Conditions['weather'] {
+    return this.base.weather;
   }
 
   get active(): boolean {

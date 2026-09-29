@@ -29,7 +29,7 @@ export function settingsPanel(full = false): HTMLElement {
     updateSettings({ control: mode });
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(OPTIONS[i].mode === mode)));
   }
-  const toggle = (key: 'sound' | 'vibration' | 'bigText', title: string, hint: string) => {
+  const toggle = (key: 'sound' | 'vibration' | 'bigText' | 'events', title: string, hint: string) => {
     const button = el(
       'button',
       { class: 'choice choice--toggle', type: 'button', 'aria-pressed': String(getSettings()[key]), onclick: () => flip() },
@@ -51,11 +51,13 @@ export function settingsPanel(full = false): HTMLElement {
     { class: 'settings' },
     el('h2', { class: 'settings__title' }, 'Управление машиной'),
     el('div', { class: 'choices' }, ...buttons),
+    el('h2', { class: 'settings__title settings__title--next' }, 'Город'),
+    el('div', { class: 'choices' }, toggle('events', 'События в пути', 'Иногда по дороге что-то случается: сзади скорая, на дорогу выкатился мяч, пошёл дождь. После события — вопрос по его теме.')),
     el('h2', { class: 'settings__title settings__title--next' }, 'Звук и вибрация'),
     el(
       'div',
       { class: 'choices' },
-      toggle('sound', 'Звуки', 'Сигналы верного и неверного ответа, награды, экзамен. На iPhone звука не будет, если включён беззвучный режим.'),
+      toggle('sound', 'Звуки', 'Сигналы ответов, награды, экзамен, мотор и шум улицы в городе. На iPhone звука не будет, если включён беззвучный режим.'),
       toggle('vibration', 'Вибрация при ошибке', 'На Android — вибрация, на iPhone (iOS 18 и новее) — лёгкий отклик.'),
     ),
     el('h2', { class: 'settings__title settings__title--next' }, 'Вид'),

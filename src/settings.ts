@@ -15,12 +15,14 @@ export interface Settings {
   theme: Theme;
   /** Крупный шрифт вопросов и текстов. */
   bigText: boolean;
+  /** Случайные события в пути: скорая, мяч на дороге, смена погоды. */
+  events: boolean;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 const listeners = new Set<(s: Settings) => void>();

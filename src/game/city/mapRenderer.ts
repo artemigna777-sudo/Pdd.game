@@ -11,7 +11,7 @@
 import * as Phaser from 'phaser';
 import { PIXEL_RATIO } from '../display.ts';
 import type { CityMap, MapPoint, MapRoad } from '../../world/map.ts';
-import { DEAD_END_RADIUS, LANE_WIDTH, MEDIAN_WIDTH, RING_INNER, RING_OUTER, RoadGraph, laneOffset, roadHalfWidth } from '../../world/roadGraph.ts';
+import { DEAD_END_RADIUS, LANE_WIDTH, MEDIAN_WIDTH, RING_INNER, RING_OUTER, RoadGraph, SIDEWALK, laneOffset, roadHalfWidth } from '../../world/roadGraph.ts';
 import { COLORS, ROOF_COLORS, drawBuilding, drawTree, seeded } from './art.ts';
 
 const CHUNK = 512;
@@ -20,7 +20,6 @@ const BAKE_MARGIN = 160;
 /** Куски дальше этого запаса выгружаются. */
 const EVICT_MARGIN = 640;
 const OVERVIEW_SCALE = 0.4;
-export const SIDEWALK = 12;
 
 interface Rect {
   x: number;

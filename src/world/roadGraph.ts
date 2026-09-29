@@ -32,6 +32,8 @@ export const RING_OUTER = 88;
 export const RING_INNER = 46;
 export const RING_LANE = (RING_OUTER + RING_INNER) / 2;
 export const DEAD_END_RADIUS = 46;
+/** Ширина тротуара вдоль городских дорог. */
+export const SIDEWALK = 12;
 /** Половина длины машины: позиция машины — её центр, останавливаемся передним бампером. */
 export const CAR_HALF_LENGTH = 20;
 

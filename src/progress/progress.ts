@@ -91,6 +91,10 @@ export interface ChapterState {
   delivered?: number;
   /** Лучшее число звёзд. */
   stars: number;
+  /** Гонка с Артёмом: секунд в районе, ответов в точках главы и верных из них; когда подведён итог. */
+  race?: { time: number; answers: number; correct: number; settled?: number; /** Доля точек главы, пройденных до начала гонки. */ from?: number };
+  /** Побочное задание: сколько остановок пройдено (0 — задание взято); когда выполнено. */
+  side?: { step: number; done?: number };
 }
 
 export interface ControlSlot {
@@ -188,6 +192,13 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       if (!isObj(c)) continue;
       const state: ChapterState = { points: [...new Set(strings(c.points))], seen: [...new Set(strings(c.seen))], stars: isInt(c.stars) ? Math.min(3, c.stars) : 0 };
       if (isInt(c.delivered)) state.delivered = c.delivered;
+      const r = c.race;
+      if (isObj(r) && isInt(r.time) && isInt(r.answers) && isInt(r.correct) && r.correct <= r.answers) {
+        state.race = { time: r.time, answers: r.answers, correct: r.correct, ...(isInt(r.settled) ? { settled: r.settled } : {}) };
+        if (typeof r.from === 'number' && r.from > 0 && r.from < 1) state.race.from = r.from;
+      }
+      const side = c.side;
+      if (isObj(side) && isInt(side.step) && side.step <= 2) state.side = { step: side.step, ...(isInt(side.done) ? { done: side.done } : {}) };
       data.chapters[id] = state;
     }
   }
@@ -224,7 +235,7 @@ export function levelOf(xp: number): LevelInfo {
 }
 
 /** Прибавить опыт; вернуть новый уровень, если он сменился. */
-function gain(data: ProgressData, xp: number): LevelInfo | undefined {
+export function gain(data: ProgressData, xp: number): LevelInfo | undefined {
   const before = levelOf(data.xp).number;
   data.xp += xp;
   const after = levelOf(data.xp);

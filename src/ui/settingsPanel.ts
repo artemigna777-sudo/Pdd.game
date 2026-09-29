@@ -2,6 +2,7 @@ import { playSound, vibrateError } from '../audio/feedback.ts';
 import { backupFileName, makeBackup, parseBackup, restoreBackup, type Backup } from '../backup.ts';
 import { levelOf, sanitizeProgress } from '../progress/progress.ts';
 import { getSettings, updateSettings, type ControlMode, type Theme } from '../settings.ts';
+import type { Difficulty } from '../world/rules.ts';
 import { load } from '../storage.ts';
 import { playTutorial, showModal } from './cutscene.ts';
 import { shareFile } from './share.ts';
@@ -52,7 +53,12 @@ export function settingsPanel(full = false): HTMLElement {
     el('h2', { class: 'settings__title' }, 'Управление машиной'),
     el('div', { class: 'choices' }, ...buttons),
     el('h2', { class: 'settings__title settings__title--next' }, 'Город'),
-    el('div', { class: 'choices' }, toggle('events', 'События в пути', 'Иногда по дороге что-то случается: сзади скорая, на дорогу выкатился мяч, пошёл дождь. После события — вопрос по его теме.')),
+    el(
+      'div',
+      { class: 'choices' },
+      difficultyChoice(),
+      toggle('events', 'События в пути', 'Иногда по дороге что-то случается: сзади скорая, на дорогу выкатился мяч, пошёл дождь. После события — вопрос по его теме.'),
+    ),
     el('h2', { class: 'settings__title settings__title--next' }, 'Звук и вибрация'),
     el(
       'div',
@@ -73,6 +79,33 @@ const THEMES: Array<{ theme: Theme; title: string }> = [
   { theme: 'light', title: 'Светлая' },
   { theme: 'dark', title: 'Тёмная' },
 ];
+
+const DIFFICULTIES: Array<{ difficulty: Difficulty; title: string }> = [
+  { difficulty: 'novice', title: 'Новичок' },
+  { difficulty: 'expert', title: 'Опытный' },
+];
+
+/** Правила за рулём: новичку — подсказки перед нарушением, опытному — без них. */
+function difficultyChoice(): HTMLElement {
+  const buttons = DIFFICULTIES.map((d) =>
+    el('button', { class: 'segment__btn', type: 'button', 'aria-pressed': String(getSettings().difficulty === d.difficulty), onclick: () => select(d.difficulty) }, d.title),
+  );
+  function select(difficulty: Difficulty) {
+    updateSettings({ difficulty });
+    buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(DIFFICULTIES[i].difficulty === difficulty)));
+  }
+  return el(
+    'div',
+    { class: 'choice' },
+    el('span', { class: 'choice__title' }, 'Правила за рулём'),
+    el('div', { class: 'segment', role: 'group', 'aria-label': 'Правила за рулём' }, ...buttons),
+    el(
+      'span',
+      { class: 'choice__hint' },
+      'Город замечает нарушения: красный, непропущенный пешеход, превышение скорости, разворот через сплошную, остановка там, где нельзя. Новичку — подсказка заранее, опытному — без подсказок (и стоять в запрещённом месте можно 3 секунды, а не 5).',
+    ),
+  );
+}
 
 /** Тема: три кнопки в ряд. */
 function themeChoice(): HTMLElement {

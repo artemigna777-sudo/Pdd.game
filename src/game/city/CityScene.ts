@@ -12,7 +12,7 @@ import type { ControlMode } from '../../settings.ts';
 import { distance, dot, headingAngle, normalize, rightNormal, type Vec } from '../../world/geometry.ts';
 import type { MapPoint } from '../../world/map.ts';
 import { MAPS, pointQueues, type Mapping, type Placement } from '../../world/mapping.ts';
-import { RoadGraph, type Lane, type PathPart } from '../../world/roadGraph.ts';
+import { LANE_WIDTH, RoadGraph, partLength, roadHalfWidth, type Lane, type PathPart } from '../../world/roadGraph.ts';
 import { TEMPLATES, type Maneuver, type TemplateInfo } from '../../world/templates.ts';
 import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
@@ -27,6 +27,9 @@ import { TrafficView } from './trafficView.ts';
 import { CityAudio } from '../../audio/cityAudio.ts';
 import { EVENTS, EVENT_DELAY, nextEventKind, type EventKind } from '../../world/events.ts';
 import { TrafficSim, type Light, type TrafficEnv, type Zone } from '../../world/traffic.ts';
+import { crossingCenter, districtRules, noStopLane, ZEBRA_HALF_DEPTH, type DistrictRules } from '../../world/districtRules.ts';
+import { RuleWatcher, kmh, speedLimit, type Difficulty, type DriveFrame, type Hint, type Violation } from '../../world/rules.ts';
+import { createSign } from './signs.ts';
 
 /** Вопрос в серии точки интереса. */
 export interface SeriesInfo {
@@ -53,6 +56,21 @@ export interface CityHost {
   onSide?(): void;
   /** Событие в пути показано, машина стоит — задать вопрос по теме (потом вызвать endEvent). */
   onEvent?(kind: EventKind): void;
+  /** Нарушение: машину остановил лейтенант Соколов — задать вопрос по правилу (потом вызвать endViolation). */
+  onViolation?(violation: Violation): void;
+  /** Подсказка новичку перед нарушением (undefined — убрать). */
+  onHint?(hint: RuleHint | undefined): void;
+}
+
+/** Подсказка перед нарушением: из наблюдения за ездой и разворот через сплошную (джойстик). */
+export type RuleHint = Hint | { kind: 'oncoming' };
+
+/** Что показывает спидометр. */
+export interface DriveInfo {
+  kmh: number;
+  limit: number;
+  brake: boolean;
+  gas: boolean;
 }
 
 export interface CityData {
@@ -67,6 +85,10 @@ export interface CityData {
   isWrong(questionId: string): boolean;
   /** Случайные события в пути (в автотестах выключаются). */
   events?: boolean;
+  /** Город замечает нарушения (этап 8; в автотестах прежних этапов выключается). */
+  rules?: boolean;
+  /** Новичку — подсказки перед нарушением. */
+  difficulty?: Difficulty;
 }
 
 /** Состояние точки на карте. */
@@ -123,6 +145,8 @@ interface ActiveScene {
 }
 
 const SIGNAL_CYCLE = 16;
+/** Насколько камера смотрит вперёд по ходу машины. */
+const LOOK_AHEAD = 110;
 const TAP_MOVE_LIMIT = 10;
 const JOY_RADIUS = 56;
 
@@ -149,6 +173,16 @@ export class CityScene extends Phaser.Scene {
   private lastEvent?: EventKind;
   private weatherLeft = 0;
   eventsEnabled = true;
+  /** Правила за рулём (этап 8). */
+  private rules!: DistrictRules;
+  private watcher!: RuleWatcher;
+  rulesEnabled = true;
+  private violation?: { violation: Violation; kit?: SceneKit };
+  /** Проехано без нарушений с последнего опроса (px). */
+  private cleanPx = 0;
+  private hintKey = '';
+  private hintRing!: Phaser.GameObjects.Graphics;
+  private ruleSigns: Phaser.GameObjects.Container[] = [];
 
   private graph!: RoadGraph;
   private mapView!: MapRenderer;
@@ -194,6 +228,15 @@ export class CityScene extends Phaser.Scene {
     this.lastEvent = undefined;
     this.weatherLeft = 0;
     this.eventsEnabled = data.events ?? true;
+    this.rulesEnabled = data.rules ?? true;
+    this.violation = undefined;
+    this.cleanPx = 0;
+    this.hintKey = '';
+    this.ruleSigns = [];
+    this.uturnWarn = undefined;
+    this.hint = undefined;
+    this.hintHold = 0;
+    this.pendingDifficulty = data.difficulty ?? 'novice';
     this.pois = [];
     this.signals = [];
     this.signalByLane = new Map();
@@ -205,6 +248,7 @@ export class CityScene extends Phaser.Scene {
     this.destination = undefined;
     this.overview = false;
     this.interior = undefined;
+    this.look = { x: 0, y: 0 };
   }
 
   create() {
@@ -212,10 +256,15 @@ export class CityScene extends Phaser.Scene {
     const map = MAPS[chapter.map];
     this.points = chapter.points;
     this.graph = new RoadGraph(map);
-    this.mapView = new MapRenderer(this, this.graph, this.points);
+    this.rules = districtRules(this.graph, this.points);
+    this.mapView = new MapRenderer(this, this.graph, this.points, this.rules);
     this.atmosphere = new Atmosphere(this);
     this.buildPois();
     this.buildSignals();
+    this.buildRuleSigns();
+    this.watcher = new RuleWatcher(this.graph, this.rules);
+    this.watcher.difficulty = this.pendingDifficulty;
+    this.hintRing = this.add.graphics().setDepth(7.5);
 
     this.player = new Player(this, this.graph, this.startLane(), 30);
     this.player.onArrive = () => this.onArrive();
@@ -230,7 +279,7 @@ export class CityScene extends Phaser.Scene {
     cam.centerOn(this.player.position.x, this.player.position.y);
 
     // Поток машин и пешеходов вокруг.
-    this.traffic = new TrafficSim(this.graph, this.points);
+    this.traffic = new TrafficSim(this.graph, this.points, Math.random, { rules: this.rules });
     this.trafficView = new TrafficView(this, this.traffic);
     this.traffic.maintain(this.trafficEnv(), true);
     this.scheduleEvent(true);
@@ -263,8 +312,15 @@ export class CityScene extends Phaser.Scene {
   /** Старт: городская улица без точек интереса, чтобы машину было видно в движении сразу. */
   private startLane(): Lane {
     const busy = new Set(this.pois.map((p) => p.lane));
+    // Не с перехода и не из зоны «Остановка запрещена»: машина стоит на старте, пока игрок не поедет.
+    const ruled = new Set([...this.rules.crossings.map((c) => c.road), ...this.rules.noStop.map((z) => z.road)]);
+    const signals = new Set(this.rules.signals);
     const lanes = [...this.graph.lanes.values()].filter((l) => l.length > 200);
-    return lanes.find((l) => !busy.has(l) && !this.pois.some((p) => p.lane.from === l.to && distance(p.anchor, l.to) < 200)) ?? lanes[0];
+    return (
+      lanes.find((l) => !busy.has(l) && !ruled.has(l.road.id) && !signals.has(l.from.id) && !this.pois.some((p) => p.lane.from === l.to && distance(p.anchor, l.to) < 200)) ??
+      lanes.find((l) => !busy.has(l) && !this.pois.some((p) => p.lane.from === l.to && distance(p.anchor, l.to) < 200)) ??
+      lanes[0]
+    );
   }
 
   // ─── Публичные команды для интерфейса ────────────────────────────────────────
@@ -273,6 +329,37 @@ export class CityScene extends Phaser.Scene {
     this.control = mode;
     this.joy.active = false;
     this.player.throttle = 1;
+  }
+
+  /** Педаль нажата или отпущена. */
+  setPedal(kind: 'brake' | 'gas', on: boolean) {
+    if (kind === 'brake') this.player.brake = on;
+    else this.player.gas = on;
+  }
+
+  /** Новичку — подсказки перед нарушением, опытному — без них. */
+  setDifficulty(difficulty: Difficulty) {
+    this.watcher.difficulty = difficulty;
+    if (difficulty === 'expert') this.showHint(undefined);
+  }
+
+  /** Спидометр: скорость и ограничение там, где сейчас машина. */
+  get drive(): DriveInfo {
+    const { part } = this.player.current();
+    const lane = part.kind === 'lane' ? part.lane : part.turn.from;
+    return { kmh: kmh(this.player.speed), limit: speedLimit(lane), brake: this.player.brake, gas: this.player.gas };
+  }
+
+  /** Сколько проехано без нарушений с прошлого вызова (px). */
+  takeClean(): number {
+    const px = this.cleanPx;
+    this.cleanPx = 0;
+    return px;
+  }
+
+  /** Идёт остановка инспектором (для интерфейса и тестов). */
+  get violationKind(): Violation['kind'] | undefined {
+    return this.violation?.violation.kind;
   }
 
   /** Ответ на вопрос: промис выполняется, когда анимация закончилась. */
@@ -334,18 +421,33 @@ export class CityScene extends Phaser.Scene {
     }
     const clipped = this.clip(parts);
     this.pendingPoi = clipped.poi;
-    this.player.setPath(clipped.parts);
+    this.player.setPath(clipped.poi ? clipped.parts : this.safeEnd(clipped.parts));
     if (a.kit) this.leaving = { kit: a.kit, anchor: a.poi.anchor, since: 0, signal: this.signalAt(a.poi) };
     const b = this.graph.map.bounds;
     this.cameras.main.setBounds(b.x, b.y, b.width, b.height);
     this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
   }
 
+  /**
+   * Выезд после сцены кончается там, где стоять можно: не на переходе и не в зоне «Остановка
+   * запрещена» (иначе нарушение устроила бы сама игра). Конец выезда продлевается по полосе.
+   */
+  private safeEnd(parts: PathPart[]): PathPart[] {
+    const last = parts[parts.length - 1];
+    if (!this.rulesEnabled || last?.kind !== 'lane') return parts;
+    const lane = last.lane;
+    const bad = (s: number) =>
+      this.watcher.stopPlace({ pos: this.graph.pointOnLane(lane, s), heading: lane.dir, speed: 0, lane, s, braking: true, exempt: false }) !== undefined;
+    let end = last.s1;
+    while (bad(end) && end < lane.length - 45) end = Math.min(lane.length - 45, end + 20);
+    return end === last.s1 ? parts : [...parts.slice(0, -1), this.graph.lanePart(lane, last.s0, end)];
+  }
+
   /** Сдвинуть камеру так, чтобы сцена была видна над карточкой (visible — доля высоты экрана сверху). */
   focusVisible(visible: number, top = 0) {
     const a = this.active;
     // Во время события в пути — машина игрока и место события.
-    const focus = a?.focus ?? (this.event ? this.player.position : undefined);
+    const focus = a?.focus ?? (this.event || this.violation ? this.player.position : undefined);
     if (!focus) return;
     if (a?.interior) {
       a.interior.focus(visible);
@@ -467,6 +569,9 @@ export class CityScene extends Phaser.Scene {
    */
   private placeSpecial(id: string, label: string, look: { color: number; ink: string }, want: number): Poi | undefined {
     const busy = new Set([...this.pois, ...(this.goal ? [this.goal] : []), ...(this.side ? [this.side] : [])].map((p) => p.lane.road.id));
+    // Не на переходе и не в зоне «Остановка запрещена»: там машине стоять нельзя.
+    for (const c of this.rules.crossings) busy.add(c.road);
+    for (const z of this.rules.noStop) busy.add(z.road);
     const from = this.player.position;
     const lanes = [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && l.length >= 240 && !busy.has(l.road.id));
     const pool = lanes.length ? lanes : [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && !busy.has(l.road.id));
@@ -502,9 +607,8 @@ export class CityScene extends Phaser.Scene {
   }
 
   private buildSignals() {
-    for (const point of this.points) {
-      if (point.template !== 'signalized') continue;
-      const node = this.graph.node(point.toward);
+    for (const nodeId of this.rules.signals) {
+      const node = this.graph.node(nodeId);
       const r = this.graph.radius(node.id);
       const byLane = new Map<string, TrafficLightView>();
       for (const lane of this.graph.lanes.values()) {
@@ -517,6 +621,26 @@ export class CityScene extends Phaser.Scene {
       const signal: Signal = { node: node.id, byLane, state: new Map(), paused: false, t: 0 };
       for (const id of byLane.keys()) this.signalByLane.set(id, signal);
       this.signals.push(signal);
+    }
+  }
+
+  /** Знаки правил района: «Пешеходный переход» у городских переходов, «Остановка запрещена» у зоны. */
+  private buildRuleSigns() {
+    const put = (code: string, p: Vec) => this.ruleSigns.push(createSign(this, code).setPosition(p.x, p.y).setDepth(7));
+    for (const c of this.rules.crossings) {
+      // У точки «Пешеходный переход» знаки ставит сама сцена.
+      if (c.poi) continue;
+      const center = crossingCenter(this.graph, c);
+      const lane = this.graph.laneFor(c.road, c.toward);
+      for (const l of [lane, this.graph.opposite(lane)]) {
+        const side = roadHalfWidth(l.road) + 7;
+        put('5.19.1', { x: center.x - l.dir.x * (ZEBRA_HALF_DEPTH + 4) + l.normal.x * side, y: center.y - l.dir.y * (ZEBRA_HALF_DEPTH + 4) + l.normal.y * side });
+      }
+    }
+    for (const z of this.rules.noStop) {
+      const { lane, s0 } = noStopLane(this.graph, z);
+      const p = this.graph.pointOnLane(lane, s0);
+      put('3.27', { x: p.x + lane.normal.x * (LANE_WIDTH / 2 + 7), y: p.y + lane.normal.y * (LANE_WIDTH / 2 + 7) });
     }
   }
 
@@ -613,6 +737,8 @@ export class CityScene extends Phaser.Scene {
   }
 
   private onArrive() {
+    // Инспектор остановил машину — к точке подъедем после разговора.
+    if (this.violation) return;
     if (this.leadResolve) {
       const resolve = this.leadResolve;
       this.leadResolve = undefined;
@@ -834,8 +960,11 @@ export class CityScene extends Phaser.Scene {
   }
 
   private driveJoystick() {
-    if (this.active || this.event) return;
-    if (!this.joy.active || this.joy.mag < 0.25) {
+    if (this.active || this.event || this.violation) return;
+    const heading = { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) };
+    // Палец на джойстике — едем, куда он ведёт; палец убран, но нажат «газ» — едем вперёд по дороге.
+    const stick = this.joy.active && this.joy.mag >= 0.25 ? { dir: this.joy.dir, mag: this.joy.mag } : this.player.gas ? { dir: heading, mag: 1 } : undefined;
+    if (!stick) {
       if (this.joyWasActive) {
         this.joyWasActive = false;
         // Палец отпустили — машина плавно останавливается. Точка интереса остаётся целью,
@@ -844,23 +973,25 @@ export class CityScene extends Phaser.Scene {
         this.player.stopSoon();
         if (this.player.remaining() < before - 0.5) this.pendingPoi = undefined;
       }
+      if (this.uturnWarn && !this.joy.active) this.uturnWarn.released = true;
       return;
     }
     this.joyWasActive = true;
-    this.player.throttle = 0.35 + 0.65 * this.joy.mag;
-    const heading = { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) };
+    this.player.throttle = 0.35 + 0.65 * stick.mag;
 
     // Потянули назад на медленном ходу — разворот на дороге.
-    if (dot(this.joy.dir, heading) < -0.75 && this.player.speed < 25) {
+    if (dot(stick.dir, heading) < -0.75 && this.player.speed < 25) {
       const pos = this.player.lanePosition();
       const u = pos ? this.graph.uTurnOnRoad(pos.lane, pos.s) : null;
+      if (u && pos && this.warnSolidUTurn(pos.lane)) return;
       if (u) {
+        this.uturnWarn = undefined;
         const clipped = this.clip(u);
         this.pendingPoi = clipped.poi;
         this.player.setPath(clipped.parts);
         return;
       }
-    }
+    } else if (this.uturnWarn && dot(stick.dir, heading) > -0.3) this.uturnWarn.released = true;
     if (this.pendingPoi) return;
 
     // Пересмотреть ещё не начатый поворот, если джойстик повернули в другую сторону.
@@ -870,7 +1001,7 @@ export class CityScene extends Phaser.Scene {
       const turn = ahead[turnIndex];
       const before = ahead.slice(0, turnIndex).reduce((s, p) => s + (p.kind === 'lane' ? p.s1 - p.s0 : 0), 0);
       if (turn.kind === 'turn' && before > 25) {
-        const best = this.chooseExit(turn.turn.from);
+        const best = this.chooseExit(turn.turn.from, stick.dir);
         if (best && best !== turn.turn.to) {
           this.player.setPath(ahead.slice(0, turnIndex));
         }
@@ -883,7 +1014,7 @@ export class CityScene extends Phaser.Scene {
       if (last.kind === 'lane') {
         if (last.s1 < last.lane.length - 0.5) extra = [this.graph.lanePart(last.lane, last.s1, last.lane.length)];
         else {
-          const next = this.chooseExit(last.lane);
+          const next = this.chooseExit(last.lane, stick.dir);
           if (next) extra = [this.graph.turnPart(this.graph.turn(last.lane, next)), this.graph.lanePart(next, 0, next.length)];
         }
       } else extra = [this.graph.lanePart(last.turn.to, 0, last.turn.to.length)];
@@ -893,13 +1024,29 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private chooseExit(lane: Lane): Lane | undefined {
+  /**
+   * Разворот через сплошную: новичка сначала предупредить (разворота нет); если, отпустив
+   * джойстик, потянуть назад ещё раз в течение 5 секунд — разворот (и нарушение).
+   */
+  private uturnWarn?: { at: number; released: boolean };
+  private warnSolidUTurn(lane: Lane): boolean {
+    if (!this.rulesEnabled || this.watcher.difficulty !== 'novice' || !this.rules.solid.includes(lane.road.id)) return false;
+    const w = this.uturnWarn;
+    if (w && w.released && this.time.now - w.at < 5000) return false;
+    if (!w || this.time.now - w.at >= 5000) {
+      this.uturnWarn = { at: this.time.now, released: false };
+      this.showHint({ kind: 'oncoming' }, 3500);
+    }
+    return true;
+  }
+
+  private chooseExit(lane: Lane, dir: Vec): Lane | undefined {
     const all = this.graph.outgoing.get(lane.to.id) ?? [];
     const candidates = all.filter((l) => l.to.id !== lane.from.id || all.length === 1 || lane.to.kind === 'end');
     let best: Lane | undefined;
     let score = -Infinity;
     for (const c of candidates) {
-      const s = dot(this.joy.dir, c.dir);
+      const s = dot(dir, c.dir);
       if (s > score) {
         score = s;
         best = c;
@@ -969,6 +1116,8 @@ export class CityScene extends Phaser.Scene {
   private canStartEvent(): boolean {
     const lp = this.player.lanePosition();
     if (!lp || lp.s < 70 || lp.lane.length - lp.s < 220) return false;
+    // Не на улице с переходом или зоной «Остановка запрещена»: после события машина там стоит.
+    if (this.rules.crossings.some((c) => c.road === lp.lane.road.id) || this.rules.noStop.some((z) => z.road === lp.lane.road.id)) return false;
     const pos = this.player.position;
     return this.stops.every((p) => distance(p.anchor, pos) > 320);
   }
@@ -980,7 +1129,7 @@ export class CityScene extends Phaser.Scene {
 
   /** Начать событие: короткая сценка на дороге, машина останавливается, потом — вопрос. */
   async triggerEvent(kind: EventKind): Promise<void> {
-    if (this.event || this.active) return;
+    if (this.event || this.active || this.violation) return;
     const event: { kind: EventKind; kit?: SceneKit } = { kind };
     this.event = event;
     this.lastEvent = kind;
@@ -1058,9 +1207,124 @@ export class CityScene extends Phaser.Scene {
       this.weatherLeft -= dt;
       if (this.weatherLeft <= 0) this.atmosphere.setBase({});
     }
-    if (!this.eventsEnabled || this.event || this.active || this.overview || !this.cameras.main.visible || this.player.speed < 30) return;
+    if (!this.eventsEnabled || this.event || this.active || this.violation || this.overview || !this.cameras.main.visible || this.player.speed < 30) return;
     this.eventClock += dt;
     if (this.eventClock >= this.nextEventAt && this.canStartEvent()) void this.triggerEvent(nextEventKind(this.lastEvent, Math.random));
+  }
+
+  // ─── Правила за рулём ─────────────────────────────────────────────────────────
+
+  /** Состояние машины для наблюдения за правилами. */
+  private driveFrame(): DriveFrame {
+    const lp = this.player.lanePosition();
+    const { part, offset } = this.player.current();
+    const turn = part.kind === 'turn' ? part.turn : undefined;
+    return {
+      pos: this.player.position,
+      heading: { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) },
+      speed: this.player.speed,
+      lane: lp?.lane,
+      s: lp?.s,
+      turn,
+      // Начало траектории могло быть обрезано (маршрут перестроили посреди поворота).
+      turnT: turn ? turn.path.length - partLength(part) + offset : undefined,
+      braking: this.player.stopping,
+      exempt: !!this.active || !!this.event || !!this.leaving || !!this.violation || !this.cameras.main.visible || this.arrivingAtScene(lp),
+    };
+  }
+
+  /**
+   * Машина подъезжает к точке с вопросом: сцена ставит её к самому перекрёстку (за стоп-линию),
+   * это не нарушение.
+   */
+  private arrivingAtScene(lp: { lane: Lane; s: number } | null): boolean {
+    const poi = this.pendingPoi;
+    return !!poi && !poi.goal && !poi.side && !!lp && lp.lane === poi.lane && poi.s - lp.s < 150;
+  }
+
+  private watchRules(dt: number) {
+    const r = this.watcher.update(dt, this.driveFrame(), {
+      signal: (id) => this.signalByLane.get(id)?.state.get(id),
+      walkersOn: (key) => this.traffic.walkersOn(key),
+    });
+    this.cleanPx += r.clean;
+    if (r.violation) {
+      void this.startViolation(r.violation);
+      return;
+    }
+    if (this.time.now > this.hintHold) this.showHint(this.watcher.difficulty === 'novice' ? r.hint : undefined);
+  }
+
+  private hint?: RuleHint;
+  /** Подсказку о развороте держим несколько секунд. */
+  private hintHold = 0;
+
+  private showHint(hint: RuleHint | undefined, holdMs = 0) {
+    const key = hint ? JSON.stringify(hint.kind === 'no-stopping' ? { ...hint, left: Math.ceil(hint.left) } : hint) : '';
+    this.hint = hint;
+    this.hintHold = holdMs ? this.time.now + holdMs : 0;
+    if (key === this.hintKey) return;
+    this.hintKey = key;
+    this.host.onHint?.(hint);
+  }
+
+  /** Мигающий круг там, куда смотреть: светофор, переход, сама машина. */
+  private drawHintRing() {
+    const g = this.hintRing.clear();
+    const h = this.hint;
+    if (!h) return;
+    let at: Vec | undefined;
+    if (h.kind === 'red-light') at = this.signalByLane.get(h.lane)?.byLane.get(h.lane)?.container;
+    else if (h.kind === 'pedestrian') at = this.watcher.zebras.find((z) => z.key === h.zebra)?.center;
+    else if (h.kind === 'no-stopping' || h.kind === 'oncoming') at = this.player.position;
+    if (!at) return;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time.now / 140);
+    const y = h.kind === 'red-light' ? at.y - 46 : at.y;
+    g.lineStyle(3, 0xffb703, 0.45 + 0.5 * pulse).strokeCircle(at.x, y, 22 + 6 * pulse);
+  }
+
+  /** Нарушение: свисток, машина встаёт, сзади подъезжает лейтенант Соколов. */
+  private async startViolation(v: Violation) {
+    if (this.violation) return;
+    const state: { violation: Violation; kit?: SceneKit } = { violation: v };
+    this.violation = state;
+    this.joy.active = false;
+    if (this.overview) this.setOverview(false);
+    this.player.halted = true;
+    this.showHint(undefined);
+    this.cameras.main.shake(180, 0.004);
+    this.audio?.sirenOn(0.5);
+    const kit = new SceneKit(this, this.player.position, this.player.angle);
+    state.kit = kit;
+    // Сзади освобождается место для машины ДПС.
+    this.extraZones = [{ ...kit.toWorld({ x: 0, y: 170 }), r: 140 }];
+    kit.say('Свисток! Лейтенант Соколов: «Остановитесь!»', 0, -64, 'bad', 2600);
+    const police = kit.vehicle('police', 0, 380, 0);
+    kit.after(1400, () => this.audio?.sirenOff());
+    await kit.move(police, [{ x: 0, y: 80 }], 320);
+    const officer = kit.controller(-30, 58, 0);
+    await kit.move(officer, [{ x: -34, y: 6 }], 60);
+    for (let i = 0; i < 20 && this.player.speed > 1; i++) await kit.wait(50);
+    if (this.violation !== state) return;
+    if (this.host.onViolation) this.host.onViolation(v);
+    else this.endViolation();
+  }
+
+  /** Разговор с инспектором окончен (вопрос отвечен): едем дальше. */
+  endViolation() {
+    const v = this.violation;
+    if (!v) return;
+    this.violation = undefined;
+    this.extraZones = [];
+    this.audio?.sirenOff();
+    this.player.halted = false;
+    this.watcher.resume(this.player.position);
+    if (v.kit) void v.kit.fadeOut(400);
+    const b = this.graph.map.bounds;
+    this.cameras.main.setBounds(b.x, b.y, b.width, b.height);
+    this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
+    // Если машина успела доехать до точки интереса — сцена начнётся сейчас.
+    if (this.player.remaining() < 0.5) this.onArrive();
   }
 
   // ─── Поток ───────────────────────────────────────────────────────────────────
@@ -1086,6 +1350,7 @@ export class CityScene extends Phaser.Scene {
 
   /** Дополнительные зоны без потока (например, место события в пути). */
   private extraZones: Zone[] = [];
+  private pendingDifficulty: Difficulty = 'novice';
 
   // ─── Кадр ────────────────────────────────────────────────────────────────────
 
@@ -1094,7 +1359,10 @@ export class CityScene extends Phaser.Scene {
     if (this.control === 'joystick') this.driveJoystick();
     this.player.update(dt);
     this.active?.kit?.update(dt);
+    this.violation?.kit?.update(dt);
     this.updateSignals(dt);
+    if (this.rulesEnabled) this.watchRules(dt);
+    this.drawHintRing();
 
     const cam0 = this.cameras.main;
     if (cam0.visible) {
@@ -1136,6 +1404,7 @@ export class CityScene extends Phaser.Scene {
     }
 
     const cam = this.cameras.main;
+    this.lookAhead(dt);
     const worldZoom = cam.zoom / PIXEL_RATIO;
     const k = worldZoom < 0.6 ? Math.min(3.2, 0.6 / worldZoom) : 1;
     // Phaser рисует и то, что за краем экрана, — отметки и светофоры вне кадра прячем.
@@ -1153,6 +1422,7 @@ export class CityScene extends Phaser.Scene {
       // На обзорной карте светофоры меньше пикселя — их не рисуем совсем.
       for (const light of signal.byLane.values()) light.container.setVisible(worldZoom >= 0.6 && inView(light.container.x, light.container.y));
     }
+    for (const sign of this.ruleSigns) sign.setVisible(worldZoom >= 0.6 && inView(sign.x, sign.y));
 
     // На обзорной карте поток не рисуем: машины там меньше пикселя.
     this.trafficView.update(cam.visible && worldZoom >= 0.6, view);
@@ -1160,6 +1430,7 @@ export class CityScene extends Phaser.Scene {
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
     if (this.active?.kit) sources.push(...this.active.kit.headlightSources());
     if (this.event?.kit) sources.push(...this.event.kit.headlightSources());
+    if (this.violation?.kit) sources.push(...this.violation.kit.headlightSources());
     if (this.leaving) sources.push(...this.leaving.kit.headlightSources());
     this.atmosphere.update(dt, sources);
 
@@ -1167,6 +1438,21 @@ export class CityScene extends Phaser.Scene {
     // Обзор включается и во время плавного отдаления, чтобы не запекать весь район по кускам.
     this.mapView.update({ x: v.x, y: v.y, w: v.width, h: v.height }, this.overview || worldZoom < 0.7);
     this.drawJoystick();
+  }
+
+  /**
+   * Камера смотрит вперёд по ходу машины: на узком экране иначе не видно светофора и перехода
+   * впереди на поперечной улице. Пока машина стоит, взгляд не меняется.
+   */
+  private look = { x: 0, y: 0 };
+  private lookAhead(dt: number) {
+    if (this.player.speed > 5) {
+      const heading = { x: Math.sin(this.player.angle), y: -Math.cos(this.player.angle) };
+      const k = Math.min(1, dt * 1.5);
+      this.look.x += (heading.x * LOOK_AHEAD - this.look.x) * k;
+      this.look.y += (heading.y * LOOK_AHEAD - this.look.y) * k;
+    }
+    this.cameras.main.setFollowOffset(-this.look.x, -this.look.y);
   }
 
   private drawJoystick() {

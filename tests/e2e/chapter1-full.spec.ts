@@ -75,6 +75,10 @@ async function playPoint(page: Page, id: string, wrongEvery: number) {
 }
 
 test('глава 1 целиком: от пролога до доставки и наград', async ({ page }) => {
+  // Правила за рулём (этап 8) проверяет stage8.spec.ts: здесь машину по району ведёт тест.
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('pdd-game:settings')) localStorage.setItem('pdd-game:settings', JSON.stringify({ rules: false }));
+  });
   await page.goto('/');
   await page.getByRole('button', { name: 'Пропустить' }).tap(); // обучение
   await page.getByRole('button', { name: 'Начать историю' }).tap();

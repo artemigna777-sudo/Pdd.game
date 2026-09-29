@@ -9,17 +9,21 @@
  *  - держат дистанцию до машины впереди и не въезжают на перекрёсток, если за ним нет места;
  *  - пропускают пешеходов на переходе.
  *
- * Игрок сам правил не соблюдает (это этап 8), поэтому поток подстраивается под игрока: уступает
- * ему на перекрёстке, едет за ним с дистанцией, а машина, которая оказалась прямо перед игроком
- * и должна остановиться, плавно исчезает. В зонах, где идёт сцена с вопросом, потока нет.
+ * Поток не мешает игроку: уступает ему на перекрёстке, едет за ним с дистанцией, а машина,
+ * которая оказалась прямо перед игроком и должна остановиться, плавно исчезает. В зонах, где
+ * идёт сцена с вопросом, потока нет.
  *
  * Пешеходы ходят по тротуарам вокруг кварталов и переходят дорогу только по переходам: на
  * регулируемом перекрёстке — когда машинам на этой дороге горит красный, на нерегулируемом
- * переходе — когда рядом нет машин и игрока.
+ * переходе — когда рядом нет машин. Перед машиной игрока пешеход выходит, только если она
+ * успевает затормозить: пропустить пешехода — забота игрока (этап 8).
+ *
+ * Светофоры и переходы — из правил района (src/world/districtRules.ts).
  */
 import { Polyline, add, distance, dot, headingAngle, normalize, projectOnSegment, rightNormal, scale, sub, type Vec } from './geometry.ts';
 import type { MapNode, MapPoint, MapRoad } from './map.ts';
 import { LANE_WIDTH, SIDEWALK, roadHalfWidth, type Lane, type RoadGraph, type Turn } from './roadGraph.ts';
+import { JUNCTION_ZEBRA, STOP_LINE, districtRules, districtZebras, type DistrictRules } from './districtRules.ts';
 
 export type CarKind = 'car' | 'truck' | 'bus' | 'moto';
 export type Light = 'green' | 'yellow' | 'red';
@@ -125,12 +129,15 @@ interface Zebra {
   road: MapRoad;
 }
 
+/** Тормозной путь машины игрока с запасом на реакцию: ближе этого пешеход перед ней не выходит. */
+export function playerStopDistance(speed: number): number {
+  return 60 + speed * 0.9 + (speed * speed) / (2 * 300);
+}
+
 const ACCEL = 110;
 const BRAKE = 170;
 const MIN_GAP = 14;
 const WALK_SPEED = [26, 38] as const;
-/** Отступ стоп-линии регулируемого перекрёстка от края перекрёстка. */
-const STOP_LINE = 26;
 const DESPAWN = 1400;
 const SPAWN_MAX = 1050;
 /** Пешеходы идут медленно — держим их поближе к игроку, иначе их почти не видно. */
@@ -170,11 +177,10 @@ export class TrafficSim {
     readonly graph: RoadGraph,
     points: readonly MapPoint[],
     private readonly rnd: () => number = Math.random,
-    opts: { cars?: number; walkers?: number } = {},
+    opts: { cars?: number; walkers?: number; rules?: DistrictRules } = {},
   ) {
+    const rules = opts.rules ?? districtRules(graph, points);
     for (const point of points) {
-      if (point.template === 'signalized') this.signalized.add(point.toward);
-      if (point.template === 'crosswalk') this.addRoadCrossing(point);
       const pocket = POCKETS[point.template];
       if (pocket) {
         const stop = graph.pointStop(point);
@@ -183,7 +189,15 @@ export class TrafficSim {
         this.pockets.set(stop.lane.road.id, list);
       }
     }
-    for (const nodeId of this.signalized) this.addJunctionCrossings(nodeId);
+    for (const id of rules.signals) this.signalized.add(id);
+    for (const z of districtZebras(graph, rules)) {
+      this.addZebra({ key: z.key, center: z.center, signalLane: z.signalLane, node: z.node, road: z.road }, z.lanes);
+      if (!z.node) {
+        const list = this.roadCrossings.get(z.road.id) ?? [];
+        list.push({ key: z.key, center: z.center });
+        this.roadCrossings.set(z.road.id, list);
+      }
+    }
     this.cityRoads = graph.map.roads.filter((r) => (r.kind ?? 'city') === 'city' && r.lanes !== 2);
     const laneTotal = [...graph.lanes.values()].reduce((sum, l) => sum + l.length, 0);
     const cityTotal = this.cityRoads.reduce((sum, r) => sum + distance(graph.node(r.from), graph.node(r.to)), 0);
@@ -202,34 +216,32 @@ export class TrafficSim {
     }
   }
 
-  /** Переходы на всех подходах к регулируемому перекрёстку (как нарисованы на карте). */
-  private addJunctionCrossings(nodeId: string) {
-    const node = this.graph.node(nodeId);
-    const r = this.graph.radius(nodeId);
-    for (const out of this.graph.outgoing.get(nodeId) ?? []) {
-      const into = this.graph.opposite(out);
-      const center = add(node, scale(out.dir, r + 12));
-      this.addZebra({ key: `${nodeId}|${out.road.id}`, center, signalLane: into.id, node: nodeId, road: out.road }, [
-        { lane: into, s: into.length - 12 },
-        { lane: out, s: 12 },
-      ]);
-    }
+  /**
+   * Пешеход прямо сейчас начинает переходить дорогу по этому переходу (с правого по ходу
+   * полосы `key` тротуара на левый). Для проверки правил в автотестах и отладки.
+   */
+  crossNow(key: string): Walker | undefined {
+    const zebra = this.zebras.get(key);
+    if (!zebra || zebra.node) return undefined;
+    const road = zebra.road;
+    // Положение перехода на линии тротуара (она начинается у края перекрёстка).
+    const along = distance(this.graph.node(road.from), zebra.center) - this.graph.radius(road.from) - SIDEWALK / 2;
+    const w = this.spawnWalker(road, true, 1, along);
+    const { n } = this.walkLine(road, w.from, w.to, 1);
+    const wide = roadHalfWidth(road) + SIDEWALK / 2;
+    w.path = new Polyline([add(zebra.center, scale(n, wide)), add(zebra.center, scale(n, -wide))]);
+    w.pathT = 0;
+    w.alpha = 1;
+    w.crossing = key;
+    this.busy.set(key, (this.busy.get(key) ?? 0) + 1);
+    w.after = { road, from: w.from, to: w.to, side: -1, s: along };
+    this.placeWalker(w);
+    return w;
   }
 
-  /** Нерегулируемый переход на участке дороги (точка «Пешеходный переход»). */
-  private addRoadCrossing(point: MapPoint) {
-    const lane = this.graph.laneFor(point.road, point.toward);
-    const back = this.graph.opposite(lane);
-    const s = this.graph.laneDistanceAt(lane, point.at ?? 0.5);
-    const center = add(lane.from, scale(lane.dir, (point.at ?? 0.5) * distance(lane.from, lane.to)));
-    const key = `poi:${point.id}`;
-    this.addZebra({ key, center, road: lane.road }, [
-      { lane, s },
-      { lane: back, s: back.length - s },
-    ]);
-    const list = this.roadCrossings.get(lane.road.id) ?? [];
-    list.push({ key, center });
-    this.roadCrossings.set(lane.road.id, list);
+  /** Где сейчас пешеходы, переходящие по этому переходу. */
+  walkersOn(key: string): Vec[] {
+    return this.walkers.filter((w) => w.crossing === key && !w.gone).map((w) => w.pos);
   }
 
   isBusy(key: string): boolean {
@@ -588,11 +600,9 @@ export class TrafficSim {
 
   /** Можно ли пешеходу сейчас переходить по этому переходу. */
   private mayCross(zebra: Zebra, env: TrafficEnv): boolean {
-    // Игрок правил пока не соблюдает (этап 8), поэтому пешеход не выходит у него перед носом.
+    // Перед машиной игрока — только если она успевает затормозить.
     const p = env.player;
-    const dp = distance(p.pos, zebra.center);
-    if (dp < 220) return false;
-    if (dp < 420 && p.speed > 5 && dot(p.heading, sub(zebra.center, p.pos)) > 0) return false;
+    if (distance(p.pos, zebra.center) < playerStopDistance(p.speed)) return false;
     if (this.inZone(zebra.center, env.zones, 40)) return false;
     if (zebra.signalLane) {
       if (env.signal(zebra.signalLane) !== 'red') return false;
@@ -624,7 +634,7 @@ export class TrafficSim {
         if (w.wait < 14) return; // ждёт зелёного у края тротуара
       } else {
         const r = this.graph.radius(node.id);
-        const across = r + 12;
+        const across = r + JUNCTION_ZEBRA;
         const off = r + SIDEWALK / 2;
         const p0 = w.b;
         const p1 = add(add(node, scale(d, -off)), scale(n, across));

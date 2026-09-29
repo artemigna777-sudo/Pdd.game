@@ -47,7 +47,7 @@ function seed(page: Page, data: unknown) {
     // Только при первой загрузке: после перезагрузки игра должна читать то, что сохранила сама.
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('pdd-game:progress', JSON.stringify(value));
-      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false, rules: false }));
       sessionStorage.setItem('seeded', '1');
     }
   }, data);
@@ -137,6 +137,10 @@ test('глава 1: обучение, пролог, вступление, точ
   await expect(dialog.locator('.cutscene__name')).toHaveText('Виктор Петрович');
   await page.getByRole('button', { name: 'Далее' }).tap();
   await page.getByRole('button', { name: 'Поехали' }).tap();
+  // Правила за рулём (этап 8): лейтенант Соколов, педали и бонус за чистую езду — один раз.
+  await expect(dialog.locator('.cutscene__name')).toHaveText('Лейтенант Соколов');
+  await expect(dialog).toContainText('как вы ездите');
+  await page.getByRole('button', { name: 'Пропустить' }).tap();
   await expect(dialog).toHaveCount(0);
   await waitCity(page);
   await expect(page.locator('.city-task')).toContainText('Отвезти мешок муки в пекарню «Калач»');

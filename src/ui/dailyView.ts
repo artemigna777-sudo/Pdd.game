@@ -12,7 +12,7 @@ import { showToast } from './toast.ts';
 const days = (n: number) => `${n} ${plural(n, ['день', 'дня', 'дней'])}`;
 
 export function goalText(d: DailyState): string {
-  const what = d.kind === 'review' ? 'Повторить ошибки' : d.kind === 'points' ? 'Пройти точки в городе' : 'Ответить верно';
+  const what = d.kind === 'review' ? 'Повторить ошибки' : d.kind === 'points' ? 'Пройти точки в городе' : d.kind === 'plan' ? 'План к экзамену на сегодня' : 'Ответить верно';
   return `${what}: ${Math.min(d.count, d.target)} из ${d.target}`;
 }
 
@@ -26,6 +26,8 @@ export function goalToast(out: Pick<AnswerOutcome, 'goal'> | undefined, data: Pr
 export interface StatusActions {
   progress(): void;
   garage(): void;
+  /** «Мой экзамен»: если цель дня — план к экзамену. */
+  plan(): void;
 }
 
 /** Строка статуса в меню: готовность, серия, цель дня, монеты. */
@@ -38,7 +40,13 @@ export function statusRow(data: ProgressData, daily: DailyState, readinessPercen
     { class: 'status' },
     pill('🎓', readinessPercent === undefined ? '…' : `${readinessPercent}%`, `Готовность к экзамену: ${readinessPercent ?? 0}%`, actions.progress, ' status__pill--ready'),
     pill('🔥', String(streak), `Серия: ${days(streak)}`, actions.progress),
-    pill(daily.done ? '✅' : '🎯', `${Math.min(daily.count, daily.target)}/${daily.target}`, `Цель дня. ${goalText(daily)}${daily.done ? ', выполнена' : ''}`, actions.progress, daily.done ? ' is-done' : ''),
+    pill(
+      daily.done ? '✅' : daily.kind === 'plan' ? '📅' : '🎯',
+      `${Math.min(daily.count, daily.target)}/${daily.target}`,
+      `Цель дня. ${goalText(daily)}${daily.done ? ', выполнена' : ''}`,
+      daily.kind === 'plan' ? actions.plan : actions.progress,
+      daily.done ? ' is-done' : '',
+    ),
     pill('🪙', String(data.coins), `Монеты: ${data.coins}. Гараж`, actions.garage),
   );
 }

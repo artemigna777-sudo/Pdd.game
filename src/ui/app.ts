@@ -21,6 +21,11 @@ import {
   recordAnswer,
   recordControl,
   recordExamPass,
+  recordExamResult,
+  recordPlanExam,
+  setExamDate,
+  clearExamDate,
+  planDay,
   ensureDaily,
   reviewQueue,
   saveProgress,
@@ -37,6 +42,8 @@ import { cityScreen, levelUpToast } from './cityScreen.ts';
 import { closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
+import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
+import { planSummary, refreshOrder } from '../progress/examPlan.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
 import { plural } from './format.ts';
 import { ICONS } from './icons.ts';
@@ -49,10 +56,10 @@ import { showToast } from './toast.ts';
 
 /**
  * Экраны: меню поверх анимированной улицы, главы сюжета и город-район главы, финал с
- * контрольными билетами, «Разбор ошибок», «Прогресс», билеты целиком с историей попыток
- * и настройки.
+ * контрольными билетами, «Разбор ошибок», «Прогресс», «Мой экзамен», билеты целиком
+ * с историей попыток и настройки.
  */
-type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block';
+type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh';
 type Route =
   | { name: 'menu' }
   | { name: 'chapters' }
@@ -65,8 +72,10 @@ type Route =
   | { name: 'attempt'; at: number; via: 'ticket' | 'history' | 'control'; control?: { passed: boolean; replacement?: number } }
   | { name: 'review' }
   | { name: 'progress' }
-  /** Серия вопросов: повтор ошибок, тренировка ошибок, темы или недоученных вопросов. */
-  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; via: 'review' | 'progress' | 'finale' }
+  /** Серия вопросов: повтор ошибок, тренировка ошибок, темы, недоученных или новых вопросов. */
+  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; via: 'review' | 'progress' | 'finale' | 'plan' }
+  /** «Мой экзамен»: дата экзамена в ГИБДД и план к ней. */
+  | { name: 'plan' }
   /** Гараж: покраска и наклейки машины за монеты. */
   | { name: 'garage' }
   | { name: 'finale' }
@@ -86,7 +95,7 @@ type ControlRoute = Extract<Route, { name: 'control' }>;
 type ExamRunRoute = Extract<Route, { name: 'exam-run' }>;
 type ExamResultRoute = Extract<Route, { name: 'exam-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -105,6 +114,7 @@ const DEPTH: Record<RouteName, number> = {
   control: 3,
   exam: 1,
   garage: 1,
+  plan: 1,
   'exam-run': 2,
   'exam-result': 2,
 };
@@ -248,6 +258,9 @@ export class App {
       case 'garage':
         screen = this.page('Гараж', garageView(progress(), () => saveProgress()), { back: 'menu' });
         break;
+      case 'plan':
+        screen = this.planScreen();
+        break;
     }
     this.root.replaceChildren(screen);
     screen.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true });
@@ -261,7 +274,7 @@ export class App {
     const now = Date.now();
     ensureDaily(data, now);
     saveProgress();
-    const statusActions = { progress: () => this.open({ name: 'progress' }), garage: () => this.open({ name: 'garage' }) };
+    const statusActions = { progress: () => this.open({ name: 'progress' }), garage: () => this.open({ name: 'garage' }), plan: () => this.open({ name: 'plan' }) };
     const status = el('div', { class: 'menu__status' }, statusRow(data, data.daily!, undefined, now, statusActions));
     const stats = el('p', { class: 'menu__stats' }, 'Загружаю вопросы…');
     const story = el('button', { class: 'btn btn--primary btn--lg', type: 'button' }, 'Начать историю');
@@ -304,6 +317,15 @@ export class App {
       due ? el('span', { class: 'badge', 'aria-hidden': 'true' }, String(due)) : null,
     );
 
+    // Под «Экзаменом» — сколько осталось до экзамена в ГИБДД, если дата указана.
+    const countdown = countdownLabel(planSummary(data, now));
+    const examButton = el(
+      'button',
+      { class: `btn btn--secondary${countdown ? ' btn--sub' : ''}`, type: 'button', 'aria-label': countdown ? `Экзамен. Экзамен в ГИБДД: ${countdown}` : undefined, onclick: () => this.open({ name: 'exam' }) },
+      'Экзамен',
+      countdown ? el('span', { class: 'btn__sub', 'aria-hidden': 'true' }, `📅 ${countdown}`) : null,
+    );
+
     return el(
       'div',
       { class: 'screen screen--menu' },
@@ -327,7 +349,7 @@ export class App {
         el(
           'div',
           { class: 'menu__row' },
-          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'exam' }) }, 'Экзамен'),
+          examButton,
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'tickets' }) }, 'Билеты'),
         ),
         el('div', { class: 'menu__row menu__row--review' }, reviewButton, settingsButton),
@@ -559,6 +581,7 @@ export class App {
         else if (t.action === 'block') this.open({ name: 'drill', mode: 'block', block: t.block, via: 'progress' });
         else if (t.action === 'exam') this.open({ name: 'exam' });
         else if (t.action === 'story') this.open({ name: 'city', chapter: currentChapter(data, order) });
+        else if (t.action === 'plan') this.open({ name: 'plan' });
       };
       const level = levelOf(data.xp);
       const share = el(
@@ -578,6 +601,7 @@ export class App {
       );
       body.replaceChildren(
         readinessCard(r, { tip }),
+        planLink(data, now, () => this.open({ name: 'plan' })),
         dailyCard(data, daily, now),
         el('div', { class: 'menu__row progress-actions' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'garage' }) }, `Гараж · 🪙 ${data.coins}`), share),
         progressView(progress(), questions, mapping, {
@@ -587,6 +611,65 @@ export class App {
       );
     });
     return this.page('Прогресс', body, { back: 'menu' });
+  }
+
+  // ─── Мой экзамен ───────────────────────────────────────────────────────────────
+
+  private planScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    loadQuestions().then((questions) => {
+      if (this.route !== route) return;
+      const data = progress();
+      const now = Date.now();
+      ensureDaily(data, now);
+      saveProgress();
+      const ready = () => readiness(data, questions, allExams(), Date.now()).percent;
+      const refresh = () => {
+        saveProgress();
+        this.replace({ name: 'plan' });
+      };
+      body.replaceChildren(
+        planView(data, now, ready(), {
+          setDate: (date) => {
+            setExamDate(data, date, questions.length, Date.now());
+            showToast(`План к экзамену ${dateLabel(date)} готов`);
+            refresh();
+          },
+          clear: () =>
+            void showModal('Убрать дату экзамена?', el('p', { class: 'rewards__line' }, 'План по дням исчезнет, а повторы ошибок снова пойдут через 1, 3 и 7 дней.'), [
+              { label: 'Оставить', primary: true },
+              {
+                label: 'Убрать дату',
+                onClick: () => {
+                  clearExamDate(data, Date.now());
+                  refresh();
+                },
+              },
+            ]),
+          result: (passed) => {
+            recordExamResult(data, passed, ready(), Date.now());
+            playSound(passed ? 'pass' : 'fail');
+            refresh();
+          },
+          fresh: () => this.open({ name: 'drill', mode: 'fresh', via: 'plan' }),
+          reviews: () => this.open({ name: 'drill', mode: 'review', via: 'plan' }),
+          refresh: () => this.open({ name: 'drill', mode: 'refresh', via: 'plan' }),
+          exam: () => this.open({ name: 'exam-run', boss: false }),
+          share: () => {
+            const r = data.plan?.result;
+            if (r)
+              void shareResult({
+                kicker: 'Экзамен в ГИБДД',
+                title: 'Теория сдана!',
+                big: `${r.readiness}%`,
+                lines: ['готовность в игре в день экзамена', `Уровень ${levelOf(data.xp).number}: «${levelOf(data.xp).title}»`],
+              });
+          },
+        }),
+      );
+    });
+    return this.page('Мой экзамен', body, { back: 'menu' });
   }
 
   private reviewScreen(): HTMLElement {
@@ -618,15 +701,40 @@ export class App {
       case 'block':
         ids = trainingSet(data, questions.filter((q) => blockOf(q.number) === route.block).map((q) => q.id), 15);
         break;
+      case 'fresh': {
+        // Новые вопросы по билетам подряд: сколько осталось по плану на сегодня, но не больше 20.
+        const plan = planDay(data, Date.now());
+        const left = plan ? plan.fresh.target - plan.fresh.done : 0;
+        ids = questions.filter((q) => !data.questions[q.id]).slice(0, left > 0 ? Math.min(20, left) : 20).map((q) => q.id);
+        break;
+      }
+      case 'refresh': {
+        // Повторение пройденного: сначала там, где были ошибки, потом давно не встречавшееся.
+        const plan = planDay(data, Date.now());
+        const left = plan ? plan.refresh.target - plan.refresh.done : 0;
+        ids = refreshOrder(data, questions, Date.now()).slice(0, left > 0 ? Math.min(20, left) : 20);
+        break;
+      }
     }
     return ids.map((id) => byId.get(id)!).filter(Boolean);
   }
 
   private drillScreen(route: DrillRoute): HTMLElement {
-    const titles: Record<DrillMode, string> = { review: 'Повтор ошибок', practice: 'Тренировка ошибок', topic: route.topic ?? 'Тема', weak: 'Недоученные вопросы', block: `Блок: ${blockLabel(route.block ?? 0)}` };
+    const titles: Record<DrillMode, string> = {
+      review: 'Повтор ошибок',
+      practice: 'Тренировка ошибок',
+      topic: route.topic ?? 'Тема',
+      weak: 'Недоученные вопросы',
+      block: `Блок: ${blockLabel(route.block ?? 0)}`,
+      fresh: 'Новые вопросы',
+      refresh: 'Повторение пройденного',
+    };
     return this.quizPage(route, titles[route.mode], route.via, (all) => this.drillQuestions(route, all), (results, _ms, list, body) => {
       const right = results.filter((r) => r.isCorrect).length;
       const left = route.mode === 'review' ? dueReviews(progress(), Date.now()).length : 0;
+      // Из «Моего экзамена» — сколько сделано по плану на сегодня.
+      const plan = route.via === 'plan' ? planDay(progress(), Date.now()) : undefined;
+      const task = plan && (route.mode === 'fresh' ? plan.fresh : route.mode === 'refresh' ? plan.refresh : plan.reviews);
       body.replaceChildren(
         el(
           'section',
@@ -634,6 +742,7 @@ export class App {
           el('p', { class: 'result__score' }, `${right} из ${list.length}`),
           el('p', { class: 'result__label' }, right === list.length ? 'Все ответы верные!' : 'Ошибки вернутся на повтор завтра.'),
           route.mode === 'review' ? el('p', { class: 'result__note' }, left ? `Ещё пора повторить: ${left}.` : 'На сегодня повторы закончены.') : null,
+          task?.target ? el('p', { class: 'result__note' }, `План на сегодня: ${Math.min(task.done, task.target)} из ${task.target}${task.done >= task.target ? ' ✅' : ''}.`) : null,
         ),
         el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.replace(route) }, 'Ещё серия'),
       );
@@ -654,7 +763,16 @@ export class App {
     });
     return this.page(
       'Экзамен',
-      el('div', { class: 'exam-hub' }, examRulesView(), start, el('p', { class: 'panel__note' }, bossNote), el('h2', { class: 'section-title' }, 'История экзаменов'), history),
+      el(
+        'div',
+        { class: 'exam-hub' },
+        planLink(progress(), Date.now(), () => this.open({ name: 'plan' })),
+        examRulesView(),
+        start,
+        el('p', { class: 'panel__note' }, bossNote),
+        el('h2', { class: 'section-title' }, 'История экзаменов'),
+        history,
+      ),
       { back: 'menu' },
     );
   }
@@ -718,6 +836,8 @@ export class App {
         // Ответы идут в прогресс только теперь: во время экзамена ничто не подсказывает, верен ли ответ.
         const outcomes = s.chosen.map((chosen, i) => recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now));
         const reward = outcome.passed ? recordExamPass(data, route.boss, now) : undefined;
+        // Пробный экзамен засчитывается в план к экзамену в ГИБДД (сдан или нет).
+        outcomes.push(recordPlanExam(data, now));
         saveProgress();
         const attempt = recordExam({
           at: now,

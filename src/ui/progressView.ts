@@ -11,6 +11,7 @@ import {
   isUnlocked,
   levelOf,
   nextReview,
+  planActive,
   percent,
   reviewQueue,
   reviewStages,
@@ -23,6 +24,7 @@ import {
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
+import { dateLabel } from './planView.ts';
 
 export const starsText = (stars: number): string => '★'.repeat(stars) + '☆'.repeat(Math.max(0, 3 - stars));
 
@@ -179,16 +181,19 @@ export function reviewView(data: ProgressData, now: number, actions: ReviewActio
   const all = reviewQueue(data).length;
   const stages = reviewStages(data);
   const next = nextReview(data, now);
+  const squeezed = planActive(data, now);
   const scheme = el(
     'p',
     { class: 'intro' },
-    'Каждая ошибка возвращается на повтор через 1 день, потом через 3 дня и через 7 дней. Новая ошибка — снова через день. После трёх верных повторов вопрос считается закреплённым.',
+    squeezed
+      ? `Каждая ошибка возвращается на повтор три раза. Обычно через 1, 3 и 7 дней, но до экзамена ${dateLabel(data.plan!.date)} промежутки короче, чтобы все повторы успели. Новая ошибка — снова через день. После трёх верных повторов вопрос считается закреплённым.`
+      : 'Каждая ошибка возвращается на повтор через 1 день, потом через 3 дня и через 7 дней. Новая ошибка — снова через день. После трёх верных повторов вопрос считается закреплённым.',
   );
   if (!all) {
     return el('div', {}, scheme, el('div', { class: 'empty' }, el('p', {}, 'Ошибок, которые нужно закрепить, нет. Так держать!')));
   }
   const stageRows = REVIEW_DAYS.map((d, i) =>
-    el('li', {}, `Повтор ${i + 1} из 3 (через ${d} ${plural(d, ['день', 'дня', 'дней'])}): ${questionsWord(stages[i])}`),
+    el('li', {}, squeezed ? `Повтор ${i + 1} из 3: ${questionsWord(stages[i])}` : `Повтор ${i + 1} из 3 (через ${d} ${plural(d, ['день', 'дня', 'дней'])}): ${questionsWord(stages[i])}`),
   );
   return el(
     'div',

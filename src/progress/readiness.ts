@@ -7,7 +7,7 @@
  * 100% — все вопросы освоены и последние 5 экзаменов сданы.
  */
 import { EXAM_RULES, blockOf } from '../exam/exam.ts';
-import { dueReviews, isMastered, reviewQueue, type ProgressData } from './progress.ts';
+import { dueReviews, isMastered, planActive, planDaysLeft, reviewQueue, type ProgressData } from './progress.ts';
 
 export interface Readiness {
   percent: number;
@@ -24,7 +24,7 @@ export interface Readiness {
 
 export interface Tip {
   text: string;
-  action?: 'review' | 'block' | 'exam' | 'story';
+  action?: 'review' | 'block' | 'exam' | 'story' | 'plan';
   block?: number;
 }
 
@@ -45,6 +45,12 @@ export function readiness(data: ProgressData, questions: readonly { id: string; 
   const percent = Math.min(100, Math.floor(score * 100 + 1e-9));
 
   const tips: Tip[] = [];
+  // С датой экзамена главное — план на день («Мой экзамен», этап 9).
+  if (planActive(data, now)) {
+    const left = planDaysLeft(data, now)!;
+    const word = left % 10 === 1 && left % 100 !== 11 ? 'день' : [2, 3, 4].includes(left % 10) && ![12, 13, 14].includes(left % 100) ? 'дня' : 'дней';
+    tips.push({ text: left === 0 ? 'Экзамен в ГИБДД сегодня — удачи! Загляни в план на сегодня.' : `До экзамена в ГИБДД ${left} ${word}: выполняй план на день.`, action: 'plan' });
+  }
   const due = dueReviews(data, now).length;
   if (due) tips.push({ text: `Повторить ошибки на сегодня: ${due}.`, action: 'review' });
   const answered = questions.filter((q) => data.questions[q.id]).length;

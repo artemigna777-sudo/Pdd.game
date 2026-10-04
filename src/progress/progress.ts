@@ -7,6 +7,10 @@
  * через 7 дней. Повтор засчитывается, только если вопрос отвечен верно в свой день или позже;
  * новая ошибка возвращает вопрос к повтору через 1 день. После трёх верных повторов вопрос
  * уходит из работы над ошибками. Дни календарные: ошибка вечером — повтор завтра с утра.
+ *
+ * «Мой экзамен» (этап 9): если указана дата экзамена в ГИБДД, промежутки между повторами
+ * сжимаются, чтобы все три повтора успели до экзамена, а цель дня становится планом на день:
+ * новые вопросы, повторы ошибок и пробные экзамены.
  */
 import { load, save } from '../storage.ts';
 import { KMH_PER_PX } from '../world/rules.ts';
@@ -125,8 +129,8 @@ export interface ControlSlot {
   passed: boolean;
 }
 
-/** Цель дня: повторить ошибки, пройти точки в городе или ответить верно на вопросы. */
-export type GoalKind = 'review' | 'points' | 'correct';
+/** Цель дня: повторить ошибки, пройти точки в городе, ответить верно на вопросы или план к экзамену. */
+export type GoalKind = 'review' | 'points' | 'correct' | 'plan';
 
 export interface DailyState {
   /** Начало дня (мс), к которому относится цель. */
@@ -135,6 +139,34 @@ export interface DailyState {
   target: number;
   count: number;
   done: boolean;
+}
+
+/** Задача плана на день: сколько нужно и сколько сделано. */
+export interface PlanTask {
+  target: number;
+  done: number;
+}
+
+/** План на день к экзамену: нормы задаются в начале дня, счётчики растут за день. */
+export interface PlanDay {
+  day: number;
+  /** Новые вопросы (ни разу не встречавшиеся). */
+  fresh: PlanTask;
+  /** Повторы ошибок, срок которых наступил. */
+  reviews: PlanTask;
+  /** Пробные экзамены. */
+  exams: PlanTask;
+}
+
+/** «Мой экзамен» (этап 9): дата экзамена в ГИБДД и план к ней. */
+export interface ExamPlan {
+  /** Начало дня экзамена (мс, местное время). */
+  date: number;
+  /** Сколько вопросов в базе: от этого считается норма новых вопросов в день. */
+  total: number;
+  today?: PlanDay;
+  /** Как прошёл настоящий экзамен и какой была готовность в тот день. */
+  result?: { passed: boolean; readiness: number; at: number };
 }
 
 export interface GarageState {
@@ -154,6 +186,7 @@ export interface ProgressData {
   drive?: DriveState;
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
+  plan?: ExamPlan;
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -176,7 +209,7 @@ export function emptyProgress(): ProgressData {
 
 export const DEFAULT_PAINT = 'yellow';
 export const DEFAULT_STICKER = 'none';
-const GOAL_KINDS: GoalKind[] = ['review', 'points', 'correct'];
+const GOAL_KINDS: GoalKind[] = ['review', 'points', 'correct', 'plan'];
 
 // ─── Проверка сохранённых данных ─────────────────────────────────────────────────
 
@@ -232,6 +265,20 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       if (isObj(drive) && isInt(drive.violations) && isNum(drive.distance)) state.drive = { violations: drive.violations, distance: drive.distance, ...(drive.star === true ? { star: true } : {}) };
       data.chapters[id] = state;
     }
+  }
+  const plan = raw.plan;
+  if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {
+    data.plan = { date: plan.date, total: plan.total };
+    const task = (v: unknown): PlanTask | undefined => (isObj(v) && isInt(v.target) && isInt(v.done) ? { target: v.target, done: v.done } : undefined);
+    const t = plan.today;
+    if (isObj(t) && isInt(t.day)) {
+      const fresh = task(t.fresh);
+      const reviews = task(t.reviews);
+      const exams = task(t.exams);
+      if (fresh && reviews && exams) data.plan.today = { day: t.day, fresh, reviews, exams };
+    }
+    const r = plan.result;
+    if (isObj(r) && typeof r.passed === 'boolean' && isInt(r.readiness) && r.readiness <= 100 && isInt(r.at)) data.plan.result = { passed: r.passed, readiness: r.readiness, at: r.at };
   }
   if (isObj(raw.finale)) {
     const f = raw.finale;
@@ -297,6 +344,9 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
   const s: QuestionState = prev ? { ...prev } : { n: 0, ok: false, ever: false, at: now };
   const due = !!s.review && s.review.due <= now;
   const daily = ensureDaily(data, now);
+  const plan = planDay(data, now);
+  if (plan && !prev) plan.fresh.done++;
+  if (plan && due) plan.reviews.done++;
   let xp = 0;
   let review: AnswerOutcome['review'];
   if (correct) {
@@ -307,13 +357,13 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
         delete s.review;
         review = 'cleared';
       } else {
-        s.review = { stage, due: dayStart(now, REVIEW_DAYS[stage]) };
+        s.review = { stage, due: dayStart(now, reviewInterval(data, stage, now)) };
         review = 'advanced';
       }
     }
   } else {
     review = s.review ? 'reset' : 'added';
-    s.review = { stage: 0, due: dayStart(now, REVIEW_DAYS[0]) };
+    s.review = { stage: 0, due: dayStart(now, reviewInterval(data, 0, now)) };
   }
   s.n++;
   s.ok = correct;
@@ -323,19 +373,137 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
   const coins = correct ? (xp === XP.first ? COINS.first : COINS.answer) : 0;
   data.coins += coins;
   if ((daily.kind === 'review' && due) || (daily.kind === 'correct' && correct)) daily.count++;
+  if (daily.kind === 'plan') daily.count = planDone(plan);
   const goal = checkGoal(data, now);
   return { xp, coins: coins + (goal ? COINS.goal : 0), goal, review, levelUp: xp ? gain(data, xp) : undefined };
+}
+
+// ─── Мой экзамен: дата экзамена и план к ней ────────────────────────────────────
+
+/** Нормы плана к экзамену. */
+export const PLAN = {
+  /** Последние дни перед экзаменом — без новых вопросов: только повторы и пробные экзамены. */
+  reserve: 3,
+  /** За сколько дней до экзамена — пробный экзамен каждый день (в последние дни — по два). */
+  examsFrom: 7,
+  /** Сколько ответов в день (новые вопросы и повторы) ещё «успеваешь»; больше — «плотно». */
+  comfortable: 50,
+  /** Больше этого в день — «не успеть». */
+  max: 100,
+} as const;
+
+const DAY_MS = 86_400_000;
+
+/** Сколько дней до экзамена (0 — сегодня, меньше нуля — дата прошла); нет даты — undefined. */
+export function planDaysLeft(data: ProgressData, now: number): number | undefined {
+  if (!data.plan) return undefined;
+  return Math.round((data.plan.date - dayStart(now)) / DAY_MS);
+}
+
+/** План действует: дата экзамена указана, ещё не прошла, итога нет. */
+export function planActive(data: ProgressData, now: number): boolean {
+  const left = planDaysLeft(data, now);
+  return left !== undefined && left >= 0 && !data.plan!.result;
+}
+
+/**
+ * Через сколько дней повтор ступени `stage`. Обычно 1, 3 и 7 дней. С датой экзамена промежутки
+ * сжимаются, если иначе оставшиеся повторы не успевают до экзамена: последний — не позже
+ * дня перед экзаменом. Повторов всё равно три, просто чаще.
+ */
+export function reviewInterval(data: ProgressData, stage: number, now: number): number {
+  const normal = REVIEW_DAYS[stage];
+  if (!planActive(data, now)) return normal;
+  const room = planDaysLeft(data, now)! - 1;
+  const rest = REVIEW_DAYS.slice(stage).reduce((a, b) => a + b, 0);
+  if (rest <= room) return normal;
+  return Math.max(1, Math.floor((normal * Math.max(room, 0)) / rest));
+}
+
+/** Сколько вопросов ещё ни разу не встречались. */
+export function unseenCount(data: ProgressData): number {
+  return Math.max(0, (data.plan?.total ?? 0) - Object.keys(data.questions).length);
+}
+
+/** Норма новых вопросов в день, чтобы пройти все до последних дней перед экзаменом. */
+export function freshPerDay(unseen: number, daysLeft: number): number {
+  if (unseen <= 0 || daysLeft <= 0) return 0;
+  return Math.ceil(unseen / Math.max(1, daysLeft - PLAN.reserve));
+}
+
+/** План на сегодня (нормы задаются при первом действии дня); без действующего плана — undefined. */
+export function planDay(data: ProgressData, now: number): PlanDay | undefined {
+  if (!planActive(data, now)) return undefined;
+  const plan = data.plan!;
+  const day = dayStart(now);
+  if (plan.today?.day === day) return plan.today;
+  const left = planDaysLeft(data, now)!;
+  const reviews = dueReviews(data, now).length;
+  plan.today = {
+    day,
+    fresh: { target: left > 0 ? freshPerDay(unseenCount(data), left) : 0, done: 0 },
+    reviews: { target: reviews, done: 0 },
+    exams: { target: left === 0 ? 0 : left <= PLAN.reserve ? 2 : left <= PLAN.examsFrom ? 1 : 0, done: 0 },
+  };
+  return plan.today;
+}
+
+/** Задачи плана на день, у которых есть норма. */
+export const planTasks = (day: PlanDay): PlanTask[] => [day.fresh, day.reviews, day.exams].filter((t) => t.target > 0);
+
+/** Сколько задач плана на день выполнено. */
+function planDone(day: PlanDay | undefined): number {
+  return day ? planTasks(day).filter((t) => t.done >= t.target).length : 0;
+}
+
+/** Указать дату экзамена (начало дня). План на сегодня и цель дня пересчитываются. */
+export function setExamDate(data: ProgressData, date: number, total: number, now: number): void {
+  data.plan = { date: dayStart(date), total };
+  if (data.daily?.day === dayStart(now) && !data.daily.done) delete data.daily;
+  ensureDaily(data, now);
+}
+
+/** Убрать дату экзамена: повторы снова через 1, 3 и 7 дней, цель дня — обычная. */
+export function clearExamDate(data: ProgressData, now: number): void {
+  delete data.plan;
+  if (data.daily?.kind === 'plan' && !data.daily.done) delete data.daily;
+  ensureDaily(data, now);
+}
+
+/** Как прошёл настоящий экзамен в ГИБДД; `readiness` — готовность в игре в этот день. */
+export function recordExamResult(data: ProgressData, passed: boolean, readiness: number, now: number): void {
+  if (!data.plan) return;
+  data.plan.result = { passed, readiness: Math.max(0, Math.min(100, Math.round(readiness))), at: now };
+  if (data.daily?.kind === 'plan' && !data.daily.done) delete data.daily;
+}
+
+/** Пробный экзамен сдан или не сдан — он засчитывается в план на день. */
+export function recordPlanExam(data: ProgressData, now: number): AnswerOutcome {
+  const daily = ensureDaily(data, now);
+  const plan = planDay(data, now);
+  if (!plan) return { xp: 0 };
+  plan.exams.done++;
+  if (daily.kind === 'plan') daily.count = planDone(plan);
+  const goal = checkGoal(data, now);
+  return { xp: 0, coins: goal ? COINS.goal : 0, goal };
 }
 
 // ─── Цель дня и серия ────────────────────────────────────────────────────────────
 
 /**
- * Цель на сегодня (выбирается при первом действии дня и дальше не меняется): есть повторы —
- * повторить до 10 ошибок; нет — пройти 3 точки в городе; история пройдена — 20 верных ответов.
+ * Цель на сегодня (выбирается при первом действии дня и дальше не меняется): с датой экзамена —
+ * план на день; иначе есть повторы — повторить до 10 ошибок; нет — пройти 3 точки в городе;
+ * история пройдена — 20 верных ответов.
  */
 export function ensureDaily(data: ProgressData, now: number): DailyState {
   const day = dayStart(now);
   if (data.daily?.day === day) return data.daily;
+  // С датой экзамена цель дня — план на день (если на сегодня в нём есть задачи).
+  const plan = planDay(data, now);
+  if (plan && planTasks(plan).length) {
+    data.daily = { day, kind: 'plan', target: planTasks(plan).length, count: planDone(plan), done: false };
+    return data.daily;
+  }
   const due = dueReviews(data, now).length;
   const goal: Pick<DailyState, 'kind' | 'target'> = due > 0 ? { kind: 'review', target: Math.min(due, 10) } : !data.finale.exam ? { kind: 'points', target: 3 } : { kind: 'correct', target: 20 };
   data.daily = { day, ...goal, count: 0, done: false };

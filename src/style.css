@@ -2771,3 +2771,171 @@ button {
     padding: 5px 8px;
   }
 }
+
+/* ---------- Мой экзамен (этап 9): дата, план на день, прогноз ---------- */
+
+.btn--sub {
+  flex-direction: column;
+  gap: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 1.2;
+}
+
+.btn__sub {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plan-date {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.plan-date__label {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.plan-date__input {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.plan-date__input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.plan-date__error {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bad-text);
+}
+
+.plan-date__error:empty {
+  display: none;
+}
+
+.plan-task {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.plan-task.is-done {
+  background: var(--ok-bg);
+}
+
+.plan-task__icon {
+  font-size: 20px;
+}
+
+.plan-task__count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plan-forecast {
+  border-left: 6px solid var(--ok);
+}
+
+.plan-forecast--tight {
+  border-left-color: #e0a100;
+}
+
+.plan-forecast--late {
+  border-left-color: var(--bad);
+}
+
+.plan-advice,
+.plan-how {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+  font-size: 15px;
+}
+
+.plan-edit {
+  align-items: stretch;
+}
+
+.plan-clear {
+  color: var(--text-muted);
+}
+
+.plan-link {
+  margin: 14px 0;
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.plan-note {
+  text-align: center;
+}
+
+.panel .plan-result {
+  margin: 0;
+}
+
+.exam-hub .plan-link {
+  margin-top: 0;
+}
+
+.plan-edit .btn {
+  font-size: 16px;
+}
+
+/* Колонки меню не раздвигаются длинной подписью или числом на кнопке. */
+.menu__row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.menu__row--review {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.menu .btn--sub {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+@media (max-width: 360px) {
+  .menu__row--review .btn--secondary:not(.btn--icon) {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 16px;
+  }
+}

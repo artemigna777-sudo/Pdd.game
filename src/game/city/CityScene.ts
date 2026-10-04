@@ -703,8 +703,9 @@ export class CityScene extends Phaser.Scene {
     const ahead = this.player.ahead();
     const first = ahead[0];
     if (first.kind === 'lane') return this.graph.route(first.lane, first.s0, lane, s);
-    const rest = this.graph.route(first.turn.to, 0, lane, s);
-    return rest ? [first, ...rest] : null;
+    // Сначала доехать поворот до конца, потом — с места, куда он выводит.
+    const rest = this.graph.route(first.turn.to, this.graph.exitS(first.turn), lane, s);
+    return rest ? [first, ...this.graph.turnTail(first), ...rest] : null;
   }
 
   private driveTo(target: { lane: Lane; s: number }) {
@@ -1029,7 +1030,7 @@ export class CityScene extends Phaser.Scene {
           const next = this.chooseExit(last.lane, stick.dir);
           if (next) extra = [this.graph.turnPart(this.graph.turn(last.lane, next)), this.graph.lanePart(next, 0, next.length)];
         }
-      } else extra = [this.graph.lanePart(last.turn.to, 0, last.turn.to.length)];
+      } else extra = this.graph.afterTurn(last);
       const clipped = this.clip(extra);
       this.pendingPoi = clipped.poi;
       this.player.append(clipped.parts);

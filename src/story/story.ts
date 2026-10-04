@@ -15,20 +15,19 @@ export type CharacterId = 'narrator' | 'victor' | 'marina' | 'sokolov' | 'galina
 export interface Character {
   name: string;
   role: string;
-  /** Буквы на аватарке. */
-  initials: string;
+  /** Фон портрета (`portraits.ts`). */
   color: string;
 }
 
 export const CHARACTERS: Record<Exclude<CharacterId, 'narrator'>, Character> = {
-  victor: { name: 'Виктор Петрович', role: 'инструктор автошколы', initials: 'ВП', color: '#3a86ff' },
-  marina: { name: 'Марина', role: 'диспетчер «Стрелы»', initials: 'М', color: '#e76f51' },
-  sokolov: { name: 'Лейтенант Соколов', role: 'инспектор ДПС', initials: 'С', color: '#2e6b3a' },
-  galina: { name: 'Галина Ивановна', role: 'пекарня «Калач»', initials: 'ГИ', color: '#d08c2e' },
-  artem: { name: 'Артём', role: 'курьер «Стрелы»', initials: 'Ар', color: '#8e44ad' },
-  semyon: { name: 'Семён', role: 'водитель фуры', initials: 'Сё', color: '#2a9d8f' },
-  anya: { name: 'Аня', role: 'фельдшер скорой помощи', initials: 'А', color: '#d62839' },
-  gena: { name: 'Дядя Гена', role: 'автосервис «Гайка»', initials: 'Г', color: '#5d6a7a' },
+  victor: { name: 'Виктор Петрович', role: 'инструктор автошколы', color: '#3a86ff' },
+  marina: { name: 'Марина', role: 'диспетчер «Стрелы»', color: '#e76f51' },
+  sokolov: { name: 'Лейтенант Соколов', role: 'инспектор ДПС', color: '#2e6b3a' },
+  galina: { name: 'Галина Ивановна', role: 'пекарня «Калач»', color: '#d08c2e' },
+  artem: { name: 'Артём', role: 'курьер «Стрелы»', color: '#8e44ad' },
+  semyon: { name: 'Семён', role: 'водитель фуры', color: '#2a9d8f' },
+  anya: { name: 'Аня', role: 'фельдшер скорой помощи', color: '#d62839' },
+  gena: { name: 'Дядя Гена', role: 'автосервис «Гайка»', color: '#5d6a7a' },
 };
 
 export interface Line {

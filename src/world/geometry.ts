@@ -111,4 +111,19 @@ export class Polyline {
     const i = this.segment(Math.max(0, Math.min(this.length, s)));
     return normalize(sub(this.points[i + 1], this.points[i]));
   }
+
+  /** Расстояние вдоль линии до её точки, ближайшей к `p`. */
+  offsetOf(p: Vec): number {
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 1; i < this.points.length; i++) {
+      const { point, t } = projectOnSegment(p, this.points[i - 1], this.points[i]);
+      const d = distance(p, point);
+      if (d < bestDist) {
+        bestDist = d;
+        best = this.cum[i - 1] + t * (this.cum[i] - this.cum[i - 1]);
+      }
+    }
+    return best;
+  }
 }

@@ -86,3 +86,47 @@ test('маршрут режется на две непрерывные част�
   assert.ok(Math.abs(after.reduce((s, p) => s + partLength(p), 0) - (total - 250)) < 0.5);
   assertContinuous([...before, ...after]);
 });
+
+test('разворот посреди дороги: дальше маршрут идёт с места выезда на встречную полосу', () => {
+  const target = graph.laneFor('CH1', 'H1');
+  let checked = 0;
+  for (const lane of graph.lanes.values()) {
+    const u = graph.uTurnOnRoad(lane, lane.length / 2);
+    if (!u) continue;
+    const turn = u[0];
+    assert.equal(turn.kind, 'turn');
+    if (turn.kind !== 'turn') continue;
+    // Выезд — посреди встречной полосы, не в её начале.
+    assert.ok(graph.exitS(turn.turn) > 0, lane.id);
+    const rest = graph.route(turn.turn.to, graph.exitS(turn.turn), target, 100);
+    assert.ok(rest, lane.id);
+    assertContinuous([turn, ...rest]);
+    checked++;
+  }
+  assert.ok(checked > 10);
+});
+
+test('поворот, оборванный посередине, продолжается остатком поворота, а не напрямик', () => {
+  const lane = graph.laneFor('AB', 'B');
+  const turns = [graph.turnPart(graph.turn(lane, graph.exits(lane)[0])), graph.uTurnOnRoad(lane, 200)![0]];
+  for (const full of turns) {
+    if (full.kind !== 'turn') continue;
+    const len = partLength(full);
+    for (const cut of [0.2, 0.5, 0.9]) {
+      // Машина остановилась посреди поворота, потом поехала дальше.
+      const [before] = graph.splitPath([full], len * cut);
+      const stopped = before.at(-1)!;
+      assert.equal(stopped.kind, 'turn');
+      if (stopped.kind !== 'turn') continue;
+      const next = graph.afterTurn(stopped);
+      assertContinuous([...before, ...next]);
+      // Остаток поворота той же длины, что и недоеханная часть: поворот не срезается.
+      const tail = graph.turnTail(stopped).reduce((s, p) => s + partLength(p), 0);
+      assert.ok(Math.abs(tail - len * (1 - cut)) < 0.5, `${full.turn.kind} ${cut}: ${tail.toFixed(1)}`);
+      const lanePart = next.at(-1)!;
+      assert.ok(lanePart.kind === 'lane' && Math.abs(lanePart.s0 - graph.exitS(full.turn)) < 1e-6);
+    }
+    // Поворот пройден целиком — остатка нет.
+    assert.deepEqual(graph.turnTail(full), []);
+  }
+});

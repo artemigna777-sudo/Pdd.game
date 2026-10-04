@@ -5,6 +5,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 type Vec = [number, number];
+// Внутренности сцены в тестах — без типов.
+type Any = any;
 
 interface CityDebug {
   scene: { isActive(key: string): boolean; getScene(key: string): CitySceneDebug };
@@ -122,6 +124,78 @@ test('джойстик: машина едет, пока палец отведё�
   await page.waitForTimeout(1000);
   const [x1, y1] = await carPosition(page);
   expect(Math.hypot(x1 - xs, y1 - ys)).toBeLessThan(0.5);
+});
+
+/**
+ * Насколько машина на экране расходится с местом, где её считает игра (полоса и расстояние).
+ * Должно быть 0: иначе машина «телепортируется» при следующем пересчёте маршрута.
+ */
+function positionGap(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const s = (window as Any).__game.scene.getScene('city');
+    const lp = s.player.lanePosition();
+    if (!lp) return 0;
+    const p = s.player.position;
+    const q = s.graph.pointOnLane(lp.lane, lp.s);
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  });
+}
+
+/** Начать разворот посреди дороги на свободной улице; вернуть id встречной полосы. */
+function startUTurn(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const s = (window as Any).__game.scene.getScene('city');
+    const lane = [...s.graph.lanes.values()].find((l: Any) => l.length > 300 && l.road.kind !== 'highway' && !s.pois.some((p: Any) => p.lane === l || p.lane === s.graph.opposite(l)));
+    s.player.placeAt(lane, 150);
+    s.player.setPath(s.graph.uTurnOnRoad(lane, 150));
+    return s.graph.opposite(lane).id as string;
+  });
+}
+
+test('разворот: машина не срезает поворот и не «телепортируется», если остановиться или выбрать цель посреди разворота', async ({ page }) => {
+  await openCity(page, 'joystick');
+  const worstGap = async (ms: number) => {
+    let worst = 0;
+    for (let t = 0; t < ms; t += 200) {
+      worst = Math.max(worst, await positionGap(page));
+      await page.waitForTimeout(200);
+    }
+    return worst;
+  };
+
+  // Палец отпущен посреди разворота: машина встала. Потом джойстик снова вперёд.
+  await startUTurn(page);
+  await page.waitForTimeout(450);
+  await page.evaluate(() => (window as Any).__game.scene.getScene('city').player.stopSoon());
+  await expect.poll(() => carSpeed(page), SLOW).toBe(0);
+  await page.evaluate(() => {
+    const s = (window as Any).__game.scene.getScene('city');
+    Object.assign(s.joy, { active: true, mag: 1, dir: { x: Math.sin(s.player.angle), y: -Math.cos(s.player.angle) } });
+  });
+  expect(await worstGap(2400)).toBeLessThan(2);
+  await page.evaluate(() => {
+    (window as Any).__game.scene.getScene('city').joy.active = false;
+  });
+  await expect.poll(() => carSpeed(page), SLOW).toBe(0);
+
+  // Посреди разворота выбрана цель дальше по встречной полосе (касание дороги).
+  const back = await startUTurn(page);
+  await page.waitForTimeout(450);
+  await page.evaluate((id) => {
+    const s = (window as Any).__game.scene.getScene('city');
+    const lane = s.graph.lane(id);
+    s.destination = { lane, s: lane.length - 20 };
+    s.driveTo(s.destination);
+  }, back);
+  expect(await worstGap(3000)).toBeLessThan(2);
+  // Доехала до цели на встречной полосе.
+  await expect.poll(() => carSpeed(page), SLOW).toBe(0);
+  const end = await page.evaluate(() => {
+    const lp = (window as Any).__game.scene.getScene('city').player.lanePosition();
+    return { lane: lp?.lane.id, s: lp?.s, length: lp?.lane.length };
+  });
+  expect(end.lane).toBe(back);
+  expect(Math.abs(end.s - (end.length - 20))).toBeLessThan(2);
 });
 
 interface PoiDebug {

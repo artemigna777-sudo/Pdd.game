@@ -2,8 +2,16 @@
  * Сюжетные сцены поверх игры: реплики персонажей по одной, с аватаркой и именем.
  * «Далее» — следующая реплика, «Пропустить» — сразу к концу. Закрывается при смене экрана.
  */
+import { portraitSvg, type PortraitId } from '../story/portraits.ts';
 import { CHARACTERS, type Line } from '../story/story.ts';
 import { el } from './dom.ts';
+
+/** Круглый портрет персонажа. */
+export function avatar(id: PortraitId, extra = ''): HTMLSpanElement {
+  const node = el('span', { class: `avatar ${extra}`.trim(), 'aria-hidden': 'true' });
+  node.innerHTML = portraitSvg(id);
+  return node;
+}
 
 let current: HTMLElement | undefined;
 
@@ -38,10 +46,10 @@ export function playCutscene(source: readonly Line[], opts: { last?: string } = 
     const lines = [...source];
     let index = 0;
     let chosen: string | undefined;
-    const avatar = el('span', { class: 'avatar', 'aria-hidden': 'true' });
+    const face = el('span', { class: 'avatar', 'aria-hidden': 'true' });
     const name = el('span', { class: 'cutscene__name' });
     const role = el('span', { class: 'cutscene__role' });
-    const who = el('div', { class: 'cutscene__who' }, avatar, el('span', { class: 'cutscene__names' }, name, role));
+    const who = el('div', { class: 'cutscene__who' }, face, el('span', { class: 'cutscene__names' }, name, role));
     const count = el('span', { class: 'cutscene__count' });
     const textEl = el('p', { class: 'cutscene__text', 'aria-live': 'polite' });
     const next = el('button', { class: 'btn btn--primary', type: 'button', 'data-focus': true });
@@ -67,8 +75,10 @@ export function playCutscene(source: readonly Line[], opts: { last?: string } = 
       const c = narrator ? undefined : CHARACTERS[line.who as keyof typeof CHARACTERS];
       who.hidden = narrator;
       if (c) {
-        avatar.textContent = c.initials;
-        avatar.style.background = c.color;
+        if (face.dataset.who !== line.who) {
+          face.dataset.who = line.who;
+          face.innerHTML = portraitSvg(line.who as PortraitId);
+        }
         name.textContent = c.name;
         role.textContent = c.role;
       }

@@ -62,7 +62,11 @@ export interface Turn {
   speed: number;
   /** Разворот посреди дороги (через осевую линию), а не в узле. */
   onRoad?: boolean;
+  /** Где поворот выводит на полосу `to`, если не в её начале (разворот посреди дороги). */
+  toS?: number;
 }
+
+type TurnPart = Extract<PathPart, { kind: 'turn' }>;
 
 /** Часть маршрута: отрезок полосы или проезд через узел. */
 export type PathPart =
@@ -350,8 +354,30 @@ export class RoadGraph {
     const q = this.pointOnLane(back, backS);
     const k = 30;
     const points = cubicBezier(p, add(p, scale(lane.dir, k)), add(q, scale(lane.dir, k)), q, 14);
-    const turn: Turn = { from: lane, to: back, kind: 'uturn', path: new Polyline(points), speed: SPEED.uturn, onRoad: true };
+    const turn: Turn = { from: lane, to: back, kind: 'uturn', path: new Polyline(points), speed: SPEED.uturn, onRoad: true, toS: backS };
     return [this.turnPart(turn), this.lanePart(back, backS, backS)];
+  }
+
+  /** Место на полосе `to`, куда выводит поворот: в узле — её начало, после разворота посреди дороги — дальше. */
+  exitS(turn: Turn): number {
+    return turn.toS ?? 0;
+  }
+
+  /**
+   * Остаток поворота после части `part` (она могла оборваться посреди поворота, когда машина
+   * остановилась). Маршрут дальше нужно продолжать с конца поворота, а не с места обрыва,
+   * иначе машина срежет поворот по прямой.
+   */
+  turnTail(part: TurnPart): PathPart[] {
+    const path = part.turn.path;
+    const at = path.offsetOf(part.points[part.points.length - 1]);
+    if (at >= path.length - 0.5) return [];
+    return this.splitPath([this.turnPart(part.turn)], at)[1];
+  }
+
+  /** Продолжение после поворота до `s` на полосе, куда он выводит (по умолчанию — до конца полосы). */
+  afterTurn(part: TurnPart, s = part.turn.to.length): PathPart[] {
+    return [...this.turnTail(part), this.lanePart(part.turn.to, this.exitS(part.turn), Math.max(s, this.exitS(part.turn)))];
   }
 
   /**

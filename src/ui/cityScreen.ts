@@ -35,7 +35,7 @@ import {
 import { getSettings, onSettingsChange } from '../settings.ts';
 import { PROLOGUE, STORY, beatThresholds, fill, type Line } from '../story/story.ts';
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
-import { playCutscene, showModal } from './cutscene.ts';
+import { avatar, playCutscene, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { durationLabel, plural } from './format.ts';
 import { ICONS } from './icons.ts';
@@ -357,7 +357,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
         el('tr', {}, el('th', {}, 'Ты'), cell(minutes(result.you.time), result.faster === 'you'), cell(`${result.you.accuracy}%`, result.accurate === 'you')),
         el('tr', {}, el('th', {}, 'Артём'), cell(minutes(result.artem.time), result.faster === 'artem'), cell(`${result.artem.accuracy}%`, result.accurate === 'artem')),
       ),
-      el('p', { class: 'race__quote' }, `Артём: «${raceReaction(result.faster, result.accurate).text}»`),
+      el('p', { class: 'race__quote' }, avatar('artem', 'avatar--small'), el('span', {}, `Артём: «${raceReaction(result.faster, result.accurate).text}»`)),
       result.coins ? el('p', { class: 'rewards__line rewards__xp' }, `+${result.coins} монет за гонку`) : null,
     );
   };
@@ -463,7 +463,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     eventFoot.hidden = true;
     sheetBody.scrollTop = 0;
     sheetBody.replaceChildren(
-      el('p', { class: 'event-intro violation-intro' }, `Лейтенант Соколов: «${RULES[v.kind].says(v)} Проверим, знаете ли вы это правило».`),
+      el('p', { class: 'event-intro violation-intro' }, avatar('sokolov', 'avatar--small'), el('span', {}, `Лейтенант Соколов: «${RULES[v.kind].says(v)} Проверим, знаете ли вы это правило».`)),
       renderQuestionCard(question, (result) => {
         answered++;
         if (result.isCorrect) correct++;

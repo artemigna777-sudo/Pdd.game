@@ -141,6 +141,7 @@ test('красный: тормоз перед стоп-линией — без �
   await expect(page.locator('.sheet.is-open')).toBeVisible(SLOW);
   await expect(page.locator('.sheet__title')).toHaveText('Нарушение: Проезд на красный');
   await expect(page.locator('.violation-intro')).toContainText('Лейтенант Соколов');
+  await expect(page.locator('.violation-intro .avatar svg')).toBeVisible();
   await expect(page.locator('.violation-intro')).toContainText('стоп-линию');
   await expect(page.locator('.pedal--brake')).toBeHidden();
   const id = await answer(page, false);

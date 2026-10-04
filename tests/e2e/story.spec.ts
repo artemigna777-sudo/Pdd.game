@@ -124,6 +124,9 @@ test('глава 1: обучение, пролог, вступление, точ
   await expect(dialog.locator('.cutscene__count')).toHaveText('1/7');
   await page.getByRole('button', { name: 'Далее' }).tap();
   await expect(dialog.locator('.cutscene__name')).toHaveText('Марина');
+  // У каждого героя свой портрет.
+  await expect(dialog.locator('.avatar')).toHaveAttribute('data-who', 'marina');
+  await expect(dialog.locator('.avatar svg')).toBeVisible();
   await page.getByRole('button', { name: 'Пропустить' }).tap();
   await expect(dialog).toContainText('Мешок муки');
   await page.getByRole('button', { name: 'Пропустить' }).tap();
@@ -135,6 +138,7 @@ test('глава 1: обучение, пролог, вступление, точ
   await expect(page.getByRole('button', { name: 'Пропустить' })).toBeHidden();
   await page.getByRole('button', { name: 'Я за точность' }).tap();
   await expect(dialog.locator('.cutscene__name')).toHaveText('Виктор Петрович');
+  await expect(dialog.locator('.avatar')).toHaveAttribute('data-who', 'victor');
   await page.getByRole('button', { name: 'Далее' }).tap();
   await page.getByRole('button', { name: 'Поехали' }).tap();
   // Правила за рулём (этап 8): лейтенант Соколов, педали и бонус за чистую езду — один раз.

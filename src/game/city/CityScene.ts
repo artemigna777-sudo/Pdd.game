@@ -12,7 +12,7 @@ import type { ControlMode } from '../../settings.ts';
 import { distance, dot, headingAngle, normalize, rightNormal, type Vec } from '../../world/geometry.ts';
 import type { MapPoint } from '../../world/map.ts';
 import { MAPS, pointQueues, type Mapping, type Placement } from '../../world/mapping.ts';
-import { LANE_WIDTH, RoadGraph, partLength, roadHalfWidth, type Lane, type PathPart } from '../../world/roadGraph.ts';
+import { LANE_WIDTH, RoadGraph, roadHalfWidth, type Lane, type PathPart } from '../../world/roadGraph.ts';
 import { TEMPLATES, type Maneuver, type TemplateInfo } from '../../world/templates.ts';
 import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
@@ -1230,7 +1230,7 @@ export class CityScene extends Phaser.Scene {
   /** Состояние машины для наблюдения за правилами. */
   private driveFrame(): DriveFrame {
     const lp = this.player.lanePosition();
-    const { part, offset } = this.player.current();
+    const { part } = this.player.current();
     const turn = part.kind === 'turn' ? part.turn : undefined;
     return {
       pos: this.player.position,
@@ -1239,8 +1239,9 @@ export class CityScene extends Phaser.Scene {
       lane: lp?.lane,
       s: lp?.s,
       turn,
-      // Начало траектории могло быть обрезано (маршрут перестроили посреди поворота).
-      turnT: turn ? turn.path.length - partLength(part) + offset : undefined,
+      // Сколько поворота уже проехано — по месту машины на всей траектории поворота:
+      // часть могла быть обрезана и в начале (маршрут перестроили), и в конце (машина остановилась).
+      turnT: turn ? turn.path.offsetOf(this.player.position) : undefined,
       braking: this.player.stopping,
       exempt: !!this.active || !!this.event || !!this.leaving || !!this.violation || !this.cameras.main.visible || this.arrivingAtScene(lp),
     };

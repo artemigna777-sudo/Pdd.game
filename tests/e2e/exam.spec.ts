@@ -43,20 +43,29 @@ async function openExam(page: Page) {
   await expect(page.locator('.exam-rules')).toContainText('20 вопросов · 20 минут');
   await page.getByRole('button', { name: 'Начать экзамен' }).tap();
   await expect(page.locator('.exam-status')).toHaveText('Вопрос 1 из 20 · блок 1');
-  await expect(page.locator('.exam-timer')).toHaveText(/^(20:00|19:5\d)$/);
+  // Таймер идёт по настоящим часам; на медленном сервере вопросы могут загружаться дольше.
+  await expect(page.locator('.exam-timer')).toHaveText(/^(20:00|19:[0-5]\d)$/);
+}
+
+/** Сколько секунд осталось по таймеру экзамена. */
+async function timeLeft(page: Page): Promise<number> {
+  const [m, s] = (await page.locator('.exam-timer').textContent())!.split(':').map(Number);
+  return m * 60 + s;
 }
 
 test('одна ошибка — 5 дополнительных вопросов из её блока и +5 минут; без ошибок в них — экзамен сдан', async ({ page }) => {
   await seed(page);
   await openExam(page);
-  for (let i = 1; i <= 20; i++) await answer(page, i !== 8);
+  for (let i = 1; i <= 19; i++) await answer(page, i !== 8);
+  const before = await timeLeft(page);
+  await answer(page, true);
   const modal = page.locator('.modal');
   await expect(modal.locator('.modal__title')).toHaveText('Дополнительные вопросы');
   await expect(modal).toContainText('Время увеличено на 5 минут');
   await page.getByRole('button', { name: 'Продолжить' }).tap();
   await expect(page.locator('.exam-status')).toHaveText('Дополнительный вопрос 1 из 5 · блок 2 · без ошибок');
-  // Время выросло: больше 20 минут.
-  expect(Number((await page.locator('.exam-timer').textContent())!.slice(0, 2))).toBeGreaterThanOrEqual(24);
+  // Время выросло на 5 минут — за вычетом нескольких секунд на последний ответ (таймер идёт по настоящим часам).
+  expect((await timeLeft(page)) - before).toBeGreaterThanOrEqual(5 * 60 - 30);
   for (let i = 1; i <= 5; i++) await answer(page, true);
 
   await expect(page.locator('.exam-result__verdict')).toHaveText('Экзамен сдан!');

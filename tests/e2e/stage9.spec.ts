@@ -1,6 +1,6 @@
 /**
  * Этап 9 «Мой экзамен»: дата экзамена в ГИБДД, план на сегодня как цель дня, обратный отсчёт
- * в меню, сжатые повторы, пробный экзамен по плану, итог настоящего экзамена.
+ * в меню, сжатые повторы, повторение пройденного, пробный экзамен по плану, итог экзамена.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
@@ -25,8 +25,8 @@ const inputDate = (ts: number) => {
 };
 
 /** Прогресс: первые `answered` вопросов базы отвечены верно, `mistakes` — ошибки, которые пора повторить. */
-function progressWith(answered: number, mistakes: string[] = [], plan?: unknown) {
-  const at = Date.now() - 2 * DAY;
+function progressWith(answered: number, mistakes: string[] = [], plan?: unknown, ago = 2) {
+  const at = Date.now() - ago * DAY;
   const questions: Record<string, unknown> = {};
   for (const q of QUESTIONS.slice(0, answered)) questions[q.id] = { n: 1, ok: true, ever: true, at };
   for (const id of mistakes) questions[id] = { n: 1, ok: false, ever: false, at, review: { stage: 0, due: at + DAY } };
@@ -56,8 +56,8 @@ async function answerCard(page: Page, right: boolean, exam = false) {
 }
 
 test('дата экзамена: план на сегодня — цель дня, обратный отсчёт в меню, всё сохраняется', async ({ page }) => {
-  // Не встречались 10 вопросов, экзамен через 10 дней: по 2 новых в день (последние 3 дня — без новых).
-  await seed(page, progressWith(790));
+  // Не встречались 2 последних вопроса базы, экзамен через 10 дней: оба — сегодня.
+  await seed(page, progressWith(798));
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Экзамен', exact: true })).not.toContainText('📅');
   await page.getByRole('button', { name: 'Экзамен', exact: true }).tap();
@@ -192,3 +192,32 @@ test('после даты экзамена: спросить итог, сохр�
   await page.getByRole('button', { name: 'Назад' }).tap();
   await expect(page.getByRole('button', { name: 'Экзамен', exact: true })).not.toContainText('📅');
 });
+
+test('закрепление: повторение пройденного начинает с вопросов, где были ошибки', async ({ page }) => {
+  // Все вопросы выучены месяц назад, в двух были ошибки; экзамен через 20 дней — закрепление.
+  const progress = progressWith(800, [], { date: dayStart(20), total: 800, from: dayStart(-40) }, 30) as { questions: Record<string, { miss?: number; at: number }> };
+  progress.questions['B07-Q03'].miss = 2;
+  progress.questions['B21-Q15'].miss = 1;
+  progress.questions['B21-Q15'].at -= DAY; // встречался ещё раньше
+  await seed(page, progress);
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Цель дня\. План к экзамену/ }).tap();
+  const refresh = page.locator('.plan-task', { hasText: 'Повторение пройденного' });
+  await expect(refresh).toContainText('0 из 40');
+  await expect(page.locator('.plan-forecast')).toContainText('Все вопросы пройдены заранее');
+  await expect(page.locator('.plan-how')).toContainText('Сейчас пора освежить: 800 вопросов.');
+
+  await refresh.tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Повторение пройденного');
+  await expect(page.locator('.card')).toHaveAttribute('aria-label', 'Билет 21, вопрос 15');
+  await answerCard(page, true);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).tap();
+  await expect(page.locator('.card')).toHaveAttribute('aria-label', 'Билет 7, вопрос 3');
+  await answerCard(page, false); // ошибка на повторении уходит в работу над ошибками
+  await expect(page.locator('.quiz__note')).toHaveText('Вопрос попал в работу над ошибками: повтор завтра.');
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await expect(refresh).toContainText('2 из 40');
+  const saved = await readProgress(page);
+  expect(saved.questions['B07-Q03']).toMatchObject({ miss: 3, review: { stage: 0 } });
+});
+

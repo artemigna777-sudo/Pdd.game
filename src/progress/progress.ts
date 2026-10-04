@@ -93,6 +93,11 @@ export interface QuestionState {
   at: number;
   /** Вопрос в работе над ошибками: ступень повтора (0 — через 1 день, 1 — через 3, 2 — через 7) и срок. */
   review?: { stage: number; due: number };
+  /**
+   * Сколько раз отвечен неверно (считается с этапа 9; вопрос, который уже был в работе над
+   * ошибками, — хотя бы 1). По нему «Повторение пройденного» начинает с вопросов, где были ошибки.
+   */
+  miss?: number;
 }
 
 export interface ChapterState {
@@ -154,6 +159,8 @@ export interface PlanDay {
   fresh: PlanTask;
   /** Повторы ошибок, срок которых наступил. */
   reviews: PlanTask;
+  /** Повторение пройденного: выученные вопросы, которые давно не встречались (на закреплении). */
+  refresh: PlanTask;
   /** Пробные экзамены. */
   exams: PlanTask;
 }
@@ -164,6 +171,8 @@ export interface ExamPlan {
   date: number;
   /** Сколько вопросов в базе: от этого считается норма новых вопросов в день. */
   total: number;
+  /** День, когда указана дата: от длины всего срока зависит, сколько дней уйдёт на закрепление. */
+  from?: number;
   today?: PlanDay;
   /** Как прошёл настоящий экзамен и какой была готовность в тот день. */
   result?: { passed: boolean; readiness: number; at: number };
@@ -246,6 +255,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       const state: QuestionState = { n: s.n, ok: s.ok, ever: s.ever || s.ok, at: s.at };
       const r = s.review;
       if (isObj(r) && isInt(r.stage) && r.stage < REVIEW_DAYS.length && isInt(r.due)) state.review = { stage: r.stage, due: r.due };
+      const miss = isInt(s.miss, 1) ? s.miss : state.review ? 1 : 0;
+      if (miss) state.miss = miss;
       data.questions[id] = state;
     }
   }
@@ -269,13 +280,15 @@ export function sanitizeProgress(raw: unknown): ProgressData {
   const plan = raw.plan;
   if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {
     data.plan = { date: plan.date, total: plan.total };
+    if (isInt(plan.from) && plan.from <= plan.date) data.plan.from = plan.from;
     const task = (v: unknown): PlanTask | undefined => (isObj(v) && isInt(v.target) && isInt(v.done) ? { target: v.target, done: v.done } : undefined);
     const t = plan.today;
     if (isObj(t) && isInt(t.day)) {
       const fresh = task(t.fresh);
       const reviews = task(t.reviews);
+      const refresh = task(t.refresh) ?? { target: 0, done: 0 };
       const exams = task(t.exams);
-      if (fresh && reviews && exams) data.plan.today = { day: t.day, fresh, reviews, exams };
+      if (fresh && reviews && exams) data.plan.today = { day: t.day, fresh, reviews, refresh, exams };
     }
     const r = plan.result;
     if (isObj(r) && typeof r.passed === 'boolean' && isInt(r.readiness) && r.readiness <= 100 && isInt(r.at)) data.plan.result = { passed: r.passed, readiness: r.readiness, at: r.at };
@@ -347,6 +360,10 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
   const plan = planDay(data, now);
   if (plan && !prev) plan.fresh.done++;
   if (plan && due) plan.reviews.done++;
+  if (plan && prev && isStale(prev, now)) plan.refresh.done++;
+  const missed = s.miss ?? (s.review ? 1 : 0);
+  if (!correct) s.miss = missed + 1;
+  else if (missed) s.miss = missed;
   let xp = 0;
   let review: AnswerOutcome['review'];
   if (correct) {
@@ -380,12 +397,24 @@ export function recordAnswer(data: ProgressData, id: string, correct: boolean, n
 
 // ─── Мой экзамен: дата экзамена и план к ней ────────────────────────────────────
 
-/** Нормы плана к экзамену. */
+/**
+ * Нормы плана к экзамену. План готовит заранее: сначала учёба (все новые вопросы, не меньше
+ * minPace в день), потом закрепление — новых вопросов нет, каждый день повторение пройденного,
+ * повторы ошибок и пробные экзамены.
+ */
 export const PLAN = {
-  /** Последние дни перед экзаменом — без новых вопросов: только повторы и пробные экзамены. */
-  reserve: 3,
-  /** За сколько дней до экзамена — пробный экзамен каждый день (в последние дни — по два). */
+  /** Не меньше стольких новых вопросов в день: база проходится заранее, а не к самому экзамену. */
+  minPace: 20,
+  /** Закрепление — последняя четверть срока до экзамена, но не меньше 3 и не больше 30 дней. */
+  buffer: { share: 0.25, min: 3, max: 30 },
+  /** Вопрос пора освежить, если последний ответ на него был больше стольких дней назад. */
+  stale: 7,
+  /** Повторение пройденного в день: не меньше и не больше (если столько есть). */
+  refresh: { min: 10, max: 40 },
+  /** За сколько дней до экзамена — пробный экзамен каждый день (раньше, на закреплении, — через день). */
   examsFrom: 7,
+  /** Последние дни перед экзаменом — по два пробных экзамена в день. */
+  last: 3,
   /** Сколько ответов в день (новые вопросы и повторы) ещё «успеваешь»; больше — «плотно». */
   comfortable: 50,
   /** Больше этого в день — «не успеть». */
@@ -425,10 +454,37 @@ export function unseenCount(data: ProgressData): number {
   return Math.max(0, (data.plan?.total ?? 0) - Object.keys(data.questions).length);
 }
 
-/** Норма новых вопросов в день, чтобы пройти все до последних дней перед экзаменом. */
-export function freshPerDay(unseen: number, daysLeft: number): number {
-  if (unseen <= 0 || daysLeft <= 0) return 0;
-  return Math.ceil(unseen / Math.max(1, daysLeft - PLAN.reserve));
+/** Сколько дней перед экзаменом уходит на закрепление: четверть всего срока плана, от 3 до 30. */
+export function bufferDays(plan: ExamPlan, now: number): number {
+  const span = Math.round((plan.date - (plan.from ?? dayStart(now))) / DAY_MS);
+  return Math.min(PLAN.buffer.max, Math.max(PLAN.buffer.min, Math.round(span * PLAN.buffer.share)));
+}
+
+/** Первый день закрепления: к нему все новые вопросы должны быть пройдены. */
+export const readyBy = (plan: ExamPlan, now: number): number => dayStart(plan.date, -bufferDays(plan, now));
+
+/**
+ * Сколько дней осталось на новые вопросы: до начала закрепления. Если срок учёбы уже прошёл,
+ * а новые вопросы остались, — на все дни, кроме последних трёх (там только повторение и экзамены).
+ */
+export function learnDaysLeft(data: ProgressData, now: number): number {
+  const toReady = Math.round((readyBy(data.plan!, now) - dayStart(now)) / DAY_MS);
+  return toReady > 0 ? toReady : Math.max(1, planDaysLeft(data, now)! - PLAN.last);
+}
+
+/** Норма новых вопросов в день: все оставшиеся — до начала закрепления, но не меньше PLAN.minPace. */
+export function freshPerDay(unseen: number, learnDays: number): number {
+  if (unseen <= 0) return 0;
+  return Math.min(unseen, Math.max(PLAN.minPace, Math.ceil(unseen / Math.max(1, learnDays))));
+}
+
+/** Выученный вопрос давно не встречался (последний ответ верный и старше PLAN.stale дней): его пора освежить. */
+export const isStale = (s: QuestionState, now: number): boolean => !s.review && s.at < dayStart(now, -PLAN.stale);
+
+/** Норма повторения пройденного в день: все давно не встречавшиеся — до экзамена, от 10 до 40 в день. */
+export function refreshPerDay(stale: number, daysLeft: number): number {
+  if (stale <= 0) return 0;
+  return Math.min(stale, Math.min(PLAN.refresh.max, Math.max(PLAN.refresh.min, Math.ceil(stale / Math.max(1, daysLeft)))));
 }
 
 /** План на сегодня (нормы задаются при первом действии дня); без действующего плана — undefined. */
@@ -438,18 +494,23 @@ export function planDay(data: ProgressData, now: number): PlanDay | undefined {
   const day = dayStart(now);
   if (plan.today?.day === day) return plan.today;
   const left = planDaysLeft(data, now)!;
-  const reviews = dueReviews(data, now).length;
+  const unseen = unseenCount(data);
+  // Закрепление: все вопросы пройдены или срок учёбы вышел.
+  const consolidating = unseen === 0 || day >= readyBy(plan, now);
+  const stale = unseen === 0 ? Object.values(data.questions).filter((s) => isStale(s, now)).length : 0;
+  const exams = left === 0 ? 0 : left <= PLAN.last ? 2 : left <= PLAN.examsFrom ? 1 : consolidating && left % 2 === 0 ? 1 : 0;
   plan.today = {
     day,
-    fresh: { target: left > 0 ? freshPerDay(unseenCount(data), left) : 0, done: 0 },
-    reviews: { target: reviews, done: 0 },
-    exams: { target: left === 0 ? 0 : left <= PLAN.reserve ? 2 : left <= PLAN.examsFrom ? 1 : 0, done: 0 },
+    fresh: { target: left > 0 ? freshPerDay(unseen, learnDaysLeft(data, now)) : 0, done: 0 },
+    reviews: { target: dueReviews(data, now).length, done: 0 },
+    refresh: { target: left > 0 ? refreshPerDay(stale, left) : 0, done: 0 },
+    exams: { target: exams, done: 0 },
   };
   return plan.today;
 }
 
 /** Задачи плана на день, у которых есть норма. */
-export const planTasks = (day: PlanDay): PlanTask[] => [day.fresh, day.reviews, day.exams].filter((t) => t.target > 0);
+export const planTasks = (day: PlanDay): PlanTask[] => [day.fresh, day.reviews, day.refresh, day.exams].filter((t) => t.target > 0);
 
 /** Сколько задач плана на день выполнено. */
 function planDone(day: PlanDay | undefined): number {
@@ -458,7 +519,7 @@ function planDone(day: PlanDay | undefined): number {
 
 /** Указать дату экзамена (начало дня). План на сегодня и цель дня пересчитываются. */
 export function setExamDate(data: ProgressData, date: number, total: number, now: number): void {
-  data.plan = { date: dayStart(date), total };
+  data.plan = { date: dayStart(date), total, from: dayStart(now) };
   if (data.daily?.day === dayStart(now) && !data.daily.done) delete data.daily;
   ensureDaily(data, now);
 }

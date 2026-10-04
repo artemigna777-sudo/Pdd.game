@@ -2939,3 +2939,14 @@ button {
     font-size: 16px;
   }
 }
+
+.plan-how {
+  list-style: none;
+  padding-left: 0;
+}
+
+.plan-how li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 6px;
+}

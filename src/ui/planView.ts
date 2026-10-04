@@ -12,6 +12,7 @@ export interface PlanActions {
   result(passed: boolean): void;
   fresh(): void;
   reviews(): void;
+  refresh(): void;
   exam(): void;
   share(): void;
 }
@@ -100,8 +101,9 @@ function todayPanel(data: ProgressData, now: number, actions: PlanActions): HTML
   const rows: HTMLElement[] = [];
   if (day?.fresh.target) rows.push(taskRow('🆕', 'Новые вопросы', day.fresh, actions.fresh));
   if (day?.reviews.target) rows.push(taskRow('🔁', 'Повторы ошибок', day.reviews, actions.reviews));
+  if (day?.refresh.target) rows.push(taskRow('🧠', 'Повторение пройденного', day.refresh, actions.refresh));
   if (day?.exams.target) rows.push(taskRow('🎓', day.exams.target > 1 ? 'Пробные экзамены' : 'Пробный экзамен', day.exams, actions.exam));
-  const all = rows.length > 0 && day ? [day.fresh, day.reviews, day.exams].every((t) => t.done >= t.target) : false;
+  const all = rows.length > 0 && day ? [day.fresh, day.reviews, day.refresh, day.exams].every((t) => t.done >= t.target) : false;
   return el(
     'section',
     { class: 'panel plan-today' },
@@ -131,14 +133,16 @@ function forecastPanel(s: PlanSummary, now: number): HTMLElement {
   const text =
     s.pace === 'ok'
       ? s.unseen
-        ? `По ${s.perDay} новых вопросов в день — и все ${s.unseen} пройдены ${byDate(s.freshUntil!, now)}. Дальше — повторы ошибок и пробные экзамены.`
-        : 'Все вопросы уже встречались. Теперь — повторы ошибок в свой день и пробные экзамены.'
+        ? `По ${s.perDay} новых вопросов в день — и все ${s.unseen} пройдены ${byDate(s.freshUntil!, now)}, за ${days(s.early!)} до экзамена. Дальше — закрепление: повторение пройденного и пробные экзамены.`
+        : 'Все вопросы пройдены заранее ✅ Теперь закрепление: каждый день повторение пройденного (сначала там, где были ошибки), повторы ошибок и пробные экзамены.'
       : s.pace === 'late'
         ? s.perDay > PLAN.max
           ? `Чтобы пройти ${questions(s.unseen)}, которые ещё не встречались, нужно по ${s.perDay} в день. Это очень много.`
           : `Нужно в среднем ${answers(s.load)} в день: новые вопросы и повторы ошибок. Это очень много.`
         : s.squeezed
-          ? `До экзамена ${days(left)}, а ${questions(s.unseen)} ещё не встречались: пройди их сейчас, чтобы успеть повторить ошибки.`
+          ? left > PLAN.last
+            ? `По плану новые вопросы уже должны были закончиться, а ${questions(s.unseen)} ещё не встречались. По ${s.perDay} в день — и все будут пройдены ${byDate(s.freshUntil!, now)}, за ${days(s.early!)} до экзамена.`
+            : `До экзамена ${days(left)}, а ${questions(s.unseen)} ещё не встречались: пройди их сейчас, чтобы успеть повторить ошибки.`
           : s.perDay > PLAN.comfortable
             ? `Нужно по ${s.perDay} новых вопросов в день, без пропусков.`
             : s.load > PLAN.comfortable
@@ -154,14 +158,35 @@ function forecastPanel(s: PlanSummary, now: number): HTMLElement {
   );
 }
 
+/** Как устроен план: учёба заранее, закрепление, пробные экзамены, ошибки. */
 function howPanel(s: PlanSummary, now: number): HTMLElement {
   const today = startOfToday(now);
-  const items: string[] = [];
-  if (s.unseen) items.push(s.freshUntil! <= today ? `Новые вопросы: осталось ${s.unseen} — все сегодня.` : `Новые вопросы: осталось ${s.unseen} — по ${s.perDay} в день до ${dateLabel(s.freshUntil!)}.`);
-  items.push(`Последние ${days(PLAN.reserve)} перед экзаменом — без новых вопросов: только повторы и пробные экзамены.`);
-  items.push(`Пробные экзамены: ${s.examsFrom! <= today ? 'с сегодняшнего дня' : `с ${dateLabel(s.examsFrom!)}`} — каждый день, в последние ${days(PLAN.reserve)} — по два.`);
-  items.push(`Ошибки: как обычно, три повтора, но промежутки короче, чтобы все успели до экзамена. Сейчас в работе: ${mistakes(s.reviews)}.`);
-  return el('section', { class: 'panel' }, el('h2', { class: 'panel__title' }, 'Как устроен план'), el('ul', { class: 'plan-how' }, ...items.map((t) => el('li', {}, t))));
+  const items: [string, string][] = [];
+  items.push([
+    '📚',
+    s.unseen
+      ? `Учёба: все новые вопросы — заранее, не меньше ${PLAN.minPace} в день. Осталось ${s.unseen}: по ${s.perDay} в день — до ${s.freshUntil! <= today ? 'конца дня' : dateLabel(s.freshUntil!)}.`
+      : 'Учёба: все вопросы пройдены ✅',
+  ]);
+  items.push([
+    '🧠',
+    `Закрепление: новых вопросов нет, каждый день — повторение пройденного: сначала вопросы и темы, где были ошибки, потом те, что давно не встречались. ${
+      s.phase === 'learn' ? `Начнётся, как только пройдены все новые вопросы (по плану — не позже ${dateLabel(s.readyBy!)}).` : s.stale ? `Сейчас пора освежить: ${questions(s.stale)}.` : 'Всё пройденное свежее — новые вопросы для повторения появятся через неделю после ответа.'
+    }`,
+  ]);
+  items.push([
+    '🎓',
+    s.examsFrom! <= today
+      ? `Пробные экзамены: каждый день, в последние ${days(PLAN.last)} — по два.`
+      : `Пробные экзамены: на закреплении — через день, с ${dateLabel(s.examsFrom!)} — каждый день, в последние ${days(PLAN.last)} — по два.`,
+  ]);
+  items.push(['🔁', `Ошибки: три повтора, как обычно, но промежутки короче, чтобы все успели до экзамена. Сейчас в работе: ${mistakes(s.reviews)}.`]);
+  return el(
+    'section',
+    { class: 'panel' },
+    el('h2', { class: 'panel__title' }, 'Как устроен план'),
+    el('ul', { class: 'plan-how' }, ...items.map(([icon, text]) => el('li', {}, el('span', { class: 'plan-how__icon', 'aria-hidden': 'true' }, icon), el('span', {}, text)))),
+  );
 }
 
 function resultButtons(actions: PlanActions): HTMLElement {
@@ -200,7 +225,7 @@ export function planView(data: ProgressData, now: number, readinessNow: number |
         'section',
         { class: 'panel' },
         el('h2', { class: 'panel__title' }, 'Когда твой экзамен в ГИБДД?'),
-        el('p', { class: 'rewards__line' }, 'Укажи дату — игра составит план на каждый день: сколько новых вопросов пройти, какие ошибки повторить и когда сдавать пробные экзамены.'),
+        el('p', { class: 'rewards__line' }, 'Укажи дату — игра составит план на каждый день. Сначала все новые вопросы — заранее, а оставшееся время до экзамена — закрепление: повторение пройденного, где были ошибки, и пробные экзамены.'),
         el('p', { class: 'panel__note' }, 'Повторы ошибок сожмутся под дату: все три повтора успеют до экзамена. Дату можно изменить или убрать.'),
         dateForm(now, undefined, 'Составить план', actions.setDate),
       ),

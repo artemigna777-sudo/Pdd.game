@@ -43,7 +43,7 @@ import { closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
-import { planSummary } from '../progress/examPlan.ts';
+import { planSummary, refreshOrder } from '../progress/examPlan.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
 import { plural } from './format.ts';
 import { ICONS } from './icons.ts';
@@ -59,7 +59,7 @@ import { showToast } from './toast.ts';
  * контрольными билетами, «Разбор ошибок», «Прогресс», «Мой экзамен», билеты целиком
  * с историей попыток и настройки.
  */
-type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh';
+type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh';
 type Route =
   | { name: 'menu' }
   | { name: 'chapters' }
@@ -654,6 +654,7 @@ export class App {
           },
           fresh: () => this.open({ name: 'drill', mode: 'fresh', via: 'plan' }),
           reviews: () => this.open({ name: 'drill', mode: 'review', via: 'plan' }),
+          refresh: () => this.open({ name: 'drill', mode: 'refresh', via: 'plan' }),
           exam: () => this.open({ name: 'exam-run', boss: false }),
           share: () => {
             const r = data.plan?.result;
@@ -707,6 +708,13 @@ export class App {
         ids = questions.filter((q) => !data.questions[q.id]).slice(0, left > 0 ? Math.min(20, left) : 20).map((q) => q.id);
         break;
       }
+      case 'refresh': {
+        // Повторение пройденного: сначала там, где были ошибки, потом давно не встречавшееся.
+        const plan = planDay(data, Date.now());
+        const left = plan ? plan.refresh.target - plan.refresh.done : 0;
+        ids = refreshOrder(data, questions, Date.now()).slice(0, left > 0 ? Math.min(20, left) : 20);
+        break;
+      }
     }
     return ids.map((id) => byId.get(id)!).filter(Boolean);
   }
@@ -719,13 +727,14 @@ export class App {
       weak: 'Недоученные вопросы',
       block: `Блок: ${blockLabel(route.block ?? 0)}`,
       fresh: 'Новые вопросы',
+      refresh: 'Повторение пройденного',
     };
     return this.quizPage(route, titles[route.mode], route.via, (all) => this.drillQuestions(route, all), (results, _ms, list, body) => {
       const right = results.filter((r) => r.isCorrect).length;
       const left = route.mode === 'review' ? dueReviews(progress(), Date.now()).length : 0;
       // Из «Моего экзамена» — сколько сделано по плану на сегодня.
       const plan = route.via === 'plan' ? planDay(progress(), Date.now()) : undefined;
-      const task = plan && (route.mode === 'fresh' ? plan.fresh : plan.reviews);
+      const task = plan && (route.mode === 'fresh' ? plan.fresh : route.mode === 'refresh' ? plan.refresh : plan.reviews);
       body.replaceChildren(
         el(
           'section',

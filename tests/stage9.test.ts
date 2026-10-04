@@ -1,14 +1,15 @@
 /**
- * Этап 9 «Мой экзамен»: повторы сжимаются под дату экзамена, план на день — цель дня,
- * прогноз «успеваешь или нет», итог настоящего экзамена.
+ * Этап 9 «Мой экзамен»: учёба заранее и закрепление (повторение пройденного), повторы сжимаются
+ * под дату экзамена, план на день — цель дня, прогноз «успеваешь или нет», итог экзамена.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { planSummary, unfixableReviews } from '../src/progress/examPlan.ts';
+import { planSummary, refreshOrder, unfixableReviews } from '../src/progress/examPlan.ts';
 import { readiness } from '../src/progress/readiness.ts';
 import {
   COINS,
   PLAN,
+  bufferDays,
   clearExamDate,
   currentStreak,
   dayStart,
@@ -19,9 +20,11 @@ import {
   planActive,
   planDay,
   planDaysLeft,
+  readyBy,
   recordAnswer,
   recordExamResult,
   recordPlanExam,
+  refreshPerDay,
   reviewInterval,
   sanitizeProgress,
   setExamDate,
@@ -89,32 +92,100 @@ test('после даты экзамена повторы снова обычн�
   assert.equal(reviewInterval(data, 2, day(0)), 7);
 });
 
-test('норма новых вопросов: поровну до последних дней, последние дни — без новых', () => {
-  assert.equal(freshPerDay(800, 20), Math.ceil(800 / (20 - PLAN.reserve)));
-  assert.equal(freshPerDay(800, PLAN.reserve), 800, 'в последние дни — всё, что осталось');
+test('учёба заранее: новые вопросы не меньше 20 в день и до начала закрепления', () => {
+  assert.equal(freshPerDay(800, 17), 48);
+  assert.equal(freshPerDay(800, 90), PLAN.minPace, 'времени много — всё равно не меньше 20 в день');
+  assert.equal(freshPerDay(5, 90), 5);
   assert.equal(freshPerDay(0, 10), 0);
-  assert.equal(freshPerDay(10, 0), 0);
 
+  // Экзамен через 4 месяца: на закрепление — последние 30 дней, а при 20 вопросах в день
+  // все 800 пройдены за 40 дней — за 81 день до экзамена.
+  const far = emptyProgress();
+  setExamDate(far, day(120), TOTAL, day(0));
+  assert.equal(bufferDays(far.plan!, day(0)), 30);
+  assert.equal(readyBy(far.plan!, day(0)), dayStart(day(90)));
+  const f = planDay(far, day(0))!;
+  assert.deepEqual([f.fresh.target, f.reviews.target, f.refresh.target, f.exams.target], [20, 0, 0, 0]);
+  const fs = planSummary(far, day(0));
+  assert.deepEqual([fs.phase, fs.perDay, fs.freshUntil, fs.early, fs.pace], ['learn', 20, dayStart(day(39)), 81, 'ok']);
+  // Начало закрепления не сдвигается, сколько бы дней ни прошло.
+  assert.equal(readyBy(far.plan!, day(50)), dayStart(day(90)));
+
+  // Экзамен через 20 дней: закрепление — последние 5 дней, новые вопросы — до него.
   const data = emptyProgress();
   setExamDate(data, day(20), TOTAL, day(0));
+  assert.equal(readyBy(data.plan!, day(0)), dayStart(day(15)));
   const today = planDay(data, day(0))!;
-  assert.deepEqual([today.fresh.target, today.reviews.target, today.exams.target], [Math.ceil(800 / 17), 0, 0]);
+  assert.deepEqual([today.fresh.target, today.reviews.target, today.exams.target], [Math.ceil(800 / 15), 0, 0]);
   // Норма задаётся в начале дня и до конца дня не меняется.
   for (let i = 0; i < 10; i++) recordAnswer(data, `N${i}`, true, day(0));
-  assert.equal(planDay(data, day(0))!.fresh.target, Math.ceil(800 / 17));
+  assert.equal(planDay(data, day(0))!.fresh.target, Math.ceil(800 / 15));
   assert.equal(planDay(data, day(0))!.fresh.done, 10);
   // Знакомый вопрос — не новый.
   recordAnswer(data, 'N0', true, day(0));
   assert.equal(planDay(data, day(0))!.fresh.done, 10);
   // На следующий день норма пересчитана по оставшимся.
-  assert.equal(planDay(data, day(1))!.fresh.target, Math.ceil(790 / 16));
+  assert.equal(planDay(data, day(1))!.fresh.target, Math.ceil(790 / 14));
 
-  // Пробные экзамены: за неделю — по одному, в последние дни — по два, в день экзамена — нет.
+  // Пробные экзамены: на учёбе — нет, за неделю — по одному, в последние 3 дня — по два, в день экзамена — нет.
   const exams = (n: number) => planDay(data, day(n))!.exams.target;
   assert.deepEqual([exams(12), exams(13), exams(16), exams(17), exams(19), exams(20)], [0, 1, 1, 2, 2, 0]);
-  assert.equal(planDay(data, day(17))!.fresh.target, freshPerDay(790, 3), 'вопросы остались — их нужно пройти сейчас');
+  // Срок учёбы вышел, а вопросы остались: все — до последних трёх дней.
+  assert.equal(planDay(data, day(16))!.fresh.target, 790);
+  const late = planSummary(data, day(16));
+  assert.deepEqual([late.squeezed, late.perDay, late.pace], [true, 790, 'late']);
   assert.equal(planDay(data, day(20))!.fresh.target, 0, 'в день экзамена новых нет');
   assert.equal(planDay(data, day(21)), undefined, 'дата прошла');
+});
+
+test('закрепление: повторение пройденного — сначала где были ошибки, пробный экзамен через день', () => {
+  assert.deepEqual([refreshPerDay(30, 60), refreshPerDay(300, 10), refreshPerDay(800, 10), refreshPerDay(5, 60), refreshPerDay(0, 60)], [10, 30, 40, 5, 0]);
+
+  // 30 вопросов выучены давно: тема A — без ошибок (и встречалась ещё раньше), в теме B были ошибки.
+  const QS = Array.from({ length: 30 }, (_, i) => ({ id: `Q${String(i).padStart(2, '0')}`, topic: i < 10 ? 'A' : 'B' }));
+  const data = emptyProgress();
+  for (const q of QS) data.questions[q.id] = { n: 1, ok: true, ever: true, at: day(q.topic === 'A' ? -25 : -20) };
+  data.questions.Q12.miss = 2;
+  data.questions.Q15 = { n: 3, ok: true, ever: true, at: day(-30), miss: 1 };
+  data.questions.Q29.at = day(-2); // встречался недавно — освежать рано
+  setExamDate(data, day(60), 30, day(0));
+
+  const plan = planDay(data, day(0))!;
+  assert.deepEqual([plan.fresh.target, plan.refresh.target, plan.exams.target], [0, 10, 1]);
+  assert.equal(planDay(data, day(1))!.exams.target, 0, 'на закреплении экзамен — через день');
+  const s = planSummary(data, day(1));
+  assert.deepEqual([s.phase, s.stale, s.refreshPerDay, s.pace], ['consolidate', 29, 10, 'ok']);
+
+  // Порядок: вопросы с ошибками, потом тема с ошибками, потом остальные; внутри — давно не встречавшиеся первыми.
+  const order = refreshOrder(data, QS, day(1));
+  assert.deepEqual(order.slice(0, 4), ['Q15', 'Q12', 'Q10', 'Q11']);
+  assert.deepEqual(order.slice(-2), ['Q08', 'Q09']);
+  assert.equal(order.length, 29);
+  assert.ok(!order.includes('Q29'));
+
+  // Ответ на давно не встречавшийся вопрос засчитывается в повторение; ошибка уходит на повторы.
+  recordAnswer(data, 'Q15', true, day(1));
+  recordAnswer(data, 'Q03', false, day(1));
+  recordAnswer(data, 'Q29', true, day(1)); // недавний — не в счёт
+  const today = planDay(data, day(1))!;
+  assert.equal(today.refresh.done, 2);
+  assert.deepEqual([data.questions.Q03.miss, data.questions.Q03.review?.stage], [1, 0]);
+  assert.ok(!refreshOrder(data, QS, day(1)).includes('Q15'), 'освежённый вопрос снова свежий');
+});
+
+test('счётчик ошибок: растёт с каждой ошибкой, вопрос из работы над ошибками — хотя бы одна', () => {
+  const data = emptyProgress();
+  recordAnswer(data, 'A', false, day(0));
+  recordAnswer(data, 'A', false, day(1));
+  recordAnswer(data, 'A', true, day(2));
+  assert.equal(data.questions.A.miss, 2);
+  recordAnswer(data, 'B', true, day(0));
+  assert.equal(data.questions.B.miss, undefined);
+  // Старые сохранения без счётчика: вопрос на повторе — с одной ошибкой.
+  const old = sanitizeProgress({ ...emptyProgress(), questions: { C: { n: 1, ok: false, ever: false, at: 1, review: { stage: 0, due: 2 } }, D: { n: 1, ok: true, ever: true, at: 1 } } });
+  assert.deepEqual([old.questions.C.miss, old.questions.D.miss], [1, undefined]);
+  recordAnswer(old, 'C', true, day(0));
+  assert.equal(old.questions.C.miss, 1);
 });
 
 test('план на день — цель дня: монеты и серия, когда выполнены все задачи', () => {
@@ -126,7 +197,7 @@ test('план на день — цель дня: монеты и серия, к
   const daily = ensureDaily(data, day(0));
   const plan = planDay(data, day(0))!;
   assert.equal(daily.kind, 'plan');
-  assert.deepEqual([plan.fresh.target, plan.reviews.target, plan.exams.target], [freshPerDay(8, 5), 2, 1]);
+  assert.deepEqual([plan.fresh.target, plan.reviews.target, plan.refresh.target, plan.exams.target], [8, 2, 0, 1]);
   assert.equal(daily.target, 3);
 
   for (let i = 0; i < plan.fresh.target; i++) recordAnswer(data, `N${i}`, true, day(0));
@@ -157,10 +228,10 @@ test('указать дату посреди дня: невыполненная 
   done.daily!.done = true;
   setExamDate(done, day(10), TOTAL, day(0));
   assert.equal(done.daily!.kind, 'points');
-  // Без задач на день (всё пройдено, повторов нет) цель дня обычная.
+  // Без задач на день (всё пройдено недавно, повторов нет, экзамен — не сегодня) цель дня обычная.
   const empty = emptyProgress();
   for (let i = 0; i < 3; i++) recordAnswer(empty, `Q${i}`, true, day(-1));
-  setExamDate(empty, day(20), 3, day(0));
+  setExamDate(empty, day(21), 3, day(0));
   assert.equal(ensureDaily(empty, day(0)).kind, 'points');
 });
 
@@ -168,11 +239,12 @@ test('прогноз: успеваешь, плотно, не успеть; со�
   const none = emptyProgress();
   assert.equal(planSummary(none, day(0)).state, 'none');
 
+  // Экзамен через 30 дней: закрепление — последние 8 дней, все вопросы — за 9 дней до экзамена.
   const ok = emptyProgress();
   setExamDate(ok, day(30), TOTAL, day(0));
   const s = planSummary(ok, day(0));
-  assert.deepEqual([s.state, s.daysLeft, s.pace, s.perDay, s.advice.length], ['active', 30, 'ok', Math.ceil(800 / 27), 0]);
-  assert.equal(s.freshUntil, dayStart(day(26)));
+  assert.deepEqual([s.state, s.daysLeft, s.pace, s.perDay, s.advice.length], ['active', 30, 'ok', Math.ceil(800 / 22), 0]);
+  assert.deepEqual([s.readyBy, s.freshUntil, s.early], [dayStart(day(22)), dayStart(day(21)), 9]);
   assert.equal(s.examsFrom, dayStart(day(23)));
 
   const tight = emptyProgress();
@@ -193,7 +265,7 @@ test('прогноз: успеваешь, плотно, не успеть; со�
   for (let i = 0; i < 200; i++) recordAnswer(busy, `Q${i}`, false, day(-1));
   setExamDate(busy, day(10), 200, day(0));
   const b = planSummary(busy, day(0));
-  assert.deepEqual([b.unseen, b.perDay, b.load, b.unfixable, b.pace, b.advice], [0, 0, 60, 0, 'tight', ['reviews', 'exams']]);
+  assert.deepEqual([b.unseen, b.perDay, b.load, b.unfixable, b.phase, b.pace, b.advice], [0, 0, 60, 0, 'consolidate', 'tight', ['reviews', 'exams']]);
 
   // Все вопросы встречались, но ошибкам не хватит трёх повторов — «плотно».
   const fix = emptyProgress();
@@ -243,6 +315,10 @@ test('сохранённый план проверяется при загруз
   assert.equal(broken({ date: 'x', total: 800 }), undefined);
   assert.equal(broken({ date: day(10), total: 0 }), undefined);
   assert.deepEqual(broken({ date: day(10), total: 800, today: { day: 1, fresh: { target: 1 } }, result: { passed: 'да', readiness: 50, at: 1 } }), { date: day(10), total: 800 });
+  // План, сохранённый до «повторения пройденного», читается без него.
+  const plain = broken({ date: day(10), total: 800, from: day(20), today: { day: 1, fresh: { target: 1, done: 0 }, reviews: { target: 0, done: 0 }, exams: { target: 1, done: 0 } } })!;
+  assert.deepEqual(plain.today!.refresh, { target: 0, done: 0 });
+  assert.equal(plain.from, undefined, 'начало плана позже экзамена — отбрасывается');
   assert.equal(broken({ date: day(10), total: 800, result: { passed: true, readiness: 101, at: 1 } })!.result, undefined);
 });
 

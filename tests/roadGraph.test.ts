@@ -130,3 +130,19 @@ test('поворот, оборванный посередине, продолж�
     assert.deepEqual(graph.turnTail(full), []);
   }
 });
+
+test('сколько поворота проехано, видно по месту машины, даже если часть поворота обрезана', () => {
+  const full = graph.uTurnOnRoad(graph.laneFor('AB', 'B'), 200)![0];
+  assert.equal(full.kind, 'turn');
+  if (full.kind !== 'turn') return;
+  const path = full.turn.path;
+  for (const cut of [0.1, 0.2, 0.5, 0.8]) {
+    // Машина остановилась посреди разворота (часть обрезана в конце)…
+    const [before, after] = graph.splitPath([full], path.length * cut);
+    const stop = before.at(-1)!.points.at(-1)!;
+    assert.ok(Math.abs(path.offsetOf(stop) - path.length * cut) < 0.5, `остановка на ${cut}`);
+    // …или маршрут перестроили посреди разворота (часть обрезана в начале).
+    const start = after[0].points[0];
+    assert.ok(Math.abs(path.offsetOf(start) - path.length * cut) < 0.5, `перестроение на ${cut}`);
+  }
+});

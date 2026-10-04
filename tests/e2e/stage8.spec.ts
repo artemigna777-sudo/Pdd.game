@@ -278,12 +278,42 @@ test('джойстик: разворот через сплошную — нов�
   expect(await turning()).toBe(false);
   await touch('touchEnd');
   await page.waitForTimeout(300);
-  // Ещё раз — разворот, и это выезд на встречную.
+  // Ещё раз в течение 5 секунд после подсказки — разворот. На медленном сервере CI касания через
+  // DevTools доходят до игры по секунде, поэтому отсчёт окна начинаем прямо перед вторым рывком.
+  await city(page, (s) => {
+    s.uturnWarn.at = s.time.now;
+  });
   await pullBack();
-  await touch('touchEnd');
+  expect(await turning()).toBe(true);
+  // Палец держим: машина пересекает сплошную — это выезд на встречную.
   await expect.poll(() => violation(page), SLOW).toBe('oncoming');
+  await touch('touchEnd');
   await expect(page.locator('.sheet__title')).toHaveText('Нарушение: Выезд на встречную', SLOW);
   expect(RULE_QUESTIONS.oncoming).toContain(await cardQuestion(page));
+});
+
+test('разворот через сплошную: остановились, не доехав до осевой, — не нарушение; поехали дальше — нарушение', async ({ page }) => {
+  await seed(page, progressCh1(), { control: 'joystick', difficulty: 'expert' });
+  await openChapter1(page);
+  // Разворот начат, но машина встала на первой пятой части (палец отпустили сразу).
+  await city(page, (s) => {
+    const road = s.graph.map.roads.find((r: Any) => r.id === s.rules.solid[0]);
+    const l = s.graph.laneFor(road.id, road.to);
+    s.player.placeAt(l, l.length / 2);
+    const u = s.graph.uTurnOnRoad(l, l.length / 2);
+    s.player.setPath(u);
+    s.player.truncate(u[0].turn.path.length * 0.2);
+  });
+  await expect.poll(() => speed(page), SLOW).toBe(0);
+  await page.waitForTimeout(1500);
+  expect(await violation(page)).toBeNull();
+  // Джойстик снова отведён — машина доезжает разворот через сплошную.
+  await city(page, (s) => Object.assign(s.joy, { active: true, mag: 1, dir: { x: Math.sin(s.player.angle), y: -Math.cos(s.player.angle) } }));
+  await expect.poll(() => violation(page), SLOW).toBe('oncoming');
+  await city(page, (s) => {
+    s.joy.active = false;
+  });
+  await expect(page.locator('.sheet__title')).toHaveText('Нарушение: Выезд на встречную', SLOW);
 });
 
 test('«Чистая езда»: глава без нарушений — при доставке +1 звезда и +100 опыта', async ({ page }) => {

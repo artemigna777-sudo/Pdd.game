@@ -3,6 +3,7 @@
  * не потерять, если браузер очистит данные сайта.
  */
 import { sanitizeAttempts } from './data/ticketHistory.ts';
+import { sanitizeDuels } from './duel/duelHistory.ts';
 import { sanitizeExams } from './exam/examHistory.ts';
 import { sanitizeProgress } from './progress/progress.ts';
 
@@ -14,6 +15,7 @@ const PARTS: Record<string, (raw: unknown) => unknown> = {
   'pdd-game:progress': sanitizeProgress,
   'pdd-game:ticket-history': sanitizeAttempts,
   'pdd-game:exam-history': sanitizeExams,
+  'pdd-game:duels': sanitizeDuels,
   'pdd-game:settings': (raw) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}),
 };
 

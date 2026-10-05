@@ -2950,3 +2950,335 @@ button {
   grid-template-columns: 24px 1fr;
   gap: 6px;
 }
+
+/* ---------- Этапы 10–13: режимы ---------- */
+
+/* Настройки — рядом с уровнем: в меню нужен ряд для «Режимов». */
+.menu__top {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.menu__top .menu__level {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu__settings {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark);
+}
+
+.menu__settings:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.menu__settings svg {
+  width: 26px;
+  height: 26px;
+}
+
+.menu__row--review {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 88px;
+  padding: 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.mode-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.mode-card__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--soft, var(--surface));
+  font-size: 30px;
+}
+
+.mode-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mode-card__title {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.mode-card__text {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.mode-card__status {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ok-text, var(--ok));
+}
+
+/* Поле ввода (имя в дуэли). */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+
+.field__label {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.field__input {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.field__input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.duel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.duel .section-title {
+  margin-bottom: 0;
+}
+
+.duel-timer {
+  min-width: 72px;
+  font-size: 18px;
+}
+
+.score-badge.tone-wait {
+  background: var(--soft, var(--surface));
+  color: var(--text-muted);
+}
+
+.duel-invite__kicker {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.duel-invite__name {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.duel-result__verdict {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.duel-result.is-win .duel-result__verdict {
+  color: var(--ok-text, var(--ok));
+}
+
+.duel-result.is-loss .duel-result__verdict {
+  color: var(--bad-text, var(--bad));
+}
+
+.duel-result .result__note:empty {
+  display: none;
+}
+
+.duel-versus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.duel-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 8px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.duel-side.is-winner {
+  border-color: var(--accent);
+}
+
+.duel-side__label {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.duel-side__name {
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-side__score {
+  font-size: 28px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-side__time {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.duel-strip__cell {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.duel-strip__cell.is-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text, var(--ok));
+}
+
+.duel-strip__cell.is-bad {
+  background: var(--bad-bg);
+  color: var(--bad-text, var(--bad));
+}
+
+.duel-share {
+  align-items: stretch;
+}
+
+.qr {
+  align-self: center;
+  width: min(220px, 70vw);
+  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.duel-link {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.answer__them {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.answer__them.is-ok {
+  color: var(--ok-text, var(--ok));
+}
+
+.answer__them.is-bad {
+  color: var(--bad-text, var(--bad));
+}
+
+/* Число повторов — значком в углу кнопки: в ряду с «Режимами» ширины на него нет. */
+.menu__row--review .btn {
+  position: relative;
+}
+
+.menu__row--review .badge {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  margin: 0;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+@media (max-width: 360px) {
+  .menu__row--review {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+
+  .menu__row--review .btn--secondary {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 15px;
+  }
+
+  .menu__settings {
+    width: 48px;
+  }
+}

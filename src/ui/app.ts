@@ -35,6 +35,8 @@ import {
 import { readiness, blockLabel, type Tip } from '../progress/readiness.ts';
 import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
 import { getSettings, updateSettings } from '../settings.ts';
+import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuestions, resolveDuel, type DuelPayload } from '../duel/duel.ts';
+import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
@@ -53,6 +55,8 @@ import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
 import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
+import { duelHubView, duelInviteView, duelResultView } from './duelView.ts';
+import { modesView } from './modesView.ts';
 
 /**
  * Экраны: меню поверх анимированной улицы, главы сюжета и город-район главы, финал с
@@ -86,7 +90,17 @@ type Route =
   /** Идущий экзамен: тренировка или экзамен-босс финала. */
   | { name: 'exam-run'; boss: boolean }
   /** Результат экзамена: сразу после экзамена (заменяет его в истории браузера) или из истории. */
-  | { name: 'exam-result'; at: number; via: 'run' | 'history'; boss: boolean };
+  | { name: 'exam-result'; at: number; via: 'run' | 'history'; boss: boolean }
+  /** «Режимы»: дуэль, Знакодекс, один день Соколова, смена курьера (этапы 10–13). */
+  | { name: 'modes' }
+  /** Дуэль: имя, новая дуэль, история. */
+  | { name: 'duel' }
+  /** Вызов от друга по ссылке. */
+  | { name: 'duel-invite'; payload: DuelPayload }
+  /** Идущая дуэль: новая или ответ на вызов. */
+  | { name: 'duel-run'; invite?: DuelPayload }
+  /** Итог дуэли из истории. */
+  | { name: 'duel-result'; id: string; role: 'from' | 'to' };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
@@ -94,8 +108,11 @@ type DrillRoute = Extract<Route, { name: 'drill' }>;
 type ControlRoute = Extract<Route, { name: 'control' }>;
 type ExamRunRoute = Extract<Route, { name: 'exam-run' }>;
 type ExamResultRoute = Extract<Route, { name: 'exam-result' }>;
+type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
+type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
+type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -117,6 +134,11 @@ const DEPTH: Record<RouteName, number> = {
   plan: 1,
   'exam-run': 2,
   'exam-result': 2,
+  modes: 1,
+  duel: 2,
+  'duel-invite': 3,
+  'duel-run': 3,
+  'duel-result': 3,
 };
 
 // Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
@@ -161,11 +183,51 @@ export class App {
       if (next) this.open(next);
       else this.render(isRoute(e.state) ? e.state : { name: 'menu' });
     });
-    history.replaceState({ name: 'menu' }, '');
+    // Ссылка на дуэль (#duel=…): адрес очищается, чтобы «Назад» и перезагрузка не открывали её снова.
+    const link = hashHasDuel(location.hash) ? location.hash : undefined;
+    history.replaceState({ name: 'menu' }, '', link ? location.pathname + location.search : undefined);
     this.render({ name: 'menu' });
     unlockAudioOnFirstTouch();
-    // Первый запуск — короткое обучение.
-    if (!getSettings().tutorial) void playTutorial().then(() => updateSettings({ tutorial: true }));
+    if (link) void this.openDuelLink(link);
+    // Первый запуск — короткое обучение (по ссылке на дуэль — в следующий раз, чтобы не мешать вызову).
+    else if (!getSettings().tutorial) void playTutorial().then(() => updateSettings({ tutorial: true }));
+    window.addEventListener('hashchange', () => {
+      if (!hashHasDuel(location.hash)) return;
+      const hash = location.hash;
+      history.replaceState(history.state, '', location.pathname + location.search);
+      void this.openDuelLink(hash);
+    });
+  }
+
+  /** Открыть дуэль по ссылке: вызов, свой вызов или ответ с итогом. */
+  private async openDuelLink(hash: string): Promise<void> {
+    const payload = duelFromHash(hash);
+    if (!payload) {
+      showToast('Ссылка на дуэль повреждена — попросите друга отправить её ещё раз.');
+      return;
+    }
+    const all = await loadQuestions();
+    if (!resolveDuel(payload, new Map(all.map((q) => [q.id, q])))) {
+      showToast('Эта дуэль не открылась: в ней вопросы, которых нет в этой версии игры. Обновите игру.');
+      return;
+    }
+    const now = Date.now();
+    let next: Route;
+    if (payload.to) {
+      // Ответ с итогом: мой ответ (открыт ещё раз) или ответ на мой вызов.
+      if (findDuel(payload.id, 'to') && !findDuel(payload.id, 'from')) next = { name: 'duel-result', id: payload.id, role: 'to' };
+      else {
+        saveAnswerToMine({ ...payload, to: payload.to }, now);
+        next = { name: 'duel-result', id: payload.id, role: 'from' };
+        playSound('reward');
+      }
+    } else if (findDuel(payload.id, 'from')) next = { name: 'duel-result', id: payload.id, role: 'from' };
+    else if (findDuel(payload.id, 'to')) next = { name: 'duel-result', id: payload.id, role: 'to' };
+    else next = { name: 'duel-invite', payload };
+    // Под дуэлью — «Режимы» и «Дуэль», чтобы «Назад» вёл по обычному пути.
+    if (this.route.name !== 'modes' && this.route.name !== 'duel') this.open({ name: 'modes' });
+    if (this.route.name !== 'duel') this.open({ name: 'duel' });
+    this.open(next);
   }
 
   private open(route: Route): void {
@@ -261,6 +323,21 @@ export class App {
       case 'plan':
         screen = this.planScreen();
         break;
+      case 'modes':
+        screen = this.modesScreen();
+        break;
+      case 'duel':
+        screen = this.duelScreen();
+        break;
+      case 'duel-invite':
+        screen = this.duelInviteScreen(route);
+        break;
+      case 'duel-run':
+        screen = this.duelRunScreen(route);
+        break;
+      case 'duel-result':
+        screen = this.duelResultScreen(route);
+        break;
     }
     this.root.replaceChildren(screen);
     screen.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true });
@@ -308,7 +385,7 @@ export class App {
     this.cleanup = onInstallModeChange(updateInstall);
 
     const level = el('button', { class: 'menu__level', type: 'button', onclick: () => this.open({ name: 'progress' }) }, levelMeter(levelOf(data.xp), data.xp, true));
-    const settingsButton = el('button', { class: 'btn btn--secondary btn--icon', type: 'button', 'aria-label': 'Настройки', onclick: () => this.open({ name: 'settings' }) });
+    const settingsButton = el('button', { class: 'menu__settings', type: 'button', 'aria-label': 'Настройки', onclick: () => this.open({ name: 'settings' }) });
     settingsButton.innerHTML = ICONS.settings;
     const reviewButton = el(
       'button',
@@ -338,7 +415,7 @@ export class App {
       el(
         'div',
         { class: 'menu' },
-        level,
+        el('div', { class: 'menu__top' }, level, settingsButton),
         story,
         el(
           'div',
@@ -352,7 +429,12 @@ export class App {
           examButton,
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'tickets' }) }, 'Билеты'),
         ),
-        el('div', { class: 'menu__row menu__row--review' }, reviewButton, settingsButton),
+        el(
+          'div',
+          { class: 'menu__row menu__row--review' },
+          reviewButton,
+          el('button', { class: 'btn btn--secondary btn--modes', type: 'button', onclick: () => this.open({ name: 'modes' }) }, 'Режимы ✨'),
+        ),
         install,
         iosHint,
         status,
@@ -948,6 +1030,182 @@ export class App {
       body.replaceChildren(...[story, share, examResultView(attempt, byId)].filter((x): x is HTMLElement => !!x));
     });
     return this.page(attempt.boss ? 'Экзамен в ГИБДД' : 'Экзамен', body, { back, footer });
+  }
+
+  // ─── Режимы ────────────────────────────────────────────────────────────────────
+
+  private modesScreen(): HTMLElement {
+    const duels = allDuels();
+    const duelCard = {
+      icon: '⚔️',
+      title: 'Дуэль',
+      text: '10 вопросов на скорость и ссылка другу: кто лучше знает правила?',
+      status: duels.length ? `Дуэлей: ${duels.length}` : 'Вызови друга',
+      open: () => this.open({ name: 'duel' }),
+    };
+    const body = el('div', {}, modesView([duelCard]));
+    const route = this.route;
+    loadQuestions().then((all) => {
+      if (this.route !== route || !duels.length) return;
+      const s = duelStats(duels, new Map(all.map((q) => [q.id, q])));
+      body.replaceChildren(modesView([{ ...duelCard, status: `Побед: ${s.wins} · поражений: ${s.losses}${s.waiting ? ` · ждут ответа: ${s.waiting}` : ''}` }]));
+    });
+    return this.page('Режимы', body, { back: 'menu', intro: 'Ещё способы выучить правила — с друзьями, на время и за коллекцию.' });
+  }
+
+  private duelScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    loadQuestions().then((all) => {
+      if (this.route !== route) return;
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const records = allDuels();
+      body.replaceChildren(
+        duelHubView(records, duelStats(records, byId), byId, {
+          name: getSettings().name,
+          setName: (name) => updateSettings({ name }),
+          start: () => this.open({ name: 'duel-run' }),
+          open: (r) => this.open({ name: 'duel-result', id: r.id, role: r.role }),
+        }),
+      );
+    });
+    return this.page('Дуэль', body, { back: 'modes' });
+  }
+
+  private duelInviteScreen(route: DuelInviteRoute): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    loadQuestions().then((all) => {
+      if (this.route !== route) return;
+      const qs = resolveDuel(route.payload, new Map(all.map((q) => [q.id, q])));
+      if (!qs) {
+        body.replaceChildren(el('p', { class: 'intro' }, 'В этой дуэли вопросы, которых нет в этой версии игры. Обновите игру.'));
+        return;
+      }
+      body.replaceChildren(
+        duelInviteView(route.payload, qs, {
+          name: getSettings().name,
+          setName: (name) => updateSettings({ name }),
+          // Дуэль занимает место вызова: «Назад» после неё не откроет вызов снова.
+          accept: () => this.replace({ name: 'duel-run', invite: route.payload }),
+        }),
+      );
+    });
+    return this.page('Вызов на дуэль', body, { back: 'duel' });
+  }
+
+  private duelRunScreen(route: DuelRunRoute): HTMLElement {
+    const timer = el('span', { class: 'topbar__score duel-timer', role: 'timer', 'aria-label': 'Время дуэли' }, '0:00');
+    const bar = el('div', { class: 'progress__bar' });
+    const progressEl = el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
+    const status = el('p', { class: 'exam-status', 'aria-live': 'polite' });
+    const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    const answer = el('button', { class: 'btn btn--primary btn--lg', type: 'button', disabled: true }, 'Ответить');
+    let ticker: number | undefined;
+    const stop = () => window.clearInterval(ticker);
+    this.cleanup = stop;
+    const leave = () =>
+      void showModal('Выйти из дуэли?', el('p', { class: 'rewards__line' }, 'Дуэль не будет засчитана, ответы не сохранятся.'), [
+        { label: 'Продолжить дуэль', primary: true },
+        { label: 'Выйти', onClick: () => this.back('duel') },
+      ]);
+    const screen = this.page(route.invite ? `Дуэль с: ${route.invite.from.name}` : 'Дуэль', el('div', {}, status, body), { back: 'duel', aside: timer, progress: progressEl, footer: answer, onBack: leave });
+    const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
+
+    loadQuestions().then((all) => {
+      if (this.route !== route) return;
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const ids = route.invite ? route.invite.q : pickDuelQuestions(all.map((q) => q.id));
+      const list = ids.map((id) => byId.get(id)).filter((q): q is Question => !!q);
+      if (list.length !== ids.length) {
+        body.replaceChildren(el('p', { class: 'intro' }, 'В этой дуэли вопросы, которых нет в этой версии игры. Обновите игру.'));
+        return;
+      }
+      const chosen: number[] = [];
+      const startedAt = Date.now();
+      let selected = -1;
+      playSound('start');
+
+      const show = () => {
+        const q = list[chosen.length];
+        status.textContent = `Вопрос ${chosen.length + 1} из ${list.length}`;
+        progressEl.setAttribute('aria-valuemax', String(list.length));
+        progressEl.setAttribute('aria-valuenow', String(chosen.length));
+        bar.style.width = `${(chosen.length / list.length) * 100}%`;
+        selected = -1;
+        answer.disabled = true;
+        answer.textContent = chosen.length === list.length - 1 ? 'Ответить и закончить' : 'Ответить';
+        body.replaceChildren(
+          renderExamCard(q, (i) => {
+            selected = i;
+            answer.disabled = false;
+          }),
+        );
+        scroller.scrollTop = 0;
+      };
+
+      const finish = () => {
+        stop();
+        const now = Date.now();
+        const ms = now - startedAt;
+        const data = progress();
+        // Ответы идут в прогресс только после дуэли: во время неё ничто не подсказывает, верен ли ответ.
+        const outcomes = chosen.map((c, i) => recordAnswer(data, list[i].id, c === list[i].correct, now));
+        saveProgress();
+        const levelUp = outcomes.find((o) => o.levelUp)?.levelUp;
+        levelUpToast(levelUp, false);
+        goalToast(outcomes.find((o) => o.goal), data);
+        const name = getSettings().name || 'Игрок';
+        const right = chosen.filter((c, i) => c === list[i].correct).length;
+        if (route.invite) {
+          const p = { ...route.invite, to: { name, answers: chosen, ms } };
+          saveReply(p, now);
+          playSound(right >= p.from.answers.filter((a, i) => a === list[i].correct).length ? 'pass' : 'fail');
+          this.replace({ name: 'duel-result', id: p.id, role: 'to' });
+        } else {
+          const p: DuelPayload = { id: newDuelId(), at: now, q: ids, from: { name, answers: chosen, ms } };
+          saveChallenge(p, now);
+          playSound('pass');
+          this.replace({ name: 'duel-result', id: p.id, role: 'from' });
+        }
+      };
+
+      answer.onclick = () => {
+        if (selected < 0 || chosen.length >= list.length) return;
+        chosen.push(selected);
+        if (chosen.length === list.length) finish();
+        else show();
+      };
+
+      const tick = () => (timer.textContent = duelTime(Date.now() - startedAt));
+      ticker = window.setInterval(tick, 250);
+      tick();
+      show();
+    });
+    return screen;
+  }
+
+  private duelResultScreen(route: DuelResultRoute): HTMLElement {
+    const record = findDuel(route.id, route.role);
+    if (!record) return this.page('Дуэль', el('p', { class: 'intro' }, 'Эта дуэль не найдена: возможно, данные игры были очищены.'), { back: 'duel' });
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    loadQuestions().then((all) => {
+      if (this.route !== route) return;
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const qs = record.q.map((id) => byId.get(id)).filter((q): q is Question => !!q);
+      if (qs.length !== record.q.length) {
+        body.replaceChildren(el('p', { class: 'intro' }, 'В этой дуэли вопросы, которых нет в этой версии игры.'));
+        return;
+      }
+      const base = location.href.split('#')[0];
+      const link =
+        record.role === 'from' && !record.them
+          ? duelLink(base, { id: record.id, at: record.at, q: record.q, from: record.me })
+          : record.role === 'to' && record.them
+            ? duelLink(base, { id: record.id, at: record.at, q: record.q, from: record.them, to: record.me })
+            : undefined;
+      body.replaceChildren(duelResultView(record, qs, { link, again: () => this.back('duel', { name: 'duel-run' }) }));
+    });
+    return this.page('Дуэль', body, { back: 'duel' });
   }
 
   // ─── Билеты ────────────────────────────────────────────────────────────────────

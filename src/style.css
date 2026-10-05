@@ -3566,3 +3566,164 @@ button {
 :root[data-text='big'] .sign-card__text {
   font-size: 18px;
 }
+
+/* ---------- Этапы 12–13: пост ДПС, смена курьера, выбор района ---------- */
+
+.mode-intro .event-intro {
+  margin: 0;
+}
+
+.mode-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.mode-record {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.districts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.district-btn {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.district-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.district-btn__num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 900;
+}
+
+.district-btn__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.district-btn__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.district-btn__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.patrol-hud {
+  position: absolute;
+  top: calc(70px + var(--safe-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none !important;
+}
+
+.patrol-stat,
+.patrol-radar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 22, 30, 0.86);
+  color: var(--on-dark);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-radar {
+  margin-left: auto;
+}
+
+.patrol-radar.is-over {
+  background: var(--bad);
+}
+
+.patrol-timer,
+.courier-timer {
+  min-width: 72px;
+  font-size: 18px;
+}
+
+.patrol-timer.is-low,
+.courier-timer.is-low {
+  background: var(--bad);
+  color: #ffffff;
+}
+
+.patrol-hint {
+  width: min(420px, calc(100% - 32px));
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.patrol-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patrol-result__score {
+  margin: 0 0 6px;
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-result__score span {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.patrol-result__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.patrol-result .event-intro {
+  margin: 6px 0 0;
+}

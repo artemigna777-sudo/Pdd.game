@@ -42,7 +42,7 @@ import { FINALE_STORY, STORY } from '../story/story.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
-import { closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
+import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
@@ -57,7 +57,8 @@ import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketH
 import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 import { duelHubView, duelInviteView, duelResultView } from './duelView.ts';
-import { modesView } from './modesView.ts';
+import { districtPicker, modesView } from './modesView.ts';
+import { patrolScreen } from './patrolScreen.ts';
 import { loadSigns, signsView, watchNewSigns } from './signsView.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 
@@ -100,6 +101,9 @@ type Route =
   | { name: 'duel' }
   /** Знакодекс (этап 11). */
   | { name: 'signs' }
+  /** «Один день Соколова» (этап 12): выбор района и смена на посту. */
+  | { name: 'patrol' }
+  | { name: 'patrol-run'; chapter: string }
   /** Вызов от друга по ссылке. */
   | { name: 'duel-invite'; payload: DuelPayload }
   /** Идущая дуэль: новая или ответ на вызов. */
@@ -117,7 +121,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -142,6 +146,8 @@ const DEPTH: Record<RouteName, number> = {
   modes: 1,
   duel: 2,
   signs: 2,
+  patrol: 2,
+  'patrol-run': 3,
   'duel-invite': 3,
   'duel-run': 3,
   'duel-result': 3,
@@ -266,7 +272,7 @@ export class App {
     this.cleanup = undefined;
     closeOverlay();
     this.route = route;
-    setGameActive(this.game, route.name === 'menu' || route.name === 'city');
+    setGameActive(this.game, route.name === 'menu' || route.name === 'city' || route.name === 'patrol-run');
 
     let screen: HTMLElement;
     switch (route.name) {
@@ -340,6 +346,18 @@ export class App {
       case 'signs':
         screen = this.signsScreen();
         break;
+      case 'patrol':
+        screen = this.patrolScreen();
+        break;
+      case 'patrol-run': {
+        const run = patrolScreen(this.game, route.chapter, {
+          onBack: () => this.back('patrol'),
+          again: () => this.replace({ name: 'patrol-run', chapter: route.chapter }),
+        });
+        this.cleanup = run.cleanup;
+        screen = run.element;
+        break;
+      }
       case 'duel-invite':
         screen = this.duelInviteScreen(route);
         break;
@@ -1067,8 +1085,15 @@ export class App {
         status: '',
         open: () => this.open({ name: 'signs' }),
       },
+      patrol: {
+        icon: '🚓',
+        title: 'Один день Соколова',
+        text: 'Смена на посту ДПС: лови нарушителей на перекрёстке и отвечай на вопросы.',
+        status: progress().modes?.patrol ? `Рекорд: ${progress().modes!.patrol!.best} очков` : '3 минуты на посту',
+        open: () => this.open({ name: 'patrol' }),
+      },
     };
-    const list = () => modesView([cards.duel, cards.signs]);
+    const list = () => modesView([cards.duel, cards.signs, cards.patrol]);
     const body = el('div', {}, list());
     const route = this.route;
     void Promise.all([loadQuestions(), loadSigns()]).then(([all, signs]) => {
@@ -1081,6 +1106,39 @@ export class App {
       body.replaceChildren(list());
     });
     return this.page('Режимы', body, { back: 'menu', intro: 'Ещё способы выучить правила — с друзьями, на время и за коллекцию.' });
+  }
+
+  private patrolScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    void loadMapping().then((mapping) => {
+      if (this.route !== route) return;
+      const data = progress();
+      const order = mapping.chapters.map((c) => c.id);
+      const rec = data.modes?.patrol;
+      body.replaceChildren(
+        el(
+          'section',
+          { class: 'panel mode-intro' },
+          el('p', { class: 'event-intro' }, avatar('sokolov', 'avatar--small'), el('span', {}, 'Лейтенант Соколов: «Сегодня вы — инспектор. Три минуты на посту у перекрёстка: ловите нарушителей касанием»')),
+          el(
+            'ul',
+            { class: 'mode-rules' },
+            el('li', {}, '🔴 проезд на красный — смотрите на светофор;'),
+            el('li', {}, '📡 превышение скорости — радар покажет, кто едет быстрее 80 км/ч;'),
+            el('li', {}, '🅿️ остановка под знаком «Остановка запрещена» — машина встанет с аварийкой.'),
+          ),
+          el('p', { class: 'panel__note' }, 'Пойман — 100 очков и вопрос из билетов про это правило (верно — ещё 50). Остановили честного водителя — минус 50.'),
+          rec ? el('p', { class: 'mode-record' }, `🏆 Рекорд: ${rec.best} очков · смен: ${rec.shifts}`) : null,
+        ),
+        el('h2', { class: 'section-title' }, 'Где заступить на смену'),
+        districtPicker(
+          mapping.chapters.filter((c) => isUnlocked(data, order, c.id)),
+          (id) => this.open({ name: 'patrol-run', chapter: id }),
+        ),
+      );
+    });
+    return this.page('Один день Соколова', body, { back: 'modes' });
   }
 
   private signsScreen(): HTMLElement {

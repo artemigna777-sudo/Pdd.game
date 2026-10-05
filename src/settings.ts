@@ -27,6 +27,11 @@ export interface Settings {
   rules: boolean;
   /** Имя игрока в дуэлях (этап 10). */
   name: string;
+  /**
+   * Длительность смен в режимах (этапы 12–13), доля от обычной. В настройках её нет: смены
+   * укорачивают только автотесты.
+   */
+  shiftScale?: number;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';

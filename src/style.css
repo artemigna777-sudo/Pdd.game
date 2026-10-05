@@ -2398,6 +2398,7 @@ button {
     --selected: #1d3357;
     --ok-text: #6fd08f;
     --bad-text: #ff8a95;
+  --silhouette: grayscale(1) brightness(0) invert(1);
   }
 }
 
@@ -2421,6 +2422,7 @@ button {
   --selected: #1d3357;
   --ok-text: #6fd08f;
   --bad-text: #ff8a95;
+  --silhouette: grayscale(1) brightness(0) invert(1);
 }
 
 .btn--secondary {
@@ -2949,4 +2951,857 @@ button {
   display: grid;
   grid-template-columns: 24px 1fr;
   gap: 6px;
+}
+
+/* ---------- Этапы 10–13: режимы ---------- */
+
+/* Настройки — рядом с уровнем: в меню нужен ряд для «Режимов». */
+.menu__top {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.menu__top .menu__level {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu__settings {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark);
+}
+
+.menu__settings:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.menu__settings svg {
+  width: 26px;
+  height: 26px;
+}
+
+.menu__row--review {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 88px;
+  padding: 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.mode-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.mode-card__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--soft, var(--surface));
+  font-size: 30px;
+}
+
+.mode-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mode-card__title {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.mode-card__text {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.mode-card__status {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ok-text, var(--ok));
+}
+
+/* Поле ввода (имя в дуэли). */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+
+.field__label {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.field__input {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.field__input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.duel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.duel .section-title {
+  margin-bottom: 0;
+}
+
+.duel-timer {
+  min-width: 72px;
+  font-size: 18px;
+}
+
+.score-badge.tone-wait {
+  background: var(--soft, var(--surface));
+  color: var(--text-muted);
+}
+
+.duel-invite__kicker {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.duel-invite__name {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.duel-result__verdict {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.duel-result.is-win .duel-result__verdict {
+  color: var(--ok-text, var(--ok));
+}
+
+.duel-result.is-loss .duel-result__verdict {
+  color: var(--bad-text, var(--bad));
+}
+
+.duel-result .result__note:empty {
+  display: none;
+}
+
+.duel-versus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.duel-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 8px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.duel-side.is-winner {
+  border-color: var(--accent);
+}
+
+.duel-side__label {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.duel-side__name {
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-side__score {
+  font-size: 28px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-side__time {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.duel-strip__cell {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.duel-strip__cell.is-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text, var(--ok));
+}
+
+.duel-strip__cell.is-bad {
+  background: var(--bad-bg);
+  color: var(--bad-text, var(--bad));
+}
+
+.duel-share {
+  align-items: stretch;
+}
+
+.qr {
+  align-self: center;
+  width: min(220px, 70vw);
+  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.duel-link {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.answer__them {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.answer__them.is-ok {
+  color: var(--ok-text, var(--ok));
+}
+
+.answer__them.is-bad {
+  color: var(--bad-text, var(--bad));
+}
+
+/* Число повторов — значком в углу кнопки: в ряду с «Режимами» ширины на него нет. */
+.menu__row--review .btn {
+  position: relative;
+}
+
+.menu__row--review .badge {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  margin: 0;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+@media (max-width: 360px) {
+  .menu__row--review {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+
+  .menu__row--review .btn--secondary {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 15px;
+  }
+
+  .menu__settings {
+    width: 48px;
+  }
+}
+
+/* ---------- Этап 11: Знакодекс ---------- */
+
+.signs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.signs-legend__item::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  background: var(--rarity);
+}
+
+.signs-legend__item,
+.sign-tile,
+.sign-card {
+  --rarity: #9aa8b8;
+}
+
+.is-uncommon {
+  --rarity: #3a86ff;
+}
+
+.is-rare {
+  --rarity: #c08a00;
+}
+
+.signs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signs-group__title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 0;
+}
+
+.signs-group__count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.signs-group.is-complete .signs-group__count {
+  color: var(--ok-text, var(--ok));
+}
+
+.signs-group__bar {
+  height: 6px;
+}
+
+.signs-group.is-complete .bar__fill {
+  background: var(--ok);
+}
+
+.signs-group__reward {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.signs-group__reward.is-claimed {
+  color: var(--ok-text, var(--ok));
+  font-weight: 700;
+}
+
+.signs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.sign-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 132px;
+  padding: 10px 6px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: inset 0 -3px 0 var(--rarity), 0 1px 0 var(--line);
+}
+
+.sign-tile:active {
+  transform: translateY(1px);
+}
+
+.sign-tile__img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.sign-tile.is-locked .sign-tile__img {
+  filter: var(--silhouette, grayscale(1) brightness(0));
+  opacity: 0.18;
+}
+
+.sign-tile__num {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sign-tile__title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-muted);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Знак без картинки в наборе — белая табличка с номером. */
+.sign-plate {
+  display: grid;
+  place-items: center;
+  border: 2px solid #1b1b1b;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1b1b1b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sign-tile__img.sign-plate {
+  width: 64px;
+  height: 36px;
+  margin: 11px 0;
+}
+
+.sign-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.sign-card__img {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  object-fit: contain;
+}
+
+.sign-card__img.sign-plate {
+  width: 150px;
+  height: 80px;
+  font-size: 22px;
+}
+
+.sign-card.is-locked .sign-card__img {
+  filter: var(--silhouette, grayscale(1) brightness(0));
+  opacity: 0.18;
+}
+
+@media (max-height: 700px) {
+  .sign-card {
+    max-height: 38vh;
+  }
+
+  .sign-card__img {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+.sign-card__meta {
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--soft, var(--surface));
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--rarity);
+}
+
+.sign-card__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.sign-card__source,
+.signs-source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sign-card__source a,
+.signs-source a {
+  color: inherit;
+}
+
+#sign-chip {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(72px + var(--safe-top));
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
+  background: #10161e;
+  color: var(--on-dark);
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-12px) scale(0.96);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+}
+
+#sign-chip.is-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.sign-chip__img {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  padding: 3px;
+  border-radius: 50%;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.sign-chip__img.sign-plate {
+  width: 48px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.sign-chip__icon {
+  font-size: 28px;
+}
+
+:root[data-text='big'] .sign-card__text {
+  font-size: 18px;
+}
+
+/* ---------- Этапы 12–13: пост ДПС, смена курьера, выбор района ---------- */
+
+.mode-intro .event-intro {
+  margin: 0;
+}
+
+.mode-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.mode-record {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.districts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.district-btn {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.district-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.district-btn__num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 900;
+}
+
+.district-btn__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.district-btn__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.district-btn__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.patrol-hud {
+  position: absolute;
+  top: calc(70px + var(--safe-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none !important;
+}
+
+.patrol-stat,
+.patrol-radar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 22, 30, 0.86);
+  color: var(--on-dark);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-radar {
+  margin-left: auto;
+}
+
+.patrol-radar.is-over {
+  background: var(--bad);
+}
+
+.patrol-timer,
+.courier-timer {
+  min-width: 72px;
+  font-size: 18px;
+}
+
+.patrol-timer.is-low,
+.courier-timer.is-low {
+  background: var(--bad);
+  color: #ffffff;
+}
+
+.patrol-hint {
+  width: min(420px, calc(100% - 32px));
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.patrol-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patrol-result__score {
+  margin: 0 0 6px;
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-result__score span {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.patrol-result__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.patrol-result .event-intro {
+  margin: 6px 0 0;
+}
+
+.courier-mult.is-hot {
+  background: #f77f00;
+}
+
+.screen--courier .patrol-hud {
+  right: auto;
+}
+
+.records {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.records__row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+.records__row.is-top {
+  box-shadow: inset 4px 0 0 var(--accent), 0 1px 0 var(--line);
+}
+
+.records__place {
+  font-size: 18px;
+  font-weight: 900;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.records__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.records__body b {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.courier-hint {
+  width: min(420px, calc(100% - 32px));
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.courier-route {
+  position: absolute;
+  top: calc(70px + var(--safe-top));
+  right: 12px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #7b2cbf;
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.courier-route:active {
+  transform: translateY(1px);
 }

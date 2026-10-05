@@ -71,7 +71,7 @@ export function drawCar(g: Phaser.GameObjects.Graphics, color: number, courier =
   lights(g, w, h);
 }
 
-export type CarSticker = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker';
+export type CarSticker = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker' | 'triangle' | 'diamond' | 'ring' | 'arrow';
 
 /** Машина курьера с покраской и наклейкой из гаража (размер как у легковой). */
 export function drawPlayerCar(g: Phaser.GameObjects.Graphics, color: number, sticker: CarSticker) {
@@ -98,6 +98,23 @@ export function drawPlayerCar(g: Phaser.GameObjects.Graphics, color: number, sti
     case 'checker':
       for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2 === 0) g.fillStyle(0x1b1b1b).fillRect(-4 + i * 2, hood - 2 + j * 2, 2, 2);
       for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2 === 1) g.fillStyle(0xffffff).fillRect(-4 + i * 2, hood - 2 + j * 2, 2, 2);
+      break;
+    // Наклейки за группы знаков в Знакодексе.
+    case 'triangle':
+      g.fillStyle(0xe63946).fillTriangle(0, hood - 3.5, -4, hood + 3, 4, hood + 3);
+      g.fillStyle(0xffffff).fillTriangle(0, hood - 1, -2.2, hood + 2, 2.2, hood + 2);
+      break;
+    case 'diamond':
+      g.fillStyle(0xffffff).fillTriangle(0, hood - 4, -4, hood, 4, hood).fillTriangle(0, hood + 4, -4, hood, 4, hood);
+      g.fillStyle(0xffd60a).fillTriangle(0, hood - 2.6, -2.6, hood, 2.6, hood).fillTriangle(0, hood + 2.6, -2.6, hood, 2.6, hood);
+      break;
+    case 'ring':
+      g.fillStyle(0xe63946).fillCircle(0, hood, 3.6);
+      g.fillStyle(0xffffff).fillCircle(0, hood, 2.4);
+      break;
+    case 'arrow':
+      g.fillStyle(0x1d6fd6).fillCircle(0, hood, 3.6);
+      g.fillStyle(0xffffff).fillTriangle(0, hood - 2.6, -1.9, hood - 0.4, 1.9, hood - 0.4).fillRect(-0.7, hood - 0.6, 1.4, 3);
       break;
     case 'none':
       break;

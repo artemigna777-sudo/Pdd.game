@@ -25,15 +25,23 @@ export interface Settings {
    * автотесты прежних этапов, где машина ездит по району сама.
    */
   rules: boolean;
+  /** Имя игрока в дуэлях (этап 10). */
+  name: string;
+  /**
+   * Длительность смен в режимах (этапы 12–13), доля от обычной. В настройках её нет: смены
+   * укорачивают только автотесты.
+   */
+  shiftScale?: number;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '' };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
+if (typeof current.name !== 'string') current.name = '';
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

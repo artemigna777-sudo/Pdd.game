@@ -9,11 +9,16 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { Screencast } from './screencast.ts';
 import { trailerProgress, type SeedOptions } from './seed.ts';
+import qrcode from 'qrcode-generator';
+import { encodeDuel, type DuelPayload } from '../src/duel/duel.ts';
+import { recordAnswer, type ProgressData } from '../src/progress/progress.ts';
 
 const BASE = process.env.TRAILER_URL ?? 'http://localhost:5173/';
+/** Адрес игры в интернете — для ссылок, которые видны в ролике. */
+const PUBLIC_URL = 'https://artemigna777-sudo.github.io/Pdd.game/';
 const OUT = new URL('./video/clips/', import.meta.url).pathname;
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
-const QUESTIONS: { id: string; correct: number; image?: string }[] = JSON.parse(readFileSync(new URL('../data/questions.json', import.meta.url), 'utf8'));
+const QUESTIONS: { id: string; correct: number; image?: string; options: string[] }[] = JSON.parse(readFileSync(new URL('../data/questions.json', import.meta.url), 'utf8'));
 const CORRECT = new Map(QUESTIONS.map((q) => [q.id, q.correct]));
 const READY = ['intro', 'race', 'race:bet', 'beat1', 'beat2', 'ready'];
 
@@ -71,7 +76,26 @@ function approachPoi(page: Page, template: string, back: number, skip = 0): Prom
 interface Clip {
   seed?: SeedOptions;
   settings?: Record<string, unknown>;
+  /** Поправить прогресс перед записью (обычными функциями игры). */
+  prepare?(data: ProgressData): void;
+  /** Другие данные в хранилище (например, история дуэлей). */
+  storage?: () => Record<string, unknown>;
+  /** Спрятать в кадре лишнее (например, сообщение о новом знаке поверх итога дуэли). */
+  css?: string;
   run(page: Page, rec: Screencast): Promise<void>;
+}
+
+/** Выполнить функцию с любой сценой Phaser. */
+const sceneCall = <T>(page: Page, key: string, fn: (scene: Any, arg: Any) => T, arg?: unknown): Promise<T> =>
+  page.evaluate(([k, f, a]) => new Function('scene', 'arg', `return (${f})(scene, arg)`)((window as Any).__game.scene.getScene(k), a), [key, fn.toString(), arg] as const);
+
+/** Вопрос в открытой карточке (в карточке экзамена или внизу экрана). */
+async function answerCard(page: Page, scope: string, right: boolean) {
+  const label = (await page.locator(`${scope} .card`).first().getAttribute('aria-label'))!;
+  const [, t, n] = label.match(/Билет (\d+), вопрос (\d+)/)!;
+  const c = CORRECT.get(`B${t.padStart(2, '0')}-Q${n.padStart(2, '0')}`)!;
+  const options = page.locator(`${scope} .option`);
+  await options.nth(right ? c : (c + 1) % (await options.count())).tap();
 }
 
 const CLIPS: Record<string, Clip> = {
@@ -337,27 +361,201 @@ const CLIPS: Record<string, Clip> = {
       await wait(3200);
     },
   },
+
+  // ─── Новые режимы (этапы 10–13): промо-ролик ───
+
+  /** Меню → «Режимы»: четыре карточки. */
+  modes: {
+    async run(page, rec) {
+      await wait(1000);
+      await rec.start();
+      await wait(900);
+      await page.getByRole('button', { name: 'Режимы' }).tap();
+      await wait(2600);
+    },
+  },
+
+  /** Дуэль: три вопроса на скорость, потом итог с QR-кодом для друга. */
+  duel: {
+    settings: { name: 'Саша' },
+    css: '#sign-chip { display: none !important; }',
+    async run(page, rec) {
+      await page.getByRole('button', { name: 'Режимы' }).tap();
+      await page.locator('.mode-card', { hasText: 'Дуэль' }).tap();
+      await page.getByRole('button', { name: 'Новая дуэль' }).waitFor();
+      await wait(600);
+      await rec.start();
+      await wait(900);
+      await page.getByRole('button', { name: 'Новая дуэль' }).tap();
+      for (let i = 0; i < 10; i++) {
+        await page.locator('.quiz .card').waitFor();
+        if (i === 3) await rec.pause();
+        // Вопросы, которые не попадут в ролик, — в обычном темпе: время дуэли правдоподобное.
+        await wait(i < 3 ? 900 : 5200);
+        await answerCard(page, '.quiz', i !== 6);
+        await wait(i < 3 ? 350 : 300);
+        await page.getByRole('button', { name: /^Ответить/ }).tap();
+      }
+      await page.locator('.duel-share').waitFor();
+      // Запись идёт с локальной игры: ссылка и QR-код в ролике должны вести на настоящий адрес.
+      const local = await page.locator('.duel-link').inputValue();
+      const link = PUBLIC_URL + local.slice(local.indexOf('#'));
+      const qr = qrcode(0, 'L');
+      qr.addData(link);
+      qr.make();
+      const svg = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      await page.evaluate(([l, q]) => {
+        (document.querySelector('.duel-link') as HTMLInputElement).value = l;
+        document.querySelector('.qr')!.innerHTML = q;
+      }, [link, svg] as const);
+      await wait(300);
+      await rec.resume();
+      await wait(1600);
+      await page.evaluate(() => document.querySelector('.screen__body')?.scrollBy({ top: 330, behavior: 'smooth' }));
+      await wait(2200);
+    },
+  },
+
+  /** Друг ответил: ссылка с итогом — победа и кто как ответил. */
+  'duel-win': {
+    settings: { name: 'Саша' },
+    storage: () => ({ 'pdd-game:duels': [{ id: DUEL.id, at: DUEL.at, updated: DUEL.at, role: 'from', q: DUEL.q, me: DUEL.from }] }),
+    async run(page, rec) {
+      await wait(800);
+      await rec.start();
+      await wait(400);
+      await page.goto(`${BASE}#duel=${encodeDuel(DUEL)}`);
+      await page.locator('.duel-result').waitFor();
+      await wait(2600);
+      await page.evaluate(() => document.querySelector('.screen__body')?.scrollBy({ top: 420, behavior: 'smooth' }));
+      await wait(1800);
+    },
+  },
+
+  /** Знакодекс: альбом, карточка знака, награда за собранную группу. */
+  signs: {
+    prepare(data) {
+      // Знаки приоритета собраны: награда ждёт.
+      for (const id of PRIORITY_QUESTIONS) recordAnswer(data, id, true, Date.now() - 3 * 86_400_000);
+    },
+    async run(page, rec) {
+      await page.getByRole('button', { name: 'Режимы' }).tap();
+      await page.locator('.mode-card', { hasText: 'Знакодекс' }).tap();
+      await page.locator('.signs-grid').first().waitFor();
+      await wait(900);
+      await rec.start();
+      await wait(1500);
+      await page.locator('.signs-group').first().locator('.sign-tile:not(.is-locked)').first().tap();
+      await wait(2300);
+      await page.locator('.modal').getByRole('button', { name: 'Закрыть' }).tap();
+      await page.locator('.signs-group', { hasText: 'Знаки приоритета' }).scrollIntoViewIfNeeded();
+      await page.evaluate(() => document.querySelector('.screen__body')?.scrollBy({ top: -40 }));
+      await wait(1300);
+      await page.locator('.signs-group', { hasText: 'Знаки приоритета' }).getByRole('button', { name: /Забрать награду/ }).tap();
+      await wait(2200);
+    },
+  },
+
+  /** Пост ДПС: перекрёсток, радар, нарушитель пойман, вопрос по правилу. */
+  patrol: {
+    prepare(data) {
+      data.modes = { patrol: { best: 650, shifts: 3 } };
+    },
+    async run(page, rec) {
+      await page.getByRole('button', { name: 'Режимы' }).tap();
+      await page.locator('.mode-card', { hasText: 'Соколова' }).tap();
+      await page.locator('.district-btn').nth(2).tap();
+      await page.waitForFunction(() => (window as Any).__game?.scene.isActive('patrol'));
+      await wait(2500);
+      await rec.start();
+      await wait(3000);
+      await rec.pause();
+      let target: { x: number; y: number } | undefined;
+      for (let i = 0; i < 240 && !target; i++) {
+        target = await sceneCall(page, 'patrol', (s) => s.debugTargets('no-stopping').violator);
+        if (!target) await wait(250);
+      }
+      await wait(1500);
+      target = await sceneCall(page, 'patrol', (s) => s.debugTargets('no-stopping').violator);
+      await rec.resume();
+      await wait(1300);
+      await page.touchscreen.tap(target!.x, target!.y);
+      await page.locator('.sheet.is-open .option').first().waitFor();
+      await wait(2600);
+      await answerCard(page, '.sheet.is-open', true);
+      await wait(1700);
+      await page.getByRole('button', { name: 'На пост' }).tap();
+      await wait(1500);
+    },
+  },
+
+  /** Смена курьера: стрелка к флажку, карта, адрес, вопрос у двери, очки и серия. */
+  courier: {
+    prepare(data) {
+      data.modes = { courier: [{ score: 2400, deliveries: 9, correct: 8, answers: 9, chapter: 'ch2', at: Date.now() - 86_400_000 }] };
+    },
+    settings: { rules: false },
+    async run(page, rec) {
+      await page.getByRole('button', { name: 'Режимы' }).tap();
+      await page.locator('.mode-card', { hasText: 'Смена курьера' }).tap();
+      await page.locator('.district-btn').nth(1).tap();
+      await page.waitForFunction(() => !!(window as Any).__game?.scene.getScene('city').debugGoal?.());
+      await wait(1200);
+      await rec.start();
+      await wait(1600);
+      await page.getByRole('button', { name: 'Карта района' }).tap();
+      await wait(1700);
+      await page.getByRole('button', { name: 'К адресу' }).tap();
+      await wait(2800);
+      await rec.pause();
+      for (let i = 0; i < 4 && !(await page.locator('.sheet.is-open').count()); i++) {
+        await page.getByRole('button', { name: 'К адресу' }).tap().catch(() => {});
+        await page.locator('.sheet.is-open .option').first().waitFor({ timeout: 40_000 }).catch(() => {});
+      }
+      await rec.resume();
+      await wait(2200);
+      await answerCard(page, '.sheet.is-open', true);
+      await wait(2400);
+    },
+  },
 };
+
+/** Дуэль для записи: вызов Саши и ответ Артёма на 10 вопросов с картинками. */
+const DUEL: DuelPayload = (() => {
+  const q = QUESTIONS.filter((x) => x.image && x.options.length >= 3).slice(40, 50).map((x) => x.id);
+  const right = (n: number) => q.map((id, i) => (i < n ? CORRECT.get(id)! : (CORRECT.get(id)! + 1) % 3));
+  return { id: 'promo001', at: Date.now() - 3_600_000, q, from: { name: 'Саша', answers: right(9), ms: 102_000 }, to: { name: 'Артём', answers: right(7), ms: 125_000 } };
+})();
+
+/** Вопросы со знаками приоритета (2.x) — из разметки сцен. */
+const PRIORITY_QUESTIONS: string[] = (() => {
+  const signs: { group: string; questions: string[] }[] = JSON.parse(readFileSync(new URL('../data/signs.json', import.meta.url), 'utf8')).signs;
+  return [...new Set(signs.filter((x) => x.group === 'priority').flatMap((x) => x.questions))];
+})();
 
 async function record(browser: Browser, name: string, clip: Clip) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1.5, hasTouch: true, isMobile: true, locale: 'ru-RU' });
   const page = await context.newPage();
   const progress = trailerProgress(clip.seed);
+  clip.prepare?.(progress);
+  const storage = clip.storage?.() ?? {};
   // tsx (esbuild) оборачивает вложенные функции в __name(): в странице её нет.
   await page.addInitScript('window.__name = (f) => f;');
   await page.addInitScript(
-    ([p, s]) => {
+    ([p, s, extra]) => {
       if (sessionStorage.getItem('seeded')) return;
       localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false, sound: false, vibration: false, ...s }));
       localStorage.setItem('pdd-game:progress', JSON.stringify(p));
+      for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, JSON.stringify(v));
       sessionStorage.setItem('seeded', '1');
     },
-    [progress, clip.settings ?? {}] as const,
+    [progress, clip.settings ?? {}, storage] as const,
   );
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(BASE);
   await page.locator('.menu').first().waitFor();
+  if (clip.css) await page.addStyleTag({ content: clip.css });
   const rec = new Screencast(page);
   await clip.run(page, rec);
   const seconds = await rec.stop();

@@ -26,3 +26,22 @@
    ```
 
 Проверить отдельные кадры без рендера: `npx hyperframes@0.8.119 snapshot . --at 4.5,24,58`.
+
+# Промо-ролик новых режимов
+
+Тем же способом собирается второй ролик — о режимах этапов 10–13 (дуэль, Знакодекс, пост ДПС,
+смена курьера): `kurier-pdd-modes.mp4`, вертикальный, около 50 секунд. Сценарий — `MODES_DRAFT`
+в `trailer/scenes.ts`, композиция — `trailer/video/modes.html`, музыка — `trailer/video/modes.wav`.
+
+1. Игра запущена (`npx vite --port 5173 --strictPort`).
+2. Записи: `npx tsx trailer/record.ts modes duel duel-win signs patrol courier`.
+3. Музыка: `CUT=modes npx tsx trailer/music.ts`.
+4. Композиция: `CUT=modes npx tsx trailer/build.ts`.
+5. Рендер:
+   ```
+   cd trailer/video
+   npx hyperframes@0.8.119 render . -c modes.html --fps 30 --crf 21 --video-frame-format png -o ../kurier-pdd-modes.mp4
+   ```
+
+В записях бывают «склейки»: пока ждём нарушителя или машина едет до двери, запись стоит на паузе
+(`Screencast.pause()` и `resume()`).

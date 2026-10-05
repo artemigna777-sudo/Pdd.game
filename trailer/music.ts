@@ -6,9 +6,11 @@
  *   npx tsx trailer/music.ts
  */
 import { writeFileSync } from 'node:fs';
-import { SCENES, TIMELINE, at } from './scenes.ts';
+import { CUT, SCENES, TIMELINE, at } from './scenes.ts';
 
 const SR = 44_100;
+/** Промо новых режимов: секунды записей, когда на экране касание, награда, поимка. */
+const CUES = { duel: [1.85, 3.1, 4.35], duelWin: 0.8, signCard: 1.5, signReward: 5.4, patrolCatch: 4.4, patrolAnswer: 7.5, courierFlag: 5.2, courierAnswer: 10.6 };
 const { intro, outro, total } = TIMELINE;
 const N = Math.ceil(total * SR);
 const L = new Float32Array(N);
@@ -138,7 +140,8 @@ const MELODY = [
   [72, 77, 81, 77, 76, 74, 72, 71],
 ];
 
-const cast = SCENES.find((s) => s.cast)!;
+// Проигрыш со знакомством с героями — только в трейлере (в промо новых режимов его нет).
+const cast = SCENES.find((s) => s.cast) ?? { start: Infinity, duration: 0 };
 const castEnd = cast.start + cast.duration;
 const end = total - 0.1;
 const grooveEnd = outro + 2 * BAR;
@@ -211,12 +214,23 @@ const tap = (t: number | undefined) => {
   add(t, 0.05, (x) => Math.sin(TAU * 1800 * x) * Math.exp(-x * 120), 0.2);
 };
 
-correct(at('question', 7.8));
-correct(at('firstaid', 8.8));
-wrong(at('wrong', 1.8));
-whistle(at('sokolov', 1.8));
-fanfare(at('rewards', 10.4));
-tap(at('story', 9.9));
+if (CUT === 'modes') {
+  for (const s of CUES.duel) tap(at('duel', s));
+  fanfare(at('duel-win', CUES.duelWin));
+  tap(at('signs', CUES.signCard));
+  fanfare(at('signs', CUES.signReward));
+  whistle(at('patrol', CUES.patrolCatch));
+  correct(at('patrol', CUES.patrolAnswer));
+  tap(at('courier', CUES.courierFlag));
+  correct(at('courier', CUES.courierAnswer));
+} else {
+  correct(at('question', 7.8));
+  correct(at('firstaid', 8.8));
+  wrong(at('wrong', 1.8));
+  whistle(at('sokolov', 1.8));
+  fanfare(at('rewards', 10.4));
+  tap(at('story', 9.9));
+}
 for (const s of SCENES.slice(1)) whoosh(s.start);
 whoosh(outro, 0.16);
 
@@ -247,5 +261,6 @@ for (let i = 0; i < N; i++) {
   pcm.writeInt16LE(Math.round(L[i] * k * 32767), 44 + i * 4);
   pcm.writeInt16LE(Math.round(R[i] * k * 32767), 46 + i * 4);
 }
-writeFileSync(new URL('./video/music.wav', import.meta.url), pcm);
-console.log(`trailer/video/music.wav: ${total.toFixed(1)} с, пик ${peak.toFixed(2)} → 0.89`);
+const file = CUT === 'modes' ? 'modes.wav' : 'music.wav';
+writeFileSync(new URL(`./video/${file}`, import.meta.url), pcm);
+console.log(`trailer/video/${file}: ${total.toFixed(1)} с, пик ${peak.toFixed(2)} → 0.89`);

@@ -26,6 +26,15 @@ import { LANE_WIDTH, SIDEWALK, roadHalfWidth, type Lane, type RoadGraph, type Tu
 import { JUNCTION_ZEBRA, STOP_LINE, districtRules, districtZebras, type DistrictRules } from './districtRules.ts';
 
 export type CarKind = 'car' | 'truck' | 'bus' | 'moto';
+
+/**
+ * Нарушитель (режим «Один день Соколова», этап 12): проедет на красный, превысит скорость или
+ * остановится в зоне «Остановка запрещена». Нарушение потом проверяет модуль правил (rules.ts).
+ */
+export type CarViolation =
+  | { kind: 'red-light' }
+  | { kind: 'speeding' }
+  | { kind: 'no-stopping'; lane: Lane; s: number; /** Сколько ещё стоять (с). */ hold: number };
 export type Light = 'green' | 'yellow' | 'red';
 
 /** Круг, где идёт сцена с вопросом: потока там нет. */
@@ -85,6 +94,10 @@ export interface Car {
   heading: number;
   /** Соперник игрока (Артём на мопеде): не исчезает вдали. */
   rival?: boolean;
+  /** Нарушитель (этап 12). */
+  violate?: CarViolation;
+  /** Остановлен инспектором: прижимается к обочине и стоит. */
+  held?: boolean;
 }
 
 export interface Walker {
@@ -135,6 +148,8 @@ export function playerStopDistance(speed: number): number {
 }
 
 const ACCEL = 110;
+/** Сдвиг к обочине машины, которая остановилась (нарушитель, остановленный инспектором). */
+const CURB_SHIFT = 12;
 const BRAKE = 170;
 const MIN_GAP = 14;
 const WALK_SPEED = [26, 38] as const;
@@ -363,7 +378,8 @@ export class TrafficSim {
     const lane = car.lane;
     const node = lane.to;
     const light = env.signal(lane.id);
-    if (light && light !== 'green') return false;
+    // Нарушитель едет на красный (пешеходов на переходе он всё же пропускает — проверка ниже).
+    if (light && light !== 'green' && car.violate?.kind !== 'red-light') return false;
 
     // Переход перед перекрёстком занят пешеходом.
     for (const z of this.laneZebras.get(lane.id) ?? []) if (z.s > car.s && z.s > lane.length - 40 && this.isBusy(z.key)) return false;
@@ -415,8 +431,20 @@ export class TrafficSim {
     // Плавное перестроение между полосами дороги с двумя полосами.
     car.shift += Math.max(-30 * dt, Math.min(30 * dt, car.shiftTarget - car.shift));
 
+    // Остановлен инспектором: тормозит, прижимается к обочине и стоит.
+    if (car.held) {
+      car.speed = Math.max(0, car.speed - BRAKE * 1.5 * dt);
+      if (car.turn) car.t = Math.min(car.turn.path.length, car.t + car.speed * dt);
+      else car.s = Math.min(car.lane.length - car.half, car.s + car.speed * dt);
+      // К обочине — поток объезжает (машины в другом «ряду» друг другу не помеха).
+      if (!car.turn) car.shiftTarget = CURB_SHIFT;
+      this.placeCar(car);
+      return;
+    }
+
     if (car.turn) {
-      const target = car.turn.speed * Math.min(1, car.cruise + 0.15);
+      const speeder = car.violate?.kind === 'speeding' && car.turn.kind === 'straight';
+      const target = speeder ? car.turn.from.speed * car.cruise : car.turn.speed * Math.min(1, car.cruise + 0.15);
       car.speed = car.speed < target ? Math.min(target, car.speed + ACCEL * dt) : Math.max(target, car.speed - BRAKE * dt);
       car.t += car.speed * dt;
       if (car.t >= car.turn.path.length) {
@@ -452,6 +480,20 @@ export class TrafficSim {
     }
 
     let hold = false;
+    // Нарушитель остановится в зоне «Остановка запрещена» и постоит.
+    const v = car.violate;
+    if (v?.kind === 'no-stopping' && v.lane === lane && v.hold > 0) {
+      const before = v.s - car.s;
+      if (before > -car.half) {
+        target = Math.min(target, Math.sqrt(2 * BRAKE * Math.max(0, before)));
+        if (before < 60) car.shiftTarget = CURB_SHIFT;
+        if (before < 2 && car.speed < 4) {
+          v.hold -= dt;
+          hold = true;
+          if (v.hold <= 0) car.shiftTarget = 0;
+        }
+      }
+    }
     const toStop = stop - car.s;
     const brakeDist = (car.speed * car.speed) / (2 * BRAKE);
     // Решение проехать действует, только пока остановиться уже не успеть (например, машина
@@ -468,9 +510,9 @@ export class TrafficSim {
         }
       }
     }
-    // Перед поворотом — медленнее.
+    // Перед поворотом — медленнее (лихач, который едет прямо, не тормозит).
     const turn = this.graph.turn(lane, car.next);
-    target = Math.min(target, Math.sqrt(turn.speed ** 2 + 2 * BRAKE * Math.max(0, lane.length - car.s)));
+    if (!(car.violate?.kind === 'speeding' && turn.kind === 'straight')) target = Math.min(target, Math.sqrt(turn.speed ** 2 + 2 * BRAKE * Math.max(0, lane.length - car.s)));
 
     car.speed = car.speed < target ? Math.min(target, car.speed + ACCEL * dt) : Math.max(target, car.speed - BRAKE * 1.6 * dt);
     if (hold) car.speed = 0;
@@ -483,7 +525,7 @@ export class TrafficSim {
     // Машина прямо перед игроком должна остановиться — она не станет помехой, а исчезнет.
     if (escort && behind < 75 && car.speed < lane.speed * 0.5 && !car.rival) this.fade(car, true);
     // Долго стоит (за машиной игрока, в заторе) — тихо уезжает из кадра.
-    car.stuck = car.speed < 3 ? car.stuck + dt : 0;
+    car.stuck = car.speed < 3 && !hold ? car.stuck + dt : 0;
     if (car.stuck > 14 && !car.rival) this.fade(car);
 
     if (car.s >= lane.length) {
@@ -607,6 +649,8 @@ export class TrafficSim {
     if (this.inZone(zebra.center, env.zones, 40)) return false;
     if (zebra.signalLane) {
       if (env.signal(zebra.signalLane) !== 'red') return false;
+      // К перекрёстку подъезжает нарушитель, который поедет на красный, — пешеходы ждут.
+      if (this.cars.some((c) => !c.gone && c.violate?.kind === 'red-light' && (c.turn ? c.turn.from.to.id === zebra.node : c.lane.to.id === zebra.node && c.lane.length - c.s < 320))) return false;
       // Никто не заканчивает поворот через этот переход.
       for (const c of this.occupants(this.graph.node(zebra.node!))) if (this.turnOf(c).to.road === zebra.road) return false;
       return true;

@@ -5,6 +5,7 @@ import { playSound } from '../audio/feedback.ts';
 import { PAINTS, STICKERS, buyOrSelect, carLook, type CarLook, type StickerId } from '../progress/garage.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
+import { SIGN_GROUPS } from '../signs/signs.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
 import { showToast } from './toast.ts';
@@ -107,6 +108,10 @@ export function carSvg(look: CarLook): string {
     star: '<path d="M0 -19 L1 -16.8 L3.3 -16.6 L1.5 -15 L2.1 -12.7 L0 -14 L-2.1 -12.7 L-1.5 -15 L-3.3 -16.6 L-1 -16.8 Z" fill="#fff"/>',
     heart: '<path d="M0 -12.8 L-2.9 -16 A1.6 1.6 0 0 1 0 -17.3 A1.6 1.6 0 0 1 2.9 -16 Z" fill="#ff4d6d"/>',
     flames: '<path d="M-10 -18 L-6 -18 L-9 -6 Z M10 -18 L6 -18 L9 -6 Z" fill="#ff5400"/><path d="M-9.5 -18 L-7 -18 L-8.7 -11 Z M9.5 -18 L7 -18 L8.7 -11 Z" fill="#ffbd00"/>',
+    triangle: '<path d="M0 -19.5 L-4 -12.5 L4 -12.5 Z" fill="#e63946"/><path d="M0 -17 L-2.2 -13.5 L2.2 -13.5 Z" fill="#fff"/>',
+    diamond: '<path d="M0 -20 L4 -16 L0 -12 L-4 -16 Z" fill="#fff"/><path d="M0 -18.6 L2.6 -16 L0 -13.4 L-2.6 -16 Z" fill="#ffd60a"/>',
+    ring: '<circle cx="0" cy="-16" r="3.6" fill="#e63946"/><circle cx="0" cy="-16" r="2.4" fill="#fff"/>',
+    arrow: '<circle cx="0" cy="-16" r="3.6" fill="#1d6fd6"/><path d="M0 -18.6 L-1.9 -16.4 L1.9 -16.4 Z M-0.7 -16.6 H0.7 V-13.6 H-0.7 Z" fill="#fff"/>',
     checker: '<g><rect x="-4" y="-18" width="8" height="4" fill="#fff"/><rect x="-4" y="-18" width="2" height="2" fill="#1b1b1b"/><rect x="0" y="-18" width="2" height="2" fill="#1b1b1b"/><rect x="-2" y="-16" width="2" height="2" fill="#1b1b1b"/><rect x="2" y="-16" width="2" height="2" fill="#1b1b1b"/></g>',
   };
   return `<svg viewBox="-16 -24 32 50" aria-hidden="true">
@@ -129,8 +134,9 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
     const look = carLook(data);
     const preview = el('div', { class: 'garage__car' });
     preview.innerHTML = carSvg(look);
-    const item = (id: string, name: string, price: number, swatch: HTMLElement) => {
+    const item = (id: string, name: string, price: number, swatch: HTMLElement, signGroup?: string) => {
       const owned = data.garage.owned.includes(id);
+      const group = signGroup ? SIGN_GROUPS.find((g) => g.id === signGroup) : undefined;
       const selected = data.garage.paint === id || data.garage.sticker === id;
       return el(
         'button',
@@ -144,6 +150,10 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
               showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
               return;
             }
+            if (result === 'locked') {
+              showToast(`Эта наклейка — награда Знакодекса: собери все знаки группы «${group?.title ?? ''}».`);
+              return;
+            }
             if (result === 'bought') playSound('reward');
             onChange();
             render();
@@ -151,7 +161,7 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
         },
         swatch,
         el('span', { class: 'garage__name' }, name),
-        el('span', { class: 'garage__price' }, selected ? 'выбрано' : owned ? 'куплено' : `🪙 ${price}`),
+        el('span', { class: 'garage__price' }, selected ? 'выбрано' : owned ? (group ? 'есть' : 'куплено') : group ? '🔒 Знакодекс' : `🪙 ${price}`),
       );
     };
     const paints = PAINTS.map((p) => {
@@ -162,7 +172,7 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
     const stickers = STICKERS.map((s) => {
       const sw = el('span', { class: 'garage__swatch garage__swatch--car', 'aria-hidden': 'true' });
       sw.innerHTML = carSvg({ color: look.color, sticker: s.id });
-      return item(s.id, s.name, s.price, sw);
+      return item(s.id, s.name, s.price, sw, s.signGroup);
     });
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),

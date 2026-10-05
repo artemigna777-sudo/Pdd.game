@@ -40,6 +40,7 @@ import { el } from './dom.ts';
 import { durationLabel, plural } from './format.ts';
 import { ICONS } from './icons.ts';
 import { levelMeter, starsText } from './progressView.ts';
+import { drivePanel } from './drivePanel.ts';
 import { renderQuestionCard } from './questionCard.ts';
 import { controlHint, settingsPanel } from './settingsPanel.ts';
 import { goalToast } from './dailyView.ts';
@@ -125,44 +126,15 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
 
   // ─── Педали, спидометр, «Чистая езда» (этап 8) ───────────────────────────────
 
-  const pedal = (kind: 'brake' | 'gas', label: string) => {
-    const b = el('button', { class: `pedal pedal--${kind}`, type: 'button', 'aria-label': label, 'aria-pressed': 'false' }, el('span', { class: 'pedal__label' }, label));
-    const set = (on: boolean) => {
-      b.setAttribute('aria-pressed', String(on));
-      scene?.setPedal(kind, on);
-    };
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      try {
-        // Палец чуть сполз с кнопки — педаль всё ещё нажата.
-        b.setPointerCapture(e.pointerId);
-      } catch {
-        // Синтетическое событие без настоящего указателя — захват не нужен.
-      }
-      set(true);
-    });
-    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) b.addEventListener(ev, () => set(false));
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
-    return { el: b, release: () => set(false) };
-  };
-  const brake = pedal('brake', 'Тормоз');
-  const gas = pedal('gas', 'Газ');
-  const speed = el('span', { class: 'speedo__speed' }, '0');
-  const limit = el('span', { class: 'speedo__limit', 'aria-label': 'Разрешённая скорость' }, '60');
-  const clean = el('span', { class: 'speedo__clean' });
-  const speedo = el('div', { class: 'speedo', role: 'status', 'aria-label': 'Спидометр' }, el('span', { class: 'speedo__row' }, speed, el('span', { class: 'speedo__unit' }, 'км/ч'), limit), clean);
-  const drive = el('div', { class: 'drive', hidden: !rulesOn }, brake.el, speedo, gas.el);
-  const ruleHint = el('p', { class: 'rule-hint', hidden: true, 'aria-live': 'polite' });
+  const panel = drivePanel((kind, on) => scene?.setPedal(kind, on), rulesOn);
+  const { drive, ruleHint, clean } = panel;
 
   /** Педали видны, когда машина едет сама по себе (не у точки, не в обзоре, не в разговоре). */
   let overviewOn = false;
   const updateDrive = () => {
     const show = rulesOn && !sheet.classList.contains('is-open') && !overviewOn;
     if (drive.hidden === show) drive.hidden = !show;
-    if (!show) {
-      brake.release();
-      gas.release();
-    }
+    if (!show) panel.release();
   };
 
   const updateClean = () => {
@@ -173,10 +145,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   let cleanTicks = 0;
   const driveTimer = window.setInterval(() => {
     if (stopped || !scene || !rulesOn || !game.scene.isActive('city')) return;
-    const info = scene.drive;
-    speed.textContent = String(info.kmh);
-    limit.textContent = String(info.limit);
-    speedo.classList.toggle('is-over', info.kmh > info.limit);
+    panel.setReadout(scene.drive);
     const px = scene.takeClean();
     if (px > 0) {
       addCleanDistance(progress(), chapterId, px);
@@ -185,20 +154,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     }
   }, 150);
 
-  const HINTS: Record<RuleHint['kind'], (h: RuleHint) => string> = {
-    'red-light': () => 'Впереди красный — тормозите до стоп-линии.',
-    pedestrian: () => 'Пешеход на переходе — остановитесь и пропустите.',
-    speeding: (h) => `Здесь можно ${h.kind === 'speeding' ? h.limit : 60} км/ч — сбавьте скорость.`,
-    'no-stopping': (h) =>
-      h.kind === 'no-stopping'
-        ? `Здесь стоять нельзя (${{ crosswalk: 'переход', junction: 'перекрёсток', railway: 'переезд', zone: 'знак «Остановка запрещена»' }[h.place]}) — проезжайте.`
-        : '',
-    oncoming: () => 'Сплошная линия: разворот через неё — выезд на встречную. Потяните назад ещё раз, если всё-таки нужно.',
-  };
-  const showRuleHint = (h: RuleHint | undefined) => {
-    ruleHint.hidden = !h;
-    if (h) ruleHint.textContent = `💡 ${HINTS[h.kind](h)}`;
-  };
+  const showRuleHint = (h: RuleHint | undefined) => panel.showHint(h);
 
   const updateScore = () => {
     score.textContent = answered ? `${correct}/${answered}` : '';

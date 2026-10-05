@@ -185,6 +185,27 @@ export interface GarageState {
   owned: string[];
 }
 
+/** «Один день Соколова»: лучший счёт и сколько смен отработано. */
+export interface PatrolRecord {
+  best: number;
+  shifts: number;
+}
+
+/** Смена курьера: одна строка таблицы рекордов. */
+export interface CourierRecord {
+  score: number;
+  deliveries: number;
+  correct: number;
+  answers: number;
+  chapter: string;
+  at: number;
+}
+
+export interface ModesState {
+  patrol?: PatrolRecord;
+  courier?: CourierRecord[];
+}
+
 export interface ProgressData {
   xp: number;
   coins: number;
@@ -196,6 +217,10 @@ export interface ProgressData {
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
   plan?: ExamPlan;
+  /** Знакодекс (этап 11): группы знаков, за которые награда уже получена. */
+  signs?: { claimed: string[] };
+  /** Рекорды режимов (этапы 12–13). */
+  modes?: ModesState;
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -217,6 +242,8 @@ export function emptyProgress(): ProgressData {
 }
 
 export const DEFAULT_PAINT = 'yellow';
+/** Сколько строк в таблице рекордов смены курьера. */
+export const COURIER_TOP = 10;
 export const DEFAULT_STICKER = 'none';
 const GOAL_KINDS: GoalKind[] = ['review', 'points', 'correct', 'plan'];
 
@@ -275,6 +302,19 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       const drive = c.drive;
       if (isObj(drive) && isInt(drive.violations) && isNum(drive.distance)) state.drive = { violations: drive.violations, distance: drive.distance, ...(drive.star === true ? { star: true } : {}) };
       data.chapters[id] = state;
+    }
+  }
+  if (isObj(raw.signs)) data.signs = { claimed: [...new Set(strings(raw.signs.claimed))] };
+  if (isObj(raw.modes)) {
+    const m = raw.modes;
+    data.modes = {};
+    if (isObj(m.patrol) && isInt(m.patrol.best) && isInt(m.patrol.shifts)) data.modes.patrol = { best: m.patrol.best, shifts: m.patrol.shifts };
+    if (Array.isArray(m.courier)) {
+      data.modes.courier = m.courier
+        .filter((r): r is CourierRecord => isObj(r) && isInt(r.score) && isInt(r.deliveries) && isInt(r.correct) && isInt(r.answers) && r.correct <= r.answers && typeof r.chapter === 'string' && isInt(r.at))
+        .map((r) => ({ score: r.score, deliveries: r.deliveries, correct: r.correct, answers: r.answers, chapter: r.chapter, at: r.at }))
+        .sort((a, b) => b.score - a.score || a.at - b.at)
+        .slice(0, COURIER_TOP);
     }
   }
   const plan = raw.plan;

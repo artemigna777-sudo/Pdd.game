@@ -8,6 +8,9 @@ playwright-report/
 # Трейлер: записи игры, музыка и рендер HyperFrames пересобираются командами из trailer/README.md
 trailer/video/clips/
 trailer/video/music.wav
+trailer/video/modes.wav
 trailer/video/renders/
 trailer/video/snapshots/
 trailer/video/.hf-*
+trailer/.*.hf-transaction-*/
+trailer/work-*/

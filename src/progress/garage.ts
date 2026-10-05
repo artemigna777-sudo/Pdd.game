@@ -11,12 +11,14 @@ export interface Paint {
   price: number;
 }
 
-export type StickerId = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker';
+export type StickerId = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker' | 'triangle' | 'diamond' | 'ring' | 'arrow';
 
 export interface Sticker {
   id: StickerId;
   name: string;
   price: number;
+  /** Не продаётся: открывается за собранную группу знаков в Знакодексе (этап 11). */
+  signGroup?: string;
 }
 
 export const PAINTS: Paint[] = [
@@ -38,6 +40,10 @@ export const STICKERS: Sticker[] = [
   { id: 'star', name: 'Звезда', price: 120 },
   { id: 'flames', name: 'Пламя', price: 200 },
   { id: 'checker', name: 'Шашечки', price: 200 },
+  { id: 'triangle', name: 'Треугольник', price: 0, signGroup: 'warning' },
+  { id: 'diamond', name: 'Главная дорога', price: 0, signGroup: 'priority' },
+  { id: 'ring', name: 'Красный круг', price: 0, signGroup: 'prohibitory' },
+  { id: 'arrow', name: 'Синяя стрелка', price: 0, signGroup: 'mandatory' },
 ];
 
 export interface CarLook {
@@ -55,11 +61,12 @@ export function carLook(data: ProgressData): CarLook {
 const item = (id: string) => PAINTS.find((p) => p.id === id) ?? STICKERS.find((s) => s.id === id);
 
 /** Купить (если ещё нет и хватает монет) и выбрать покраску или наклейку. */
-export function buyOrSelect(data: ProgressData, id: string): 'selected' | 'bought' | 'no-coins' | 'unknown' {
+export function buyOrSelect(data: ProgressData, id: string): 'selected' | 'bought' | 'no-coins' | 'locked' | 'unknown' {
   const it = item(id);
   if (!it) return 'unknown';
   let result: 'selected' | 'bought' = 'selected';
   if (!data.garage.owned.includes(id)) {
+    if ('signGroup' in it && it.signGroup) return 'locked';
     if (!spendCoins(data, it.price)) return 'no-coins';
     data.garage.owned.push(id);
     result = 'bought';

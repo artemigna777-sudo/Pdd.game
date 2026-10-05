@@ -2398,6 +2398,7 @@ button {
     --selected: #1d3357;
     --ok-text: #6fd08f;
     --bad-text: #ff8a95;
+  --silhouette: grayscale(1) brightness(0) invert(1);
   }
 }
 
@@ -2421,6 +2422,7 @@ button {
   --selected: #1d3357;
   --ok-text: #6fd08f;
   --bad-text: #ff8a95;
+  --silhouette: grayscale(1) brightness(0) invert(1);
 }
 
 .btn--secondary {
@@ -3281,4 +3283,286 @@ button {
   .menu__settings {
     width: 48px;
   }
+}
+
+/* ---------- Этап 11: Знакодекс ---------- */
+
+.signs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.signs-legend__item::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  background: var(--rarity);
+}
+
+.signs-legend__item,
+.sign-tile,
+.sign-card {
+  --rarity: #9aa8b8;
+}
+
+.is-uncommon {
+  --rarity: #3a86ff;
+}
+
+.is-rare {
+  --rarity: #c08a00;
+}
+
+.signs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signs-group__title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 0;
+}
+
+.signs-group__count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.signs-group.is-complete .signs-group__count {
+  color: var(--ok-text, var(--ok));
+}
+
+.signs-group__bar {
+  height: 6px;
+}
+
+.signs-group.is-complete .bar__fill {
+  background: var(--ok);
+}
+
+.signs-group__reward {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.signs-group__reward.is-claimed {
+  color: var(--ok-text, var(--ok));
+  font-weight: 700;
+}
+
+.signs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.sign-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 132px;
+  padding: 10px 6px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: inset 0 -3px 0 var(--rarity), 0 1px 0 var(--line);
+}
+
+.sign-tile:active {
+  transform: translateY(1px);
+}
+
+.sign-tile__img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.sign-tile.is-locked .sign-tile__img {
+  filter: var(--silhouette, grayscale(1) brightness(0));
+  opacity: 0.18;
+}
+
+.sign-tile__num {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sign-tile__title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-muted);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Знак без картинки в наборе — белая табличка с номером. */
+.sign-plate {
+  display: grid;
+  place-items: center;
+  border: 2px solid #1b1b1b;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1b1b1b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sign-tile__img.sign-plate {
+  width: 64px;
+  height: 36px;
+  margin: 11px 0;
+}
+
+.sign-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.sign-card__img {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  object-fit: contain;
+}
+
+.sign-card__img.sign-plate {
+  width: 150px;
+  height: 80px;
+  font-size: 22px;
+}
+
+.sign-card.is-locked .sign-card__img {
+  filter: var(--silhouette, grayscale(1) brightness(0));
+  opacity: 0.18;
+}
+
+@media (max-height: 700px) {
+  .sign-card {
+    max-height: 38vh;
+  }
+
+  .sign-card__img {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+.sign-card__meta {
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--soft, var(--surface));
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--rarity);
+}
+
+.sign-card__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.sign-card__source,
+.signs-source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sign-card__source a,
+.signs-source a {
+  color: inherit;
+}
+
+#sign-chip {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(72px + var(--safe-top));
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
+  background: #10161e;
+  color: var(--on-dark);
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-12px) scale(0.96);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+}
+
+#sign-chip.is-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.sign-chip__img {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  padding: 3px;
+  border-radius: 50%;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.sign-chip__img.sign-plate {
+  width: 48px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.sign-chip__icon {
+  font-size: 28px;
+}
+
+:root[data-text='big'] .sign-card__text {
+  font-size: 18px;
 }

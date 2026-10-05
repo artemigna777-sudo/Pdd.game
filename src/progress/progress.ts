@@ -196,6 +196,8 @@ export interface ProgressData {
   questions: Record<string, QuestionState>;
   chapters: Record<string, ChapterState>;
   plan?: ExamPlan;
+  /** Знакодекс (этап 11): группы знаков, за которые награда уже получена. */
+  signs?: { claimed: string[] };
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -277,6 +279,7 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       data.chapters[id] = state;
     }
   }
+  if (isObj(raw.signs)) data.signs = { claimed: [...new Set(strings(raw.signs.claimed))] };
   const plan = raw.plan;
   if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {
     data.plan = { date: plan.date, total: plan.total };

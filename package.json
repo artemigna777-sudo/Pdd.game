@@ -15,7 +15,8 @@
     "coverage": "tsx scripts/coverage.ts",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
-    "icons": "tsx scripts/icons.ts"
+    "icons": "tsx scripts/icons.ts",
+    "signs": "tsx scripts/signs.ts"
   },
   "dependencies": {
     "phaser": "^3.90.0",

@@ -16,6 +16,7 @@ import {
   finaleStatus,
   isUnlocked,
   levelOf,
+  onProgressChange,
   percent,
   progress,
   recordAnswer,
@@ -57,13 +58,15 @@ import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
 import { duelHubView, duelInviteView, duelResultView } from './duelView.ts';
 import { modesView } from './modesView.ts';
+import { loadSigns, signsView, watchNewSigns } from './signsView.ts';
+import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 
 /**
  * Экраны: меню поверх анимированной улицы, главы сюжета и город-район главы, финал с
  * контрольными билетами, «Разбор ошибок», «Прогресс», «Мой экзамен», билеты целиком
  * с историей попыток и настройки.
  */
-type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh';
+type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh' | 'sign';
 type Route =
   | { name: 'menu' }
   | { name: 'chapters' }
@@ -77,7 +80,7 @@ type Route =
   | { name: 'review' }
   | { name: 'progress' }
   /** Серия вопросов: повтор ошибок, тренировка ошибок, темы, недоученных или новых вопросов. */
-  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; via: 'review' | 'progress' | 'finale' | 'plan' }
+  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; sign?: string; ids?: string[]; via: 'review' | 'progress' | 'finale' | 'plan' | 'signs' }
   /** «Мой экзамен»: дата экзамена в ГИБДД и план к ней. */
   | { name: 'plan' }
   /** Гараж: покраска и наклейки машины за монеты. */
@@ -95,6 +98,8 @@ type Route =
   | { name: 'modes' }
   /** Дуэль: имя, новая дуэль, история. */
   | { name: 'duel' }
+  /** Знакодекс (этап 11). */
+  | { name: 'signs' }
   /** Вызов от друга по ссылке. */
   | { name: 'duel-invite'; payload: DuelPayload }
   /** Идущая дуэль: новая или ответ на вызов. */
@@ -112,7 +117,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -136,6 +141,7 @@ const DEPTH: Record<RouteName, number> = {
   'exam-result': 2,
   modes: 1,
   duel: 2,
+  signs: 2,
   'duel-invite': 3,
   'duel-run': 3,
   'duel-result': 3,
@@ -188,6 +194,8 @@ export class App {
     history.replaceState({ name: 'menu' }, '', link ? location.pathname + location.search : undefined);
     this.render({ name: 'menu' });
     unlockAudioOnFirstTouch();
+    // Знакодекс: сообщение о новом знаке после любого верного ответа.
+    window.setTimeout(() => watchNewSigns(progress, onProgressChange, () => playSound('reward')), 1500);
     if (link) void this.openDuelLink(link);
     // Первый запуск — короткое обучение (по ссылке на дуэль — в следующий раз, чтобы не мешать вызову).
     else if (!getSettings().tutorial) void playTutorial().then(() => updateSettings({ tutorial: true }));
@@ -328,6 +336,9 @@ export class App {
         break;
       case 'duel':
         screen = this.duelScreen();
+        break;
+      case 'signs':
+        screen = this.signsScreen();
         break;
       case 'duel-invite':
         screen = this.duelInviteScreen(route);
@@ -790,6 +801,10 @@ export class App {
         ids = questions.filter((q) => !data.questions[q.id]).slice(0, left > 0 ? Math.min(20, left) : 20).map((q) => q.id);
         break;
       }
+      case 'sign':
+        // «Найти» в Знакодексе: вопросы со знаком — сначала с ошибками, потом новые.
+        ids = trainingSet(data, route.ids ?? [], 10);
+        break;
       case 'refresh': {
         // Повторение пройденного: сначала там, где были ошибки, потом давно не встречавшееся.
         const plan = planDay(data, Date.now());
@@ -810,6 +825,7 @@ export class App {
       block: `Блок: ${blockLabel(route.block ?? 0)}`,
       fresh: 'Новые вопросы',
       refresh: 'Повторение пройденного',
+      sign: `Знак ${route.sign ?? ''}`,
     };
     return this.quizPage(route, titles[route.mode], route.via, (all) => this.drillQuestions(route, all), (results, _ms, list, body) => {
       const right = results.filter((r) => r.isCorrect).length;
@@ -1036,21 +1052,63 @@ export class App {
 
   private modesScreen(): HTMLElement {
     const duels = allDuels();
-    const duelCard = {
-      icon: '⚔️',
-      title: 'Дуэль',
-      text: '10 вопросов на скорость и ссылка другу: кто лучше знает правила?',
-      status: duels.length ? `Дуэлей: ${duels.length}` : 'Вызови друга',
-      open: () => this.open({ name: 'duel' }),
+    const cards = {
+      duel: {
+        icon: '⚔️',
+        title: 'Дуэль',
+        text: '10 вопросов на скорость и ссылка другу: кто лучше знает правила?',
+        status: duels.length ? `Дуэлей: ${duels.length}` : 'Вызови друга',
+        open: () => this.open({ name: 'duel' }),
+      },
+      signs: {
+        icon: '🛑',
+        title: 'Знакодекс',
+        text: 'Альбом дорожных знаков из билетов: открывай знаки верными ответами.',
+        status: '',
+        open: () => this.open({ name: 'signs' }),
+      },
     };
-    const body = el('div', {}, modesView([duelCard]));
+    const list = () => modesView([cards.duel, cards.signs]);
+    const body = el('div', {}, list());
     const route = this.route;
-    loadQuestions().then((all) => {
-      if (this.route !== route || !duels.length) return;
-      const s = duelStats(duels, new Map(all.map((q) => [q.id, q])));
-      body.replaceChildren(modesView([{ ...duelCard, status: `Побед: ${s.wins} · поражений: ${s.losses}${s.waiting ? ` · ждут ответа: ${s.waiting}` : ''}` }]));
+    void Promise.all([loadQuestions(), loadSigns()]).then(([all, signs]) => {
+      if (this.route !== route) return;
+      if (duels.length) {
+        const s = duelStats(duels, new Map(all.map((q) => [q.id, q])));
+        cards.duel.status = `Побед: ${s.wins} · поражений: ${s.losses}${s.waiting ? ` · ждут ответа: ${s.waiting}` : ''}`;
+      }
+      cards.signs.status = `Собрано: ${openSigns(progress(), signs.signs).size} из ${signs.signs.length}`;
+      body.replaceChildren(list());
     });
     return this.page('Режимы', body, { back: 'menu', intro: 'Ещё способы выучить правила — с друзьями, на время и за коллекцию.' });
+  }
+
+  private signsScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    const render = () =>
+      loadSigns().then((signs) => {
+        if (this.route !== route) return;
+        const scroller = body.closest('.screen__body');
+        const top = scroller?.scrollTop ?? 0;
+        body.replaceChildren(
+          signsView(progress(), signs, {
+            find: (sign: SignEntry) => this.open({ name: 'drill', mode: 'sign', sign: sign.number, ids: sign.questions, via: 'signs' }),
+            claim: (groupId) => {
+              const data = progress();
+              const prize = claimGroup(data, signs.signs, groupId);
+              if (!prize) return;
+              saveProgress();
+              playSound('reward');
+              showToast(`Награда за группу: +${prize.coins} монет${prize.sticker ? ' и новая наклейка в гараже' : ''}!`);
+              void render();
+            },
+          }),
+        );
+        if (scroller) scroller.scrollTop = top;
+      });
+    void render();
+    return this.page('Знакодекс', body, { back: 'modes' });
   }
 
   private duelScreen(): HTMLElement {

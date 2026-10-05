@@ -89,6 +89,8 @@ export interface CityData {
   rules?: boolean;
   /** Новичку — подсказки перед нарушением. */
   difficulty?: Difficulty;
+  /** Смена курьера (этап 13): без точек интереса, только флажки доставок. */
+  shift?: boolean;
 }
 
 /** Состояние точки на карте. */
@@ -185,6 +187,10 @@ export class CityScene extends Phaser.Scene {
   private hintKey = '';
   private hintRing!: Phaser.GameObjects.Graphics;
   private ruleSigns: Phaser.GameObjects.Container[] = [];
+  /** Смена курьера: точек интереса нет, у края экрана — стрелка к флажку. */
+  private shift = false;
+  private goalArrow?: Phaser.GameObjects.Graphics;
+  private lastGoalRoad?: string;
 
   private graph!: RoadGraph;
   private mapView!: MapRenderer;
@@ -232,7 +238,10 @@ export class CityScene extends Phaser.Scene {
     this.event = undefined;
     this.lastEvent = undefined;
     this.weatherLeft = 0;
-    this.eventsEnabled = data.events ?? true;
+    this.shift = !!data.shift;
+    this.lastGoalRoad = undefined;
+    this.goalArrow = undefined;
+    this.eventsEnabled = !this.shift && (data.events ?? true);
     this.rulesEnabled = data.rules ?? true;
     this.violation = undefined;
     this.cleanPx = 0;
@@ -264,7 +273,7 @@ export class CityScene extends Phaser.Scene {
     this.rules = districtRules(this.graph, this.points);
     this.mapView = new MapRenderer(this, this.graph, this.points, this.rules);
     this.atmosphere = new Atmosphere(this);
-    this.buildPois();
+    if (!this.shift) this.buildPois();
     this.buildSignals();
     this.buildRuleSigns();
     this.watcher = new RuleWatcher(this.graph, this.rules);
@@ -555,6 +564,29 @@ export class CityScene extends Phaser.Scene {
     if (poi) this.goal = { ...poi, goal: true };
   }
 
+  /**
+   * Смена курьера: следующий адрес — флажок на городской улице на разумном расстоянии от машины
+   * (не дальний конец района: заказы идут один за другим).
+   */
+  showShiftGoal(label: string) {
+    this.removeGoal();
+    const want = 420 + Math.random() * 380;
+    const poi = this.placeSpecial('goal', label, { color: 0x7b2cbf, ink: '#5a189acc' }, want, true);
+    if (!poi) return;
+    this.goal = { ...poi, goal: true };
+    this.lastGoalRoad = poi.lane.road.id;
+  }
+
+  /** Смена курьера: машина сама прокладывает маршрут к флажку заказа. */
+  routeToGoal(): boolean {
+    const goal = this.goal;
+    if (!goal || goal.cooldown || this.active || this.violation) return false;
+    this.destination = { lane: goal.lane, s: goal.s };
+    this.driveTo(this.destination);
+    if (this.overview) this.setOverview(false);
+    return true;
+  }
+
   /** Посылка доставлена — флажок убрать. */
   removeGoal() {
     this.goal?.marker.destroy();
@@ -577,8 +609,14 @@ export class CityScene extends Phaser.Scene {
    * Особая отметка на городской улице без точек интереса: место доставки (подальше от машины,
    * чтобы проехать через район) или побочного задания (примерно на расстоянии `want`).
    */
-  private placeSpecial(id: string, label: string, look: { color: number; ink: string }, want: number): Poi | undefined {
+  private placeSpecial(id: string, label: string, look: { color: number; ink: string }, want: number, varied = false): Poi | undefined {
     const busy = new Set([...this.pois, ...(this.goal ? [this.goal] : []), ...(this.side ? [this.side] : [])].map((p) => p.lane.road.id));
+    // Смена курьера: не туда же, где был прошлый заказ, и не на улицу, где стоит машина.
+    if (varied) {
+      if (this.lastGoalRoad) busy.add(this.lastGoalRoad);
+      const here = this.player.lanePosition();
+      if (here) busy.add(here.lane.road.id);
+    }
     // Не на переходе и не в зоне «Остановка запрещена»: там машине стоять нельзя.
     for (const c of this.rules.crossings) busy.add(c.road);
     for (const z of this.rules.noStop) busy.add(z.road);
@@ -587,7 +625,9 @@ export class CityScene extends Phaser.Scene {
     const pool = lanes.length ? lanes : [...this.graph.lanes.values()].filter((l) => (l.road.kind ?? 'city') === 'city' && !busy.has(l.road.id));
     const mid = (l: Lane) => this.graph.pointOnLane(l, l.length / 2);
     const score = (l: Lane) => (want === Infinity ? -distance(mid(l), from) : Math.abs(distance(mid(l), from) - want));
-    const lane = pool.sort((a, b) => score(a) - score(b) || a.id.localeCompare(b.id))[0];
+    const sorted = pool.sort((a, b) => score(a) - score(b) || a.id.localeCompare(b.id));
+    // Для смены — случайно из нескольких подходящих, чтобы заказы не повторялись.
+    const lane = varied ? sorted[Math.floor(Math.random() * Math.min(4, sorted.length))] : sorted[0];
     if (!lane) return undefined;
     const s = lane.length / 2;
     const p = this.graph.pointOnLane(lane, s);
@@ -1441,6 +1481,7 @@ export class CityScene extends Phaser.Scene {
 
     // На обзорной карте поток не рисуем: машины там меньше пикселя.
     this.trafficView.update(cam.visible && worldZoom >= 0.6, view);
+    if (this.shift) this.drawGoalArrow(view, worldZoom);
 
     const sources = [{ p: this.player.position, angle: this.player.angle, high: false }];
     if (this.active?.kit) sources.push(...this.active.kit.headlightSources());
@@ -1468,6 +1509,38 @@ export class CityScene extends Phaser.Scene {
       this.look.y += (heading.y * LOOK_AHEAD - this.look.y) * k;
     }
     this.cameras.main.setFollowOffset(-this.look.x, -this.look.y);
+  }
+
+  /** Смена курьера: флажок за краем экрана — стрелка у края в его сторону. */
+  private drawGoalArrow(view: Phaser.Geom.Rectangle, worldZoom: number) {
+    this.goalArrow ??= this.add.graphics().setDepth(25);
+    const g = this.goalArrow.clear();
+    const goal = this.goal;
+    if (!goal || this.overview || !this.cameras.main.visible) return;
+    const p = goal.anchor;
+    const pad = 46 / worldZoom;
+    if (p.x > view.x + pad && p.x < view.right - pad && p.y > view.y + pad * 2 && p.y < view.bottom - pad * 2) return;
+    const c = { x: view.centerX, y: view.centerY };
+    const d = normalize({ x: p.x - c.x, y: p.y - c.y });
+    // Точка на краю прямоугольника (с отступом), куда смотрит направление на флажок.
+    const hw = view.width / 2 - pad;
+    const hh = view.height / 2 - pad * 2.2;
+    const k = Math.min(Math.abs(d.x) > 1e-6 ? hw / Math.abs(d.x) : Infinity, Math.abs(d.y) > 1e-6 ? hh / Math.abs(d.y) : Infinity);
+    const at = { x: c.x + d.x * k, y: c.y + d.y * k };
+    const r = 16 / worldZoom;
+    const n = { x: -d.y, y: d.x };
+    g.fillStyle(0x7b2cbf, 0.95).fillCircle(at.x, at.y, r * 1.25);
+    g.fillStyle(0xffffff, 1).fillTriangle(at.x + d.x * r * 0.9, at.y + d.y * r * 0.9, at.x - d.x * r * 0.5 + n.x * r * 0.65, at.y - d.y * r * 0.5 + n.y * r * 0.65, at.x - d.x * r * 0.5 - n.x * r * 0.65, at.y - d.y * r * 0.5 - n.y * r * 0.65);
+  }
+
+  /** Для автотестов: где флажок доставки на экране. */
+  debugGoal(): { x: number; y: number; visible: boolean } | undefined {
+    if (!this.goal) return undefined;
+    const cam = this.cameras.main;
+    const z = cam.zoom / PIXEL_RATIO;
+    const v = cam.worldView;
+    const p = this.goal.anchor;
+    return { x: (p.x - v.x) * z, y: (p.y - v.y) * z, visible: p.x > v.x && p.x < v.right && p.y > v.y && p.y < v.bottom };
   }
 
   private drawJoystick() {

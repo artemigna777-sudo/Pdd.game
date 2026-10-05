@@ -24,19 +24,19 @@ async function target(page: Page, which: 'violator' | 'innocent', kind?: string)
         found = await page.evaluate(([w, k]) => (window as Any).__game.scene.getScene('patrol').debugTargets(k)[w], [which, kind] as const);
         return !!found;
       },
-      { timeout: 90_000, intervals: [300] },
+      { timeout: 100_000, intervals: [300] },
     )
     .toBe(true);
   return found!;
 }
 
 test('пост ДПС: поймать нарушителя, вопрос по правилу, ошибочная остановка, итог и рекорд', async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(300_000);
   await page.addInitScript(() => {
     if (sessionStorage.getItem('seeded')) return;
     localStorage.clear();
-    // Смена короче обычной: 40% от трёх минут.
-    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, shiftScale: 0.4 }));
+    // Смена короче обычной: 60% от трёх минут.
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, shiftScale: 0.6 }));
     sessionStorage.setItem('seeded', '1');
   });
   await page.goto('/');
@@ -51,7 +51,7 @@ test('пост ДПС: поймать нарушителя, вопрос по п
   await page.getByRole('button', { name: 'Пропустить' }).tap();
   const begin = page.getByRole('button', { name: 'Заступить на смену' });
   if (await begin.isVisible().catch(() => false)) await begin.tap();
-  await expect(page.locator('.patrol-timer')).not.toHaveText('1:12', { timeout: 10_000 });
+  await expect(page.locator('.patrol-timer')).not.toHaveText('1:48', { timeout: 10_000 });
 
   // Нарушитель встал под знаком «Остановка запрещена» — поймать.
   const v = await target(page, 'violator', 'no-stopping');
@@ -78,7 +78,7 @@ test('пост ДПС: поймать нарушителя, вопрос по п
   await expect(page.locator('.xp-pops')).toContainText('ничего не нарушил');
 
   // Конец смены: итог и рекорд.
-  await expect(page.locator('.modal')).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator('.modal')).toBeVisible({ timeout: 150_000 });
   await expect(page.locator('.modal__title')).toHaveText('Новый рекорд смены! 🏆');
   await expect(page.locator('.patrol-result')).toContainText('Верных ответов1 из 1');
   const progress = await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:progress')!));

@@ -48,7 +48,7 @@ import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './da
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
 import { planSummary, refreshOrder } from '../progress/examPlan.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
-import { plural } from './format.ts';
+import { dayLabel, plural } from './format.ts';
 import { ICONS } from './icons.ts';
 import { dueLabel, levelMeter, progressView, reviewView, starsText } from './progressView.ts';
 import { renderExamCard, renderQuestionCard, type AnswerResult } from './questionCard.ts';
@@ -59,6 +59,8 @@ import { showToast } from './toast.ts';
 import { duelHubView, duelInviteView, duelResultView } from './duelView.ts';
 import { districtPicker, modesView } from './modesView.ts';
 import { patrolScreen } from './patrolScreen.ts';
+import { courierScreen } from './courierScreen.ts';
+import { COURIER } from '../progress/modes.ts';
 import { loadSigns, signsView, watchNewSigns } from './signsView.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 
@@ -104,6 +106,9 @@ type Route =
   /** «Один день Соколова» (этап 12): выбор района и смена на посту. */
   | { name: 'patrol' }
   | { name: 'patrol-run'; chapter: string }
+  /** Смена курьера (этап 13): выбор района, рекорды и сама смена. */
+  | { name: 'courier' }
+  | { name: 'courier-run'; chapter: string }
   /** Вызов от друга по ссылке. */
   | { name: 'duel-invite'; payload: DuelPayload }
   /** Идущая дуэль: новая или ответ на вызов. */
@@ -121,7 +126,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol';
+type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -148,6 +153,8 @@ const DEPTH: Record<RouteName, number> = {
   signs: 2,
   patrol: 2,
   'patrol-run': 3,
+  courier: 2,
+  'courier-run': 3,
   'duel-invite': 3,
   'duel-run': 3,
   'duel-result': 3,
@@ -272,7 +279,7 @@ export class App {
     this.cleanup = undefined;
     closeOverlay();
     this.route = route;
-    setGameActive(this.game, route.name === 'menu' || route.name === 'city' || route.name === 'patrol-run');
+    setGameActive(this.game, route.name === 'menu' || route.name === 'city' || route.name === 'patrol-run' || route.name === 'courier-run');
 
     let screen: HTMLElement;
     switch (route.name) {
@@ -353,6 +360,18 @@ export class App {
         const run = patrolScreen(this.game, route.chapter, {
           onBack: () => this.back('patrol'),
           again: () => this.replace({ name: 'patrol-run', chapter: route.chapter }),
+        });
+        this.cleanup = run.cleanup;
+        screen = run.element;
+        break;
+      }
+      case 'courier':
+        screen = this.courierScreen();
+        break;
+      case 'courier-run': {
+        const run = courierScreen(this.game, route.chapter, {
+          onBack: () => this.back('courier'),
+          again: () => this.replace({ name: 'courier-run', chapter: route.chapter }),
         });
         this.cleanup = run.cleanup;
         screen = run.element;
@@ -1092,8 +1111,15 @@ export class App {
         status: progress().modes?.patrol ? `Рекорд: ${progress().modes!.patrol!.best} очков` : '3 минуты на посту',
         open: () => this.open({ name: 'patrol' }),
       },
+      courier: {
+        icon: '📦',
+        title: 'Смена курьера',
+        text: '5 минут, заказ за заказом: вопрос у каждой двери, серия верных ответов — множитель до ×5.',
+        status: progress().modes?.courier?.length ? `Рекорд: ${progress().modes!.courier![0].score} очков` : 'Таблица рекордов пуста',
+        open: () => this.open({ name: 'courier' }),
+      },
     };
-    const list = () => modesView([cards.duel, cards.signs, cards.patrol]);
+    const list = () => modesView([cards.duel, cards.signs, cards.patrol, cards.courier]);
     const body = el('div', {}, list());
     const route = this.route;
     void Promise.all([loadQuestions(), loadSigns()]).then(([all, signs]) => {
@@ -1139,6 +1165,53 @@ export class App {
       );
     });
     return this.page('Один день Соколова', body, { back: 'modes' });
+  }
+
+  private courierScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    void loadMapping().then((mapping) => {
+      if (this.route !== route) return;
+      const data = progress();
+      const order = mapping.chapters.map((c) => c.id);
+      const records = data.modes?.courier ?? [];
+      const district = (id: string) => mapping.chapters.find((c) => c.id === id)?.district ?? '';
+      body.replaceChildren(
+        el(
+          'section',
+          { class: 'panel mode-intro' },
+          el('p', { class: 'event-intro' }, avatar('marina', 'avatar--small'), el('span', {}, 'Марина: «Срочная смена! Пять минут, заказы один за другим — флажок покажет адрес»')),
+          el(
+            'ul',
+            { class: 'mode-rules' },
+            el('li', {}, '📦 у каждой двери — вопрос из билетов: сначала повторы ошибок, потом новые;'),
+            el('li', {}, `🔥 верно — ${COURIER.points} очков × множитель, серия растит его до ×${COURIER.maxMultiplier};`),
+            el('li', {}, `⏱ ошибка — множитель с нуля и −${COURIER.wrongPenalty} с, нарушение правил — −${COURIER.violationPenalty} с.`),
+          ),
+        ),
+        el('h2', { class: 'section-title' }, 'Район смены'),
+        districtPicker(
+          mapping.chapters.filter((c) => isUnlocked(data, order, c.id)),
+          (id) => this.open({ name: 'courier-run', chapter: id }),
+        ),
+        el('h2', { class: 'section-title' }, 'Таблица рекордов'),
+        records.length
+          ? el(
+              'ol',
+              { class: 'records' },
+              ...records.map((r, i) =>
+                el(
+                  'li',
+                  { class: `records__row${i === 0 ? ' is-top' : ''}` },
+                  el('span', { class: 'records__place' }, String(i + 1)),
+                  el('span', { class: 'records__body' }, el('b', {}, `${r.score} ${plural(r.score, ['очко', 'очка', 'очков'])}`), el('span', {}, `${district(r.chapter)} · доставок ${r.deliveries} · точность ${r.answers ? Math.round((r.correct / r.answers) * 100) : 0}% · ${dayLabel(r.at)}`)),
+                ),
+              ),
+            )
+          : el('p', { class: 'panel__note' }, 'Смен ещё не было — первая сразу попадёт в таблицу.'),
+      );
+    });
+    return this.page('Смена курьера', body, { back: 'modes' });
   }
 
   private signsScreen(): HTMLElement {

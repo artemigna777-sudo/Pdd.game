@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { PORTRAIT_IDS, portraitSvg } from '../src/story/portraits.ts';
 import { CHARACTERS } from '../src/story/story.ts';
 import { carSvg } from '../src/ui/dailyView.ts';
-import { CUT, SCENES, TIMELINE, type Scene } from './scenes.ts';
+import { SCENES, TIMELINE, type Scene } from './scenes.ts';
 
 const dir = new URL('./video/', import.meta.url);
 const font = (file: string) => readFileSync(new URL(`fonts/${file}`, dir)).toString('base64');
@@ -33,16 +33,7 @@ const videos = SCENES.flatMap((s, i) =>
           <video id="v${i}_${j}" class="clip shot" src="clips/${c.file}.mp4" data-start="${c.start}" data-duration="${c.duration}" data-media-start="${c.from}" muted playsinline></video>`),
 ).join('');
 
-/** Трейлер или промо-ролик новых режимов (`CUT=modes`): свой файл композиции, музыки и тексты. */
-const MODES = CUT === 'modes';
-const FILE = MODES ? 'modes.html' : 'index.html';
-const MUSIC = MODES ? 'modes.wav' : 'music.wav';
-const TEXT = MODES
-  ? { sub: 'Новые режимы:<br />дуэль, Знакодекс, пост ДПС<br />и смена курьера', facts: 'Дуэль · Знакодекс<br />Пост ДПС · Смена курьера' }
-  : { sub: 'Игра для подготовки<br />к теории на права', facts: '800 вопросов · 10 глав · экзамен как в ГИБДД' };
-
-// Знакомство с героями есть только в трейлере.
-const cast = SCENES.find((s) => s.cast) ?? { start: TIMELINE.total + 10, duration: 0 };
+const cast = SCENES.find((s) => s.cast)!;
 const castCards = PORTRAIT_IDS.map((id, i) => `
           <div class="person" id="person${i}">
             <div class="face">${portraitSvg(id)}</div>
@@ -64,7 +55,7 @@ const html = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${W}, height=${H}" />
-    <title>Курьер ПДД — ${MODES ? 'новые режимы' : 'трейлер'}</title>
+    <title>Курьер ПДД — трейлер</title>
     <script src="gsap.min.js"></script>
     <style>
       @font-face {
@@ -133,14 +124,14 @@ const html = `<!doctype html>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="${total}" data-width="${W}" data-height="${H}">
-      <audio id="music" src="${MUSIC}" data-start="0" data-duration="${total}" data-volume="1"></audio>
+      <audio id="music" src="music.wav" data-start="0" data-duration="${total}" data-volume="1"></audio>
       <div class="lanes" id="lanes"></div>
       <div class="glow" id="glow"></div>
 
       <div id="intro" class="clip" data-start="0" data-duration="${intro + 0.6}">
         <div id="introCar">${car}</div>
         <h1 id="introTitle">Курьер <span class="hl">ПДД</span></h1>
-        <p id="introSub">${TEXT.sub}</p>
+        <p id="introSub">Игра для подготовки<br />к теории на права</p>
       </div>
 ${captions}
 
@@ -149,17 +140,13 @@ ${captions}
         </div>
       </div>
 
-${
-  MODES
-    ? ''
-    : `      <div id="cast" class="clip" data-start="${cast.start}" data-duration="${cast.duration}">${castCards}
+      <div id="cast" class="clip" data-start="${cast.start}" data-duration="${cast.duration}">${castCards}
       </div>
-`
-}
+
       <div id="outro" class="clip" data-start="${outro}" data-duration="${total - outro}">
         <div id="outroCar">${car}</div>
         <h1 id="outroTitle">Курьер <span class="hl">ПДД</span></h1>
-        <p id="outroFacts">${TEXT.facts}</p>
+        <p id="outroFacts">800 вопросов · 10 глав · 4 режима<br />экзамен как в ГИБДД</p>
         <p id="outroCta">Играй бесплатно в браузере</p>
         <p id="outroUrl">artemigna777-sudo.github.io/Pdd.game</p>
         <p id="outroNote">Работает без интернета.<br />Можно добавить на главный экран.</p>
@@ -181,22 +168,14 @@ ${
       // Телефон выезжает снизу, уходит на время знакомства с героями и в конце.
       tl.set('#phone', { y: 1700 }, 0);
       tl.to('#phone', { y: 0, duration: 0.7, ease: 'power3.out' }, ${intro - 0.45});
-${
-  MODES
-    ? ''
-    : `      tl.to('#phone', { y: 1700, duration: 0.5, ease: 'power2.in' }, ${cast.start - 0.35});
+      tl.to('#phone', { y: 1700, duration: 0.5, ease: 'power2.in' }, ${cast.start - 0.35});
       tl.to('#phone', { y: 0, duration: 0.6, ease: 'power3.out' }, ${cast.start + cast.duration - 0.3});
-`
-}      tl.to('#phone', { y: 1700, duration: 0.5, ease: 'power2.in' }, ${outro - 0.35});
+      tl.to('#phone', { y: 1700, duration: 0.5, ease: 'power2.in' }, ${outro - 0.35});
 ${SCENES.map(sceneTweens).join('')}
 
-${
-  MODES
-    ? ''
-    : `      // Герои по одному.
+      // Герои по одному.
       ${PORTRAIT_IDS.map((_, i) => `tl.fromTo('#person${i}', { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(2)' }, ${(cast.start + 0.25 + i * 0.16).toFixed(2)});`).join('\n      ')}
-      tl.to('#cast', { opacity: 0, duration: 0.25 }, ${cast.start + cast.duration - 0.25});`
-}
+      tl.to('#cast', { opacity: 0, duration: 0.25 }, ${cast.start + cast.duration - 0.25});
 
       // Финал.
       tl.fromTo('#outroCar', { y: 700, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, ${outro});
@@ -214,5 +193,5 @@ ${
 </html>
 `;
 
-writeFileSync(new URL(FILE, dir), html);
-console.log(`trailer/video/${FILE}: ${total.toFixed(1)} с, сцен ${SCENES.length}, кадров игры ${SCENES.reduce((n, s) => n + s.clips.length, 0)}`);
+writeFileSync(new URL('index.html', dir), html);
+console.log(`trailer/video/index.html: ${total.toFixed(1)} с, сцен ${SCENES.length}, кадров игры ${SCENES.reduce((n, s) => n + s.clips.length, 0)}`);

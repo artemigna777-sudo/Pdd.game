@@ -54,12 +54,72 @@ export function setupPwa(): void {
   });
 
   if (!('serviceWorker' in navigator)) return;
-  const updateSW = registerSW({
+  updateSW = registerSW({
     onNeedRefresh() {
-      showToast('Доступна новая версия игры', { action: 'Обновить', onAction: () => updateSW(true), persistent: true });
+      updateReady = true;
+      showToast('Доступна новая версия игры', { action: 'Обновить', onAction: () => applyUpdate(), persistent: true });
     },
     onOfflineReady() {
       showToast('Готово: игра работает без интернета');
     },
+    onRegisteredSW(_url, r) {
+      if (!r) return;
+      registration = r;
+      // Игра с главного экрана живёт днями без перезагрузки: браузер сам новую версию не ищет.
+      // Поэтому проверяем, когда игру снова открыли, и раз в полчаса.
+      window.setInterval(() => void quietCheck(), CHECK_EVERY);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void quietCheck();
+      });
+    },
   });
+}
+
+/** Когда собрана эта версия игры (подставляет Vite при сборке). */
+export const BUILD_TIME: string = __BUILD_TIME__;
+
+const CHECK_EVERY = 30 * 60_000;
+let registration: ServiceWorkerRegistration | undefined;
+let updateSW: ((reload?: boolean) => Promise<void>) | undefined;
+let updateReady = false;
+let lastCheck = 0;
+
+/** Новая версия скачана и ждёт перезапуска. */
+export const isUpdateReady = () => updateReady;
+
+/** Перезапустить игру с новой версией. */
+export function applyUpdate(): void {
+  if (!updateSW) return window.location.reload();
+  // Новая версия взяла управление — перезагрузить страницу (и подстраховка, если сигнал не придёт).
+  const reload = () => window.location.reload();
+  navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+  window.setTimeout(reload, 4000);
+  void updateSW(true);
+}
+
+async function quietCheck() {
+  if (!registration || !navigator.onLine || Date.now() - lastCheck < 60_000) return;
+  lastCheck = Date.now();
+  try {
+    await registration.update();
+  } catch {
+    // Нет сети или сервер недоступен — проверим в следующий раз.
+  }
+}
+
+export type UpdateCheck = 'ready' | 'downloading' | 'latest' | 'offline' | 'unavailable';
+
+/** Проверить обновление по кнопке в настройках. */
+export async function checkForUpdate(): Promise<UpdateCheck> {
+  if (updateReady) return 'ready';
+  if (!registration) return 'unavailable';
+  if (!navigator.onLine) return 'offline';
+  lastCheck = Date.now();
+  try {
+    await registration.update();
+  } catch {
+    return 'offline';
+  }
+  if (updateReady || registration.waiting) return 'ready';
+  return registration.installing ? 'downloading' : 'latest';
 }

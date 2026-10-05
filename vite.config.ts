@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   // Относительные пути: сборка работает и на https://<user>.github.io/<repo>/, и локально.
   base: './',
+  // Версия игры в настройках — время сборки.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   build: {
     target: 'es2020',
     // Phaser сам по себе ~1.2 МБ, это ожидаемо.

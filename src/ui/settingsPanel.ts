@@ -4,6 +4,7 @@ import { levelOf, sanitizeProgress } from '../progress/progress.ts';
 import { getSettings, updateSettings, type ControlMode, type Theme } from '../settings.ts';
 import type { Difficulty } from '../world/rules.ts';
 import { load } from '../storage.ts';
+import { BUILD_TIME, applyUpdate, checkForUpdate, isUpdateReady, type UpdateCheck } from '../pwa.ts';
 import { playTutorial, showModal } from './cutscene.ts';
 import { shareFile } from './share.ts';
 import { el } from './dom.ts';
@@ -15,7 +16,7 @@ const OPTIONS: Array<{ mode: ControlMode; title: string; hint: string }> = [
 
 /**
  * Настройки: управление, звук и вибрация, вид (тема и шрифт), обучение. На полном экране
- * настроек (`full`) — ещё и резервная копия прогресса.
+ * настроек (`full`) — ещё резервная копия прогресса и версия игры.
  */
 export function settingsPanel(full = false): HTMLElement {
   const buttons = OPTIONS.map((o) =>
@@ -71,6 +72,7 @@ export function settingsPanel(full = false): HTMLElement {
     el('h2', { class: 'settings__title settings__title--next' }, 'Обучение'),
     tutorial,
     full ? backupSection() : null,
+    full ? versionSection() : null,
   );
 }
 
@@ -188,6 +190,43 @@ function backupSection(): HTMLElement {
     ),
     el('div', { class: 'choices' }, save, restore),
     input,
+    status,
+  );
+}
+
+const CHECK_TEXT: Record<Exclude<UpdateCheck, 'ready'>, string> = {
+  latest: 'Это последняя версия игры.',
+  downloading: 'Нашлась новая версия, она скачивается. Когда скачается, появится кнопка «Обновить».',
+  offline: 'Нет интернета — проверить не получилось.',
+  unavailable: 'Проверить не получилось: в этом браузере игра не обновляется сама. Обновите страницу.',
+};
+
+/** Версия игры (время сборки) и проверка обновлений. */
+function versionSection(): HTMLElement {
+  const status = el('p', { class: 'choice__hint', 'aria-live': 'polite' });
+  const built = new Date(BUILD_TIME);
+  const version = Number.isNaN(built.getTime()) ? '' : built.toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const button = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Проверить обновления');
+  const ready = () => {
+    status.textContent = 'Новая версия скачана.';
+    button.textContent = 'Обновить игру';
+    button.onclick = () => applyUpdate();
+  };
+  button.onclick = async () => {
+    button.disabled = true;
+    status.textContent = 'Проверяю…';
+    const result = await checkForUpdate();
+    button.disabled = false;
+    if (result === 'ready') ready();
+    else status.textContent = CHECK_TEXT[result];
+  };
+  if (isUpdateReady()) ready();
+  return el(
+    'section',
+    { class: 'version' },
+    el('h2', { class: 'settings__title settings__title--next' }, 'Версия игры'),
+    el('p', { class: 'choice__hint' }, version ? `Версия от ${version}.` : 'Версия для разработки.'),
+    el('div', { class: 'choices' }, button),
     status,
   );
 }

@@ -9,10 +9,13 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { Screencast } from './screencast.ts';
 import { trailerProgress, type SeedOptions } from './seed.ts';
+import qrcode from 'qrcode-generator';
 import { encodeDuel, type DuelPayload } from '../src/duel/duel.ts';
 import { recordAnswer, type ProgressData } from '../src/progress/progress.ts';
 
 const BASE = process.env.TRAILER_URL ?? 'http://localhost:5173/';
+/** Адрес игры в интернете — для ссылок, которые видны в ролике. */
+const PUBLIC_URL = 'https://artemigna777-sudo.github.io/Pdd.game/';
 const OUT = new URL('./video/clips/', import.meta.url).pathname;
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
 const QUESTIONS: { id: string; correct: number; image?: string; options: string[] }[] = JSON.parse(readFileSync(new URL('../data/questions.json', import.meta.url), 'utf8'));
@@ -394,6 +397,17 @@ const CLIPS: Record<string, Clip> = {
         await page.getByRole('button', { name: /^Ответить/ }).tap();
       }
       await page.locator('.duel-share').waitFor();
+      // Запись идёт с локальной игры: ссылка и QR-код в ролике должны вести на настоящий адрес.
+      const local = await page.locator('.duel-link').inputValue();
+      const link = PUBLIC_URL + local.slice(local.indexOf('#'));
+      const qr = qrcode(0, 'L');
+      qr.addData(link);
+      qr.make();
+      const svg = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      await page.evaluate(([l, q]) => {
+        (document.querySelector('.duel-link') as HTMLInputElement).value = l;
+        document.querySelector('.qr')!.innerHTML = q;
+      }, [link, svg] as const);
       await wait(300);
       await rec.resume();
       await wait(1600);

@@ -13,3 +13,11 @@ trailer/video/snapshots/
 trailer/video/.hf-*
 trailer/.*.hf-transaction-*/
 trailer/work-*/
+# Реклама для TikTok: музыка из чужого ролика, запись и кадр игры, готовые ролики (см. trailer/ad/README.md)
+trailer/ad/video/music.wav
+trailer/ad/video/drive.mp4
+trailer/ad/video/city.png
+trailer/ad/video/snapshots/
+trailer/ad/video/renders/
+trailer/ad/video/.hf-*
+trailer/ad/*.mp4

@@ -3,7 +3,7 @@
  */
 import qrcode from 'qrcode-generator';
 import type { Question } from '../data/types.ts';
-import { DUEL, cleanName, duelScore, duelTime, duelWinner, type DuelPayload, type DuelSide } from '../duel/duel.ts';
+import { DUEL, cleanName, duelHashInText, duelScore, duelTime, duelWinner, type DuelPayload, type DuelSide } from '../duel/duel.ts';
 import type { DuelRecord, DuelStats } from '../duel/duelHistory.ts';
 import { el } from './dom.ts';
 import { dayLabel, plural, timeLabel } from './format.ts';
@@ -75,6 +75,83 @@ export interface DuelHubActions {
   setName: (name: string) => void;
   start: () => void;
   open: (r: DuelRecord) => void;
+  /** Открыть вызов, вставленный из буфера обмена (`#duel=…`). */
+  openLink: (hash: string) => void;
+}
+
+/**
+ * «Вставить вызов от друга». Ссылка из мессенджера на телефоне открывается в браузере, а не в игре
+ * на главном экране (на iPhone у них разные сохранения), поэтому вызов переносят через буфер обмена.
+ */
+function pasteSection(openLink: (hash: string) => void): HTMLElement {
+  const input = el('input', { class: 'field__input', type: 'text', inputmode: 'url', autocomplete: 'off', placeholder: 'Вставь сюда ссылку из сообщения' });
+  const field = el('label', { class: 'field', hidden: true }, el('span', { class: 'field__label' }, 'Ссылка на дуэль'), input);
+  const go = (text: string): boolean => {
+    const hash = duelHashInText(text);
+    if (hash) openLink(hash);
+    return !!hash;
+  };
+  const paste = el('button', { class: 'btn btn--secondary', type: 'button' }, '📋 Вставить вызов от друга');
+  paste.onclick = async () => {
+    try {
+      if (go(await navigator.clipboard.readText())) return;
+      showToast('В буфере нет ссылки на дуэль. Скопируй сообщение друга со ссылкой или вставь ссылку в поле.');
+    } catch {
+      // Браузер не дал прочитать буфер — вставить вручную.
+    }
+    field.hidden = false;
+    input.focus();
+  };
+  input.addEventListener('input', () => {
+    if (go(input.value)) input.value = '';
+  });
+  return el(
+    'section',
+    { class: 'panel duel-paste' },
+    el('h2', { class: 'panel__title' }, 'Вызов от друга'),
+    el('p', { class: 'panel__note' }, 'Ссылка открылась в браузере, а не здесь? Скопируй её и вставь сюда — дуэль пойдёт в твоё сохранение.'),
+    paste,
+    field,
+  );
+}
+
+/**
+ * Подсказка в браузере: ссылка открылась не в игре на главном экране, сохранение здесь своё.
+ * `url` — та же ссылка, чтобы скопировать её и вставить в игре.
+ */
+export function elsewhereNotice(url: string, what: 'вызов' | 'итог'): HTMLElement {
+  const copy = el('button', { class: 'btn btn--primary', type: 'button' }, what === 'вызов' ? 'Скопировать вызов' : 'Скопировать итог');
+  const manual = el('input', { class: 'field__input', type: 'text', readonly: true, value: url, hidden: true, 'aria-label': 'Ссылка на дуэль' });
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Скопировано. Теперь открой «Курьер ПДД» с главного экрана.');
+    } catch {
+      manual.hidden = false;
+      manual.select();
+      showToast('Не получилось скопировать — выдели ссылку в поле и скопируй её.');
+    }
+  };
+  return el(
+    'section',
+    { class: 'panel duel-elsewhere' },
+    el('h2', { class: 'panel__title' }, '📱 Играешь с главного экрана?'),
+    el(
+      'p',
+      { class: 'panel__note' },
+      'Ссылки из мессенджеров открываются в браузере, а у игры на главном экране своё сохранение — здесь его не видно. Чтобы дуэль попала в твой прогресс:',
+    ),
+    el(
+      'ol',
+      { class: 'duel-elsewhere__steps' },
+      el('li', {}, `Нажми «${copy.textContent}».`),
+      el('li', {}, 'Открой «Курьер ПДД» с главного экрана.'),
+      el('li', {}, '«Режимы» → «Дуэль» → «Вставить вызов от друга».'),
+    ),
+    copy,
+    manual,
+    el('p', { class: 'panel__note' }, what === 'вызов' ? 'Или сыграй прямо здесь — но ответы останутся в этом браузере.' : 'Или посмотри итог здесь — в истории дуэлей в игре он не появится.'),
+  );
 }
 
 /** Начало: имя, «Новая дуэль», счёт и история. */
@@ -118,6 +195,7 @@ export function duelHubView(records: readonly DuelRecord[], stats: DuelStats, by
       }),
       start,
     ),
+    pasteSection(a.openLink),
     el('h2', { class: 'section-title' }, 'Мои дуэли'),
     records.length
       ? el('p', { class: 'panel__note' }, `Побед: ${stats.wins} · поражений: ${stats.losses} · ничьих: ${stats.draws}${stats.waiting ? ` · ждут ответа: ${stats.waiting}` : ''}`)

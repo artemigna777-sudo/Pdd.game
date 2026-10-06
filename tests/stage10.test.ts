@@ -8,6 +8,7 @@ import {
   cleanName,
   decodeDuel,
   duelFromHash,
+  duelHashInText,
   duelLink,
   duelScore,
   duelTime,
@@ -68,6 +69,18 @@ test('ссылка: вызов и ответ шифруются и разбир�
   assert.deepEqual(duelFromHash(new URL(link).hash), reply);
   assert.equal(hashHasDuel('#duel=xyz'), true);
   assert.equal(hashHasDuel('#other'), false);
+});
+
+test('вызов из буфера обмена: ссылка находится в сообщении друга целиком', () => {
+  const p = challenge();
+  const link = duelLink('https://artemigna777-sudo.github.io/Pdd.game/', p);
+  const hash = new URL(link).hash;
+  // Сообщение, как его отправляет игра, и как его копируют из мессенджера.
+  for (const text of [link, `Вызов на дуэль по билетам ПДД: 9 из 10 за 0:42. Сможешь лучше? ${link}`, `${link}\nКурьер ПДД\nИгра для подготовки к теории на права`, hash, `  ${link}  `]) {
+    assert.equal(duelHashInText(text), hash, text);
+    assert.deepEqual(duelFromHash(duelHashInText(text)!), p);
+  }
+  for (const text of ['', 'привет', 'https://artemigna777-sudo.github.io/Pdd.game/', '#duel=']) assert.equal(duelHashInText(text), undefined, text);
 });
 
 test('ссылка: испорченная или чужая не открывается', () => {

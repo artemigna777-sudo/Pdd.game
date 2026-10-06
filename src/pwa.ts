@@ -13,7 +13,8 @@ const notify = () => listeners.forEach((fn) => fn());
 
 export type InstallMode = 'prompt' | 'ios-hint' | 'none';
 
-const isStandalone = () =>
+/** Игра открыта с главного экрана (как приложение), а не в браузере. */
+export const isStandalone = () =>
   window.matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 

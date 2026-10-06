@@ -34,7 +34,7 @@ import {
   type AnswerOutcome,
 } from '../progress/progress.ts';
 import { readiness, blockLabel, type Tip } from '../progress/readiness.ts';
-import { installMode, onInstallModeChange, promptInstall } from '../pwa.ts';
+import { installMode, isStandalone, onInstallModeChange, promptInstall } from '../pwa.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuestions, resolveDuel, type DuelPayload } from '../duel/duel.ts';
 import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
@@ -56,7 +56,7 @@ import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
 import { shareResult } from './share.ts';
 import { showToast } from './toast.ts';
-import { duelHubView, duelInviteView, duelResultView } from './duelView.ts';
+import { duelHubView, duelInviteView, duelResultView, elsewhereNotice } from './duelView.ts';
 import { districtPicker, modesView } from './modesView.ts';
 import { patrolScreen } from './patrolScreen.ts';
 import { courierScreen } from './courierScreen.ts';
@@ -110,11 +110,11 @@ type Route =
   | { name: 'courier' }
   | { name: 'courier-run'; chapter: string }
   /** Вызов от друга по ссылке. */
-  | { name: 'duel-invite'; payload: DuelPayload }
+  | { name: 'duel-invite'; payload: DuelPayload; elsewhere?: string }
   /** Идущая дуэль: новая или ответ на вызов. */
   | { name: 'duel-run'; invite?: DuelPayload }
   /** Итог дуэли из истории. */
-  | { name: 'duel-result'; id: string; role: 'from' | 'to' };
+  | { name: 'duel-result'; id: string; role: 'from' | 'to'; elsewhere?: string };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
@@ -169,6 +169,12 @@ function depth(route: Route): number {
   if (route.name === 'exam-run' || (route.name === 'exam-result' && route.via === 'run')) return route.boss ? 3 : 2;
   return DEPTH[route.name];
 }
+
+/**
+ * Дуэль по ссылке в браузере с почти пустым сохранением — подсказать перенести её в игру на главном
+ * экране. Кто давно играет в браузере (столько ответов и больше), подсказку не видит.
+ */
+const ELSEWHERE_MAX_ANSWERS = 30;
 
 function isRoute(value: unknown): value is Route {
   return typeof value === 'object' && value !== null && (value as Route).name in DEPTH;
@@ -233,18 +239,22 @@ export class App {
       return;
     }
     const now = Date.now();
+    // Ссылка из мессенджера открылась в браузере, где своё (почти пустое) сохранение, а игрок,
+    // возможно, играет с главного экрана: подсказать, как перенести вызов туда.
+    const elsewhere = !isStandalone() && Object.keys(progress().questions).length < ELSEWHERE_MAX_ANSWERS ? location.href.split('#')[0] + hash : undefined;
+    const mark = elsewhere ? { elsewhere } : {};
     let next: Route;
     if (payload.to) {
       // Ответ с итогом: мой ответ (открыт ещё раз) или ответ на мой вызов.
       if (findDuel(payload.id, 'to') && !findDuel(payload.id, 'from')) next = { name: 'duel-result', id: payload.id, role: 'to' };
       else {
         saveAnswerToMine({ ...payload, to: payload.to }, now);
-        next = { name: 'duel-result', id: payload.id, role: 'from' };
+        next = { name: 'duel-result', id: payload.id, role: 'from', ...mark };
         playSound('reward');
       }
     } else if (findDuel(payload.id, 'from')) next = { name: 'duel-result', id: payload.id, role: 'from' };
     else if (findDuel(payload.id, 'to')) next = { name: 'duel-result', id: payload.id, role: 'to' };
-    else next = { name: 'duel-invite', payload };
+    else next = { name: 'duel-invite', payload, ...mark };
     // Под дуэлью — «Режимы» и «Дуэль», чтобы «Назад» вёл по обычному пути.
     if (this.route.name !== 'modes' && this.route.name !== 'duel') this.open({ name: 'modes' });
     if (this.route.name !== 'duel') this.open({ name: 'duel' });
@@ -1255,6 +1265,7 @@ export class App {
           setName: (name) => updateSettings({ name }),
           start: () => this.open({ name: 'duel-run' }),
           open: (r) => this.open({ name: 'duel-result', id: r.id, role: r.role }),
+          openLink: (hash) => void this.openDuelLink(hash),
         }),
       );
     });
@@ -1271,6 +1282,7 @@ export class App {
         return;
       }
       body.replaceChildren(
+        ...(route.elsewhere ? [elsewhereNotice(route.elsewhere, 'вызов')] : []),
         duelInviteView(route.payload, qs, {
           name: getSettings().name,
           setName: (name) => updateSettings({ name }),
@@ -1392,7 +1404,10 @@ export class App {
           : record.role === 'to' && record.them
             ? duelLink(base, { id: record.id, at: record.at, q: record.q, from: record.them, to: record.me })
             : undefined;
-      body.replaceChildren(duelResultView(record, qs, { link, again: () => this.back('duel', { name: 'duel-run' }) }));
+      body.replaceChildren(
+        ...(route.elsewhere ? [elsewhereNotice(route.elsewhere, 'итог')] : []),
+        duelResultView(record, qs, { link, again: () => this.back('duel', { name: 'duel-run' }) }),
+      );
     });
     return this.page('Дуэль', body, { back: 'duel' });
   }

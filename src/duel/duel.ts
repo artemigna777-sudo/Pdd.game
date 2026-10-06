@@ -141,6 +141,15 @@ export function duelFromHash(hash: string): DuelPayload | undefined {
   return m ? decodeDuel(m[1]) : undefined;
 }
 
+/**
+ * Найти ссылку на дуэль в любом тексте: сообщение друга целиком, сама ссылка или только `#duel=…`.
+ * Нужно, чтобы перенести вызов из браузера в игру на главном экране через буфер обмена.
+ */
+export function duelHashInText(text: string): string | undefined {
+  const m = /#duel=([A-Za-z0-9_-]+)/.exec(text);
+  return m ? `#duel=${m[1]}` : undefined;
+}
+
 /** Есть ли в адресе дуэль (даже испорченная) — чтобы сказать игроку, что ссылка не открылась. */
 export const hashHasDuel = (hash: string): boolean => hash.startsWith('#duel=');
 

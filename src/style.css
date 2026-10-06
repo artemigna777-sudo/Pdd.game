@@ -3088,6 +3088,22 @@ button {
   gap: 14px;
 }
 
+/* Ссылка открылась в браузере, а не в игре на главном экране: как перенести вызов. */
+.duel-elsewhere {
+  margin-bottom: 14px;
+  border: 2px solid var(--accent);
+}
+
+.duel-elsewhere__steps {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .duel .section-title {
   margin-bottom: 0;
 }

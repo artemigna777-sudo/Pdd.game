@@ -1,6 +1,12 @@
 /**
- * Чтение статистики из GoatCounter для экрана автора (API v0, ключ с правом «Read statistics»).
- * Разбор ответов — отдельными функциями: их проверяют автотесты.
+ * Чтение статистики для экрана автора — из открытого счётчика посетителей GoatCounter:
+ * `https://<код>.goatcounter.com/counter/<адрес>.json` отвечает `{"count": "1 234"}`.
+ *
+ * Почему не API с ключом: браузер не пустил его запросы из игры (проверено на телефоне Артёма
+ * 07.10.2026). Открытый счётчик для того и сделан, чтобы сайты брали числа прямо в браузере,
+ * без ключа. Нужна галочка «Allow adding visitor counts on your website» в настройках счётчика.
+ * Числа счётчика открыты всем, кто знает адрес, — это только количество посетителей экранов.
+ * Откуда пришли, телефоны и страны так не узнать: они на сайте счётчика.
  */
 
 export interface DayCount {
@@ -8,34 +14,27 @@ export interface DayCount {
   day: string;
   count: number;
 }
-export interface PageCount {
-  path: string;
-  title: string;
-  event: boolean;
-  count: number;
-}
 export interface Named {
   name: string;
   count: number;
 }
 export interface StatsReport {
-  /** Посетители по дням за 30 дней, от старых к новым. */
+  /** Посетители по дням, от старых к новым; последний — сегодня. */
   days: DayCount[];
-  /** Посетителей сегодня, за 7 и 30 дней. */
+  /** Посетителей сегодня, за 7 и за 30 дней. */
   today: number;
   week: number;
   month: number;
-  /** Экраны и события за 30 дней. */
-  pages: PageCount[];
-  /** Откуда пришли, телефоны, страны — за 30 дней. */
-  refs: Named[];
-  systems: Named[];
-  locations: Named[];
+  /** Посетители за 30 дней по адресам экранов и событий. */
+  counts: Record<string, number>;
+  /** Сколько чисел не загрузилось (вместо них нули). */
+  failed: number;
   /** Когда загружено. */
   at: number;
 }
 
-export type StatsFailure = 'token' | 'network' | 'server';
+/** `disabled` — счётчик ответил ошибкой (скорее всего, не включена галочка), `network` — запрос не прошёл. */
+export type StatsFailure = 'disabled' | 'network';
 export class StatsError extends Error {
   constructor(
     readonly kind: StatsFailure,
@@ -45,35 +44,23 @@ export class StatsError extends Error {
   }
 }
 
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : 0);
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+/** Дней на графике: каждый день — отдельный запрос к счётчику. */
+export const CHART_DAYS = 14;
+/** Сколько запросов к счётчику идут одновременно. */
+const PARALLEL = 4;
 
-/** «/api/v0/stats/total»: всего за период и по дням. */
-export function parseTotal(json: unknown): { total: number; days: DayCount[] } {
-  const o = obj(json);
-  const days = list(o.stats)
-    .map((d) => ({ day: str(obj(d).day).slice(0, 10), count: num(obj(d).daily) }))
-    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.day))
-    .sort((a, b) => a.day.localeCompare(b.day));
-  return { total: num(o.total), days };
+/** Ответ счётчика → число. «1,234», «1 234» и 1234 — одно и то же. */
+export function parseCount(json: unknown): number {
+  const count = json && typeof json === 'object' ? (json as Record<string, unknown>).count : undefined;
+  if (typeof count === 'number' && Number.isFinite(count)) return Math.max(0, Math.round(count));
+  if (typeof count !== 'string') return 0;
+  const digits = count.replace(/\D/g, '');
+  return digits ? Number(digits) : 0;
 }
 
-/** «/api/v0/stats/hits»: экраны и события. */
-export function parseHits(json: unknown): PageCount[] {
-  return list(obj(json).hits)
-    .map((h) => ({ path: str(obj(h).path), title: str(obj(h).title), event: obj(h).event === true, count: num(obj(h).count) }))
-    .filter((h) => h.path)
-    .sort((a, b) => b.count - a.count);
-}
-
-/** «/api/v0/stats/toprefs», «…/systems», «…/locations»: названия и числа. */
-export function parseNamed(json: unknown): Named[] {
-  return list(obj(json).stats)
-    .map((s) => ({ name: str(obj(s).name) || str(obj(s).id), count: num(obj(s).count) }))
-    .filter((s) => s.count > 0)
-    .sort((a, b) => b.count - a.count);
+/** Адрес открытого счётчика: `TOTAL` — весь сайт, иначе адрес экрана («/city/ch1») или событие («exam-pass»). */
+export function counterUrl(site: string, path: string, start: string, end: string): string {
+  return `https://${site}.goatcounter.com/counter/${encodeURIComponent(path)}.json?${new URLSearchParams({ start, end })}`;
 }
 
 /** День `shift` дней назад от `now` (по календарю, без сдвигов на переходе времени). */
@@ -87,43 +74,71 @@ export const isoDay = (ts: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** Загрузить отчёт за 30 дней. Запросы по очереди: у API есть ограничение частоты. */
-export async function loadReport(site: string, token: string, now = Date.now(), fetcher: typeof fetch = fetch): Promise<StatsReport> {
-  // Ключи GoatCounter — латиница и цифры; другой символ браузер в заголовок не пропустит.
-  if (!/^[\x21-\x7e]+$/.test(token)) throw new StatsError('token');
-  const end = isoDay(now);
-  const month = isoDay(daysAgo(now, 29));
-  const week = isoDay(daysAgo(now, 6));
-  const get = async (path: string, params: Record<string, string>) => {
-    let res: Response;
-    try {
-      res = await fetcher(`https://${site}.goatcounter.com/api/v0/${path}?${new URLSearchParams(params)}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        credentials: 'omit',
-      });
-    } catch {
-      throw new StatsError('network');
-    }
-    if (res.status === 401 || res.status === 403) throw new StatsError('token', res.status);
-    if (!res.ok) throw new StatsError('server', res.status);
-    try {
-      return (await res.json()) as unknown;
-    } catch {
-      throw new StatsError('server', res.status);
+/** Выполнить задачи не больше `n` одновременно, сохранив порядок результатов. */
+async function pool<T>(tasks: (() => Promise<T>)[], n: number): Promise<T[]> {
+  const out: T[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      out[i] = await tasks[i]();
     }
   };
-  const range = { start: month, end };
-  const total = parseTotal(await get('stats/total', range));
-  const last7 = parseTotal(await get('stats/total', { start: week, end }));
-  const pages = parseHits(await get('stats/hits', { ...range, limit: '100' }));
-  const refs = parseNamed(await get('stats/toprefs', { ...range, limit: '10' }));
-  const systems = parseNamed(await get('stats/systems', { ...range, limit: '10' }));
-  const locations = parseNamed(await get('stats/locations', { ...range, limit: '10' }));
-  // Дни без посетителей в ответе могут отсутствовать — заполняем нулями.
-  const byDay = new Map(total.days.map((d) => [d.day, d.count]));
-  const days = Array.from({ length: 30 }, (_, i) => {
-    const day = isoDay(daysAgo(now, 29 - i));
-    return { day, count: byDay.get(day) ?? 0 };
-  });
-  return { days, today: days[days.length - 1].count, week: last7.total, month: total.total, pages, refs, systems, locations, at: now };
+  await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, worker));
+  return out;
+}
+
+/**
+ * Загрузить отчёт: посетители сайта сегодня, за 7 и 30 дней, по дням и по `paths` за 30 дней.
+ * Первый запрос (сегодня) решает, работает ли счётчик: его ошибка — ошибка всего отчёта.
+ * Ошибка отдельного адреса — ноль (у адреса, где ещё никого не было, счётчик может ответить 404).
+ */
+export async function loadReport(site: string, paths: string[], now = Date.now(), fetcher: typeof fetch = fetch): Promise<StatsReport> {
+  const today = isoDay(now);
+  const month = isoDay(daysAgo(now, 29));
+  const week = isoDay(daysAgo(now, 6));
+  let failed = 0;
+  const get = async (path: string, start: string, end: string, strict = false): Promise<number> => {
+    let res: Response;
+    try {
+      res = await fetcher(counterUrl(site, path, start, end), { credentials: 'omit' });
+    } catch {
+      if (strict) throw new StatsError('network');
+      failed++;
+      return 0;
+    }
+    if (!res.ok) {
+      if (strict) throw new StatsError('disabled', res.status);
+      if (res.status !== 404) failed++;
+      return 0;
+    }
+    try {
+      return parseCount(await res.json());
+    } catch {
+      if (strict) throw new StatsError('disabled', res.status);
+      failed++;
+      return 0;
+    }
+  };
+
+  const todayCount = await get('TOTAL', today, today, true);
+  const chartDays = Array.from({ length: CHART_DAYS - 1 }, (_, i) => isoDay(daysAgo(now, CHART_DAYS - 1 - i)));
+  const tasks: (() => Promise<number>)[] = [
+    () => get('TOTAL', week, today),
+    () => get('TOTAL', month, today),
+    ...chartDays.map((day) => () => get('TOTAL', day, day)),
+    ...paths.map((path) => () => get(path, month, today)),
+  ];
+  const [weekCount, monthCount, ...rest] = await pool(tasks, PARALLEL);
+  const dayCounts = rest.slice(0, chartDays.length);
+  const pathCounts = rest.slice(chartDays.length);
+  return {
+    days: [...chartDays.map((day, i) => ({ day, count: dayCounts[i] })), { day: today, count: todayCount }],
+    today: todayCount,
+    week: weekCount,
+    month: monthCount,
+    counts: Object.fromEntries(paths.map((p, i) => [p, pathCounts[i]])),
+    failed,
+    at: now,
+  };
 }

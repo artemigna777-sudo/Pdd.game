@@ -35,6 +35,20 @@ test('браузер игры может спрашивать: предвари�
 test('адрес посредника в браузере: работает ли и заданы ли секреты', async () => {
   assert.match(await (await call('/')).text(), /работает/);
   assert.match(await (await call('/', {}, {})).text(), /не заданы секреты/);
+  assert.match(await (await call('/', {}, { GC_TOKEN: 'x', STATS_KEY: `STATS_KEY — ${'a'.repeat(64)}` })).text(), /STATS_KEY задан неверно/);
+});
+
+test('секреты, вставленные с телефона с пробелами и переводом строки по краям, работают', async () => {
+  const asked: (string | null)[] = [];
+  globalThis.fetch = (async (_input: string, init?: RequestInit) => {
+    asked.push(new Headers(init?.headers).get('Authorization'));
+    return new Response('{}');
+  }) as typeof fetch;
+  const env = { GC_TOKEN: ' gc-secret\n', STATS_KEY: `  ${'A'.repeat(64)} \n` };
+  assert.match(await (await call('/', {}, env)).text(), /работает/);
+  assert.equal((await call('/api/v0/stats/total', { key: 'a'.repeat(64) }, env)).status, 200);
+  assert.deepEqual(asked, ['Bearer gc-secret']);
+  assert.equal((await call('/api/v0/stats/total', { key: 'a'.repeat(64) }, { GC_TOKEN: 'x', STATS_KEY: `STATS_KEY — ${'a'.repeat(64)}` })).status, 500, 'с лишними словами — ошибка настройки');
 });
 
 test('без ключа автора или с чужим — отказ, GoatCounter не спрашивается', async () => {

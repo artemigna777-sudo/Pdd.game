@@ -35,20 +35,28 @@ export default {
     if (request.method !== 'GET') return reply(405, { error: 'method' });
 
     const url = new URL(request.url);
+    // Секреты вставляют с телефона: лишние пробелы и переводы строки по краям не мешают.
+    const gcToken = (env.GC_TOKEN || '').trim();
+    const statsKey = (env.STATS_KEY || '').trim().toLowerCase();
+    const keyOk = /^[0-9a-f]{64}$/.test(statsKey);
     // Проверка, что посредник работает: открыть адрес в браузере.
     if (url.pathname === '/') {
-      const ready = Boolean(env.GC_TOKEN && env.STATS_KEY);
-      return new Response(ready ? 'Курьер ПДД: посредник статистики работает.' : 'Курьер ПДД: посредник запущен, но не заданы секреты GC_TOKEN и STATS_KEY.', {
+      const text = !gcToken || !statsKey
+        ? 'Курьер ПДД: посредник запущен, но не заданы секреты GC_TOKEN и STATS_KEY.'
+        : !keyOk
+          ? 'Курьер ПДД: секрет STATS_KEY задан неверно — нужны только 64 знака (цифры и буквы a–f), без слов «STATS_KEY —».'
+          : 'Курьер ПДД: посредник статистики работает.';
+      return new Response(text, {
         headers: { ...cors, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
       });
     }
-    if (!env.GC_TOKEN || !env.STATS_KEY) return reply(500, { error: 'setup' });
-    if (!(await same(request.headers.get('Authorization') || '', `Bearer ${env.STATS_KEY}`))) return reply(401, { error: 'key' });
+    if (!gcToken || !keyOk) return reply(500, { error: 'setup' });
+    if (!(await same(request.headers.get('Authorization') || '', `Bearer ${statsKey}`))) return reply(401, { error: 'key' });
     if (!ALLOWED.test(url.pathname)) return reply(404, { error: 'path' });
 
     let res;
     try {
-      res = await fetch(GOATCOUNTER + url.pathname + url.search, { headers: { Authorization: `Bearer ${env.GC_TOKEN}`, Accept: 'application/json' } });
+      res = await fetch(GOATCOUNTER + url.pathname + url.search, { headers: { Authorization: `Bearer ${gcToken}`, Accept: 'application/json' } });
     } catch {
       return reply(502, { error: 'gc-network' });
     }

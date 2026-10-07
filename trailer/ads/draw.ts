@@ -9,6 +9,8 @@ export interface Pen {
   fill: string;
   accent: string;
   dark: boolean;
+  /** Цвет линий лица, если голова залита цветом линий (силуэты). */
+  faceInk?: string;
 }
 
 export type Face = 'happy' | 'neutral' | 'grin' | 'shock' | 'doubt' | 'cool' | 'calm' | 'relaxed' | 'sad' | 'tired' | 'angry' | 'think' | 'smile' | 'sleepy';
@@ -190,7 +192,7 @@ export function person(p: Pen, o: PersonOpts): { svg: string; head: { x: number;
 function faceGroups(p: Pen, o: PersonOpts, head: { x: number; y: number }, f: 1 | -1): string {
   const set = faces(p, f);
   return FACE_KEYS.map(
-    (k) => `<g id="face${o.id}_${k}" class="face${o.id}" transform="translate(${head.x} ${head.y})" stroke-width="4" opacity="${k === (o.face ?? 'neutral') ? 1 : 0}">${set[k]}</g>`,
+    (k) => `<g id="face${o.id}_${k}" class="face${o.id}" transform="translate(${head.x} ${head.y})" ${p.faceInk ? `stroke="${p.faceInk}"` : ''} stroke-width="4" opacity="${k === (o.face ?? 'neutral') ? 1 : 0}">${set[k]}</g>`,
   ).join('');
 }
 

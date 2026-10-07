@@ -17,8 +17,18 @@ import { v07 } from './videos/v07-leitner.ts';
 import { v08 } from './videos/v08-taksi.ts';
 import { v09 } from './videos/v09-rait.ts';
 import { v10 } from './videos/v10-son.ts';
+import { v11 } from './videos/v11-parizh.ts';
+import { v12 } from './videos/v12-svetofor.ts';
+import { v13 } from './videos/v13-berta.ts';
+import { v14 } from './videos/v14-shahmaty.ts';
+import { v15 } from './videos/v15-nastolka.ts';
+import { v16 } from './videos/v16-seneka.ts';
+import { v17 } from './videos/v17-apollon.ts';
+import { v18 } from './videos/v18-geymer.ts';
+import { v19 } from './videos/v19-milya.ts';
+import { v20 } from './videos/v20-pokazhi.ts';
 
-export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10];
+export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20];
 
 const only = process.argv.slice(2);
 for (const v of VIDEOS) {

@@ -9,6 +9,9 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 let installEvent: BeforeInstallPromptEvent | null = null;
+/** Игру только что установили из этого окна браузера (Chrome): подсказка про главный экран больше не нужна. */
+let installed = false;
+export const justInstalled = () => installed;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((fn) => fn());
 
@@ -52,6 +55,7 @@ export function setupPwa(): void {
   });
   window.addEventListener('appinstalled', () => {
     installEvent = null;
+    installed = true;
     notify();
     showToast('Игра установлена на главный экран');
   });

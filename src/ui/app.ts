@@ -35,6 +35,7 @@ import {
 } from '../progress/progress.ts';
 import { readiness, blockLabel, type Tip } from '../progress/readiness.ts';
 import { installMode, isStandalone, onInstallModeChange, promptInstall } from '../pwa.ts';
+import { installHelpUseful, installTip, openInstallGuide } from './installTip.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuestions, resolveDuel, type DuelPayload } from '../duel/duel.ts';
 import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
@@ -495,12 +496,22 @@ export class App {
       () => (stats.textContent = 'Не удалось загрузить вопросы. Обновите страницу.'),
     );
 
+    // Главный экран: плашка вверху (убирается только крестиком), после неё — ссылка на ту же инструкцию.
+    const answeredHere = () => Object.keys(progress().questions).length;
     const install = el('button', { class: 'btn btn--ghost', type: 'button', onclick: () => promptInstall() }, 'Установить на телефон');
-    const iosHint = el('p', { class: 'menu__hint' }, 'Чтобы установить игру, нажмите «Поделиться» → «На экран „Домой“».');
+    const installHelp = el('button', { class: 'menu__hint menu__hint--link', type: 'button', onclick: () => openInstallGuide(answeredHere()) }, '📲 Как добавить на главный экран');
+    let tip = installTip(answeredHere, () => {
+      tip = null;
+      updateInstall();
+    });
     const updateInstall = () => {
+      if (tip && !installHelpUseful()) {
+        tip.remove();
+        tip = null;
+      }
       const mode = installMode();
-      install.hidden = mode !== 'prompt';
-      iosHint.hidden = mode !== 'ios-hint';
+      install.hidden = Boolean(tip) || mode !== 'prompt';
+      installHelp.hidden = Boolean(tip) || mode === 'prompt' || !installHelpUseful();
     };
     updateInstall();
     this.cleanup = onInstallModeChange(updateInstall);
@@ -527,6 +538,7 @@ export class App {
     return el(
       'div',
       { class: 'screen screen--menu' },
+      tip,
       el(
         'header',
         { class: 'hero' },
@@ -557,7 +569,7 @@ export class App {
           el('button', { class: 'btn btn--secondary btn--modes', type: 'button', onclick: () => this.open({ name: 'modes' }) }, 'Режимы ✨'),
         ),
         install,
-        iosHint,
+        installHelp,
         status,
         stats,
       ),

@@ -7,6 +7,7 @@
  * Рендер — `trailer/ads/render.sh` (см. README).
  */
 import { writeVideo, type Video } from './engine.ts';
+import { writeVideo3, type Video3 } from './engine3.ts';
 import { v01 } from './videos/v01-zabyvanie.ts';
 import { v02 } from './videos/v02-kriegsspiel.ts';
 import { v03 } from './videos/v03-mesta.ts';
@@ -27,11 +28,27 @@ import { v17 } from './videos/v17-apollon.ts';
 import { v18 } from './videos/v18-geymer.ts';
 import { v19 } from './videos/v19-milya.ts';
 import { v20 } from './videos/v20-pokazhi.ts';
+import { v21 } from './videos/v21-ikar.ts';
+import { v22 } from './videos/v22-sizif.ts';
+import { v23 } from './videos/v23-ahill.ts';
+import { v24 } from './videos/v24-strekoza.ts';
+import { v25 } from './videos/v25-titanik.ts';
+import { v26 } from './videos/v26-kolobok.ts';
+import { v27 } from './videos/v27-ariadna.ts';
+import { v28 } from './videos/v28-damokl.ts';
+import { v29 } from './videos/v29-gretel.ts';
+import { v30 } from './videos/v30-uzel.ts';
 
 export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20];
+/** Третья серия — формат новых образцов (`engine3.ts`). */
+export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30];
 
 const only = process.argv.slice(2);
 for (const v of VIDEOS) {
   if (only.length && !only.some((n) => v.id.startsWith(n))) continue;
   console.log(`${v.id}: ${writeVideo(v)}`);
+}
+for (const v of VIDEOS3) {
+  if (only.length && !only.some((n) => v.id.startsWith(n))) continue;
+  console.log(`${v.id}: ${writeVideo3(v)}`);
 }

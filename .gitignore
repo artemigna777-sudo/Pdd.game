@@ -24,3 +24,4 @@ trailer/ad/*.mp4
 # Серия из 10 рекламных роликов: собранные композиции (с музыкой) и готовые MP4 (см. trailer/ads/README.md)
 trailer/ads/out/
 trailer/ads/mp4/
+trailer/ads/music/

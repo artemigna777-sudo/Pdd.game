@@ -60,6 +60,16 @@ export async function passwordMatches(input: string, v: Verifier = authorVerifie
   return (await passwordHash(input, v.salt, v.iterations)) === v.hash;
 }
 
+/**
+ * Ключ автора для посредника статистики (stats-worker): тот же PBKDF2, но с другой солью. Игра
+ * считает его из пароля при входе и хранит на телефоне; в посреднике он лежит секретом STATS_KEY.
+ * По отпечатку пароля ключ не получить, по ключу — пароль.
+ */
+export const KEY_SALT = '18da0d7a2dc59d90047d1019dd5c8fc2';
+
+/** Ключ автора из пароля (повторов столько же, сколько у отпечатка пароля). */
+export const authorKey = (input: string, v: Verifier = authorVerifier()): Promise<string> => passwordHash(input, KEY_SALT, v.iterations);
+
 /** После стольких неверных попыток подряд вход закрывается на `LOCK_MS`. */
 export const MAX_ATTEMPTS = 5;
 export const LOCK_MS = 60_000;

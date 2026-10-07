@@ -10,3 +10,9 @@ export const EXPLANATIONS_SOURCE = { name: 'pdd_russia', url: 'https://github.co
  * не собирается. Что считается и как посмотреть — `src/stats/track.ts` и журнал в CLAUDE.md.
  */
 export const STATS_SITE = 'kurier-pdd';
+
+/**
+ * Посредник статистики (Cloudflare Worker, код — stats-worker/worker.js): отдаёт статистику
+ * GoatCounter только по ключу автора. Пусто — экран статистики берёт числа из открытого счётчика.
+ */
+export const STATS_PROXY = 'https://kurier-pdd-stats.artemigna777.workers.dev';

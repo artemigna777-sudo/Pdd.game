@@ -7,6 +7,9 @@
  * без ключа. Нужна галочка «Allow adding visitor counts on your website» в настройках счётчика.
  * Числа счётчика открыты всем, кто знает адрес, — это только количество посетителей экранов.
  * Откуда пришли, телефоны и страны так не узнать: они на сайте счётчика.
+ *
+ * Основной путь теперь — посредник с ключом автора (src/stats/proxy.ts). Открытый счётчик остаётся
+ * запасным: если посредник не ответил, а галочка в настройках счётчика включена.
  */
 
 export interface DayCount {
@@ -27,10 +30,16 @@ export interface StatsReport {
   month: number;
   /** Посетители за 30 дней по адресам экранов и событий. */
   counts: Record<string, number>;
+  /** Откуда пришли, телефоны и страны за 30 дней — только через посредника. */
+  refs?: Named[];
+  systems?: Named[];
+  locations?: Named[];
   /** Сколько чисел не загрузилось (вместо них нули). */
   failed: number;
   /** Когда загружено. */
   at: number;
+  /** Откуда числа: посредник с ключом автора или открытый счётчик. */
+  source: 'proxy' | 'counter';
 }
 
 /** `disabled` — счётчик ответил ошибкой (скорее всего, не включена галочка), `network` — запрос не прошёл. */
@@ -148,5 +157,6 @@ export async function loadReport(site: string, paths: string[], now = Date.now()
     counts: Object.fromEntries(paths.map((p, i) => [p, pathCounts[i]])),
     failed,
     at: now,
+    source: 'counter',
   };
 }

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { pbkdf2Sync } from 'node:crypto';
 import { test } from 'node:test';
 import { adminState, updateAdmin } from '../src/stats/admin.ts';
-import { AUTHOR, LOCK_MS, MAX_ATTEMPTS, lockedFor, normalizePassword, passwordHash, passwordMatches, recordAttempt, verifierId, type Verifier } from '../src/stats/author.ts';
+import { AUTHOR, KEY_SALT, LOCK_MS, MAX_ATTEMPTS, authorKey, lockedFor, normalizePassword, passwordHash, passwordMatches, recordAttempt, verifierId, type Verifier } from '../src/stats/author.ts';
 
 // В node нет localStorage — для блокировки и входа нужно хранилище в памяти.
 const memory = new Map<string, string>();
@@ -39,6 +39,14 @@ test('отпечаток считается как PBKDF2-SHA-256, пароль 
   assert.equal(await passwordMatches('ab12-cd34-ef56', AUTHOR), false, 'тестовый пароль к настоящему отпечатку не подходит');
 });
 
+test('ключ автора для посредника: PBKDF2 со своей солью, не совпадает с отпечатком пароля', async () => {
+  const key = await authorKey('AB12-cd34-ef56', TEST);
+  assert.equal(key, pbkdf2Sync('ab12cd34ef56', Buffer.from(KEY_SALT, 'hex'), TEST.iterations, 32, 'sha256').toString('hex'));
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.notEqual(key, TEST.hash);
+  assert.notEqual(KEY_SALT, AUTHOR.salt);
+});
+
 test('пять неверных попыток подряд — минута без входа; верная сбрасывает счётчик', () => {
   memory.clear();
   const now = 1_000_000;
@@ -52,16 +60,18 @@ test('пять неверных попыток подряд — минута б�
   assert.equal(lockedFor(now + LOCK_MS), 0);
 });
 
-test('вход запоминается только для нынешнего отпечатка пароля; старый вход без пароля не действует', () => {
+test('вход и ключ автора запоминаются только для нынешнего отпечатка пароля; старый вход без пароля не действует', () => {
   memory.clear();
   assert.equal(adminState().unlocked, false);
   // Вход из прошлой версии игры: без пароля.
   memory.set('pdd-game:admin', JSON.stringify({ unlocked: true, selfIgnore: false }));
-  assert.deepEqual(adminState(), { unlocked: false, selfIgnore: false });
-  updateAdmin({ unlocked: true });
-  assert.deepEqual(adminState(), { unlocked: true, selfIgnore: false });
+  assert.deepEqual(adminState(), { unlocked: false, key: '', selfIgnore: false });
+  updateAdmin({ unlocked: true, key: 'd'.repeat(64) });
+  assert.deepEqual(adminState(), { unlocked: true, key: 'd'.repeat(64), selfIgnore: false });
   assert.equal(JSON.parse(memory.get('pdd-game:admin')!).verified, verifierId(AUTHOR));
+  updateAdmin({ selfIgnore: true });
+  assert.equal(adminState().key, 'd'.repeat(64), 'ключ автора не теряется при других изменениях');
   // Пароль сменили — запомненный вход больше не действует.
-  memory.set('pdd-game:admin', JSON.stringify({ unlocked: true, verified: 'другой-отпечаток', selfIgnore: true }));
-  assert.equal(adminState().unlocked, false);
+  memory.set('pdd-game:admin', JSON.stringify({ unlocked: true, verified: 'другой-отпечаток', key: 'd'.repeat(64), selfIgnore: true }));
+  assert.deepEqual(adminState(), { unlocked: false, key: '', selfIgnore: true }, 'без входа нет и ключа');
 });

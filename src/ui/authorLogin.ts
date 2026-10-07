@@ -3,7 +3,7 @@
  * на этом телефоне, после пяти неверных подряд вход закрывается на минуту.
  */
 import { updateAdmin } from '../stats/admin.ts';
-import { lockedFor, passwordMatches, recordAttempt } from '../stats/author.ts';
+import { authorKey, lockedFor, passwordMatches, recordAttempt } from '../stats/author.ts';
 import { showOverlay } from './cutscene.ts';
 import { el } from './dom.ts';
 
@@ -47,7 +47,8 @@ export function askAuthorPassword(onSuccess: () => void): void {
     recordAttempt(ok);
     submit.disabled = false;
     if (ok) {
-      updateAdmin({ unlocked: true });
+      // Ключ для посредника статистики — из того же пароля.
+      updateAdmin({ unlocked: true, key: await authorKey(input.value) });
       close();
       onSuccess();
       return;

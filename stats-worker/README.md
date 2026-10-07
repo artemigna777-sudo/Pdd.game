@@ -4,8 +4,13 @@
 Игра показывает статистику на секретном экране («Настройки» → 7 касаний по «Версия игры» → пароль автора).
 
 - Адрес: https://kurier-pdd-stats.artemigna777.workers.dev (в игре — `STATS_PROXY` в `src/config.ts`).
-- Код: `worker.js`. Его вставляют в Cloudflare целиком: Workers & Pages → kurier-pdd-stats → **Edit code** →
-  выделить всё → вставить → **Deploy**.
+- Код: `worker.js`. В Cloudflare его загружает GitHub (`.github/workflows/stats-worker.yml`, `wrangler deploy`
+  с настройками из `wrangler.jsonc`) при каждом изменении папки `stats-worker` в `main`, а ещё вручную: Actions →
+  «Посредник статистики на Cloudflare» → Run workflow. Вставить код через редактор Cloudflare на iPhone не
+  получается: в нём нет кнопки «Вставить».
+- Для загрузки нужен секрет репозитория `CLOUDFLARE_API_TOKEN` (GitHub → Settings → Secrets and variables →
+  Actions). Создаётся так: Cloudflare → профиль → **API Tokens** → **Create Token** → шаблон
+  **Edit Cloudflare Workers**. Если у ключа доступ к нескольким аккаунтам — ещё `CLOUDFLARE_ACCOUNT_ID`.
 - Секреты: kurier-pdd-stats → **Settings** → **Variables and Secrets** → **Add**, тип **Secret**.
   - `GC_TOKEN` — ключ API GoatCounter с правом «Read statistics». Создать его можно так: на сайте счётчика
     коснуться своего имени вверху → **API**.

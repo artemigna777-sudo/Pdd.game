@@ -1,17 +1,35 @@
 /**
- * Статистика для автора игры: секретный вход (7 касаний по «Версия игры»), отчёт из открытого
- * счётчика GoatCounter (его ответы подменены), ошибка счётчика с подсказкой; без счётчика — инструкция.
+ * Статистика для автора игры: секретный вход (7 касаний по «Версия игры») и пароль автора,
+ * отчёт из открытого счётчика GoatCounter (его ответы подменены), ошибка счётчика с подсказкой;
+ * без счётчика — инструкция. Пароль — тестовый: отпечаток подменён в режиме разработки.
  */
+import { pbkdf2Sync } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
+const PASSWORD = 'test-pass-123';
+const SALT = '00112233445566778899aabbccddeeff';
+const VERIFIER = { salt: SALT, iterations: 1000, hash: pbkdf2Sync('testpass123', Buffer.from(SALT, 'hex'), 1000, 32, 'sha256').toString('hex') };
+
 function seed(page: Page, site?: string) {
-  return page.addInitScript((value) => {
-    if (sessionStorage.getItem('seeded')) return;
-    localStorage.clear();
-    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false }));
-    localStorage.setItem('pdd-game:stats-site-dev', JSON.stringify(value ?? ''));
-    sessionStorage.setItem('seeded', '1');
-  }, site);
+  return page.addInitScript(
+    ([value, verifier]) => {
+      if (sessionStorage.getItem('seeded')) return;
+      localStorage.clear();
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false }));
+      localStorage.setItem('pdd-game:stats-site-dev', JSON.stringify(value ?? ''));
+      localStorage.setItem('pdd-game:author-dev', JSON.stringify(verifier));
+      sessionStorage.setItem('seeded', '1');
+    },
+    [site, VERIFIER] as const,
+  );
+}
+
+/** Окно «Вход для автора»: ввести пароль и войти. */
+async function login(page: Page, password = PASSWORD) {
+  const dialog = page.getByRole('dialog', { name: 'Вход для автора' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Пароль автора').fill(password);
+  await dialog.getByRole('button', { name: 'Войти' }).tap();
 }
 
 async function openSettings(page: Page) {
@@ -58,7 +76,7 @@ async function mockCounter(page: Page, state: { fail?: number; requests: { metho
   });
 }
 
-test('секретный вход: 7 касаний — статистика из открытого счётчика, без ключа', async ({ page }) => {
+test('секретный вход: 7 касаний и пароль автора — статистика из открытого счётчика, без ключа', async ({ page }) => {
   await seed(page, 'test-site');
   // Ключ API из прошлой версии больше не нужен и стирается.
   await page.addInitScript(() => {
@@ -72,8 +90,14 @@ test('секретный вход: 7 касаний — статистика и�
   await expect(page.getByRole('button', { name: 'Анонимная статистика' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Статистика игры' })).toHaveCount(0);
 
-  // Шесть касаний — ничего, седьмое — экран статистики.
+  // Седьмое касание — пароль автора. Неверный пароль экран не открывает.
   await secretTaps(page);
+  await login(page, 'не-тот-пароль');
+  await expect(page.getByRole('dialog', { name: 'Вход для автора' })).toContainText('Неверный пароль.');
+  await expect(page.locator('.topbar__title')).toHaveText('Настройки');
+  await expect(page.locator('.stat-tile')).toHaveCount(0);
+  // Регистр и дефисы не важны.
+  await login(page, 'TEST PASS 123');
   await expect(page.locator('.topbar__title')).toHaveText('Статистика игры');
   await expect(page.locator('.stats')).toContainText('Счётчик подключён');
   await expect(page.getByRole('link', { name: 'Открыть полную статистику ↗' })).toHaveAttribute('href', 'https://test-site.goatcounter.com');
@@ -92,7 +116,8 @@ test('секретный вход: 7 касаний — статистика и�
   await expect(page.locator('.stats')).not.toContainText('Не загрузилось');
   // Как у настоящего сайта со счётчиком: простые GET без ключа, без предварительных запросов браузера.
   expect(state.requests.every((r) => r.method === 'GET' && r.auth === null && r.url.pathname.startsWith('/counter/'))).toBe(true);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!))).toEqual({ unlocked: true, selfIgnore: true });
+  const admin = await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!));
+  expect(admin).toEqual({ unlocked: true, selfIgnore: true, verified: VERIFIER.hash.slice(0, 16) });
 
   // Касание столбика — число за день.
   await page.locator('.day-chart__col').last().tap();
@@ -116,6 +141,7 @@ test('счётчик не отдаёт числа: подсказка про г�
   await mockCounter(page, state);
   await openSettings(page);
   await secretTaps(page);
+  await login(page);
   await expect(page.locator('.banner--bad')).toContainText('Allow adding visitor counts on your website');
   await expect(page.getByRole('link', { name: 'Открыть сайт счётчика ↗' })).toHaveAttribute('href', 'https://test-site.goatcounter.com');
   state.fail = 0;
@@ -128,7 +154,47 @@ test('без счётчика: секретный экран объясняет,
   await openSettings(page);
   await expect(page.getByRole('button', { name: 'Анонимная статистика' })).toHaveCount(0);
   await secretTaps(page);
+  await login(page);
   await expect(page.locator('.stats')).toContainText('Счётчик ещё не подключён');
   await expect(page.locator('.stats-steps li')).toHaveCount(3);
   await expect(page.locator('.stats-steps')).toContainText('Allow adding visitor counts on your website');
+});
+
+test('только для автора: вход без пароля из прошлой версии не действует, после 5 ошибок — минута ожидания', async ({ page }) => {
+  await seed(page, 'test-site');
+  // Вход из прошлой версии игры: 7 касаний, без пароля.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('admin-seeded')) localStorage.setItem('pdd-game:admin', JSON.stringify({ unlocked: true, selfIgnore: true }));
+    sessionStorage.setItem('admin-seeded', '1');
+  });
+  const state = { requests: [] as { method: string; auth: string | null; url: URL }[] };
+  await mockCounter(page, state);
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: 'Статистика игры' })).toHaveCount(0);
+
+  await secretTaps(page);
+  const dialog = page.getByRole('dialog', { name: 'Вход для автора' });
+  for (let i = 1; i <= 4; i++) {
+    await login(page, `ошибка-${i}`);
+    await expect(dialog).toContainText('Неверный пароль.');
+  }
+  await login(page, 'ошибка-5');
+  await expect(dialog).toContainText('Слишком много попыток');
+  // Даже верный пароль — только через минуту.
+  await login(page);
+  await expect(dialog).toContainText('Слишком много попыток');
+  await dialog.getByRole('button', { name: 'Отмена' }).tap();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.topbar__title')).toHaveText('Настройки');
+  expect(state.requests.length).toBe(0);
+
+  // Через минуту верный пароль открывает статистику и запоминается: дальше — без пароля.
+  await page.evaluate(() => localStorage.setItem('pdd-game:author-lock', JSON.stringify({ fails: 0, until: 0 })));
+  await secretTaps(page);
+  await login(page);
+  await expect(page.locator('.topbar__title')).toHaveText('Статистика игры');
+  await page.reload();
+  await page.getByRole('button', { name: 'Настройки' }).first().tap();
+  await page.getByRole('button', { name: 'Статистика игры' }).tap();
+  await expect(page.locator('.stat-tile')).toHaveCount(3);
 });

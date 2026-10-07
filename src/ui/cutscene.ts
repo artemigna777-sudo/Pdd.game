@@ -36,6 +36,12 @@ function unmount(root: HTMLElement) {
   root.remove();
 }
 
+/** Показать своё окно поверх игры (как `showModal`). Возвращает функцию, которая его закрывает. */
+export function showOverlay(root: HTMLElement): () => void {
+  mount(root);
+  return () => unmount(root);
+}
+
 /**
  * Показать реплики по одной. Промис выполняется, когда сцена закончилась или пропущена, и
  * возвращает выбор игрока, если в сцене был выбор (реплика с вариантами ответа).

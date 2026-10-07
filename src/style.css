@@ -3144,6 +3144,21 @@ button {
   outline-offset: 1px;
 }
 
+/* Вход для автора: пароль и ошибка под полем. */
+.author-login {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field__error {
+  min-height: 20px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--bad-text, var(--bad));
+}
+
 .duel {
   display: flex;
   flex-direction: column;

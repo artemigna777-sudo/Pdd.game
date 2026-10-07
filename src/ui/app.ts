@@ -63,6 +63,7 @@ import { courierScreen } from './courierScreen.ts';
 import { COURIER } from '../progress/modes.ts';
 import { loadSigns, signsView, watchNewSigns } from './signsView.ts';
 import { statsView } from './statsView.ts';
+import { adminState } from '../stats/admin.ts';
 import { startStats, trackEvent, trackOnce, trackOncePerDay, trackView } from '../stats/track.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 
@@ -877,6 +878,8 @@ export class App {
   }
 
   private statsScreen(): HTMLElement {
+    // Только для автора: без входа по паролю (src/stats/author.ts) экран пустой.
+    if (!adminState().unlocked) return this.page('Статистика игры', el('p', { class: 'panel__note' }, 'Статистика — только для автора игры.'), { back: 'settings' });
     const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
     const route = this.route;
     loadMapping().then((mapping) => {

@@ -92,11 +92,19 @@ async function pool<T>(tasks: (() => Promise<T>)[], n: number): Promise<T[]> {
  * Загрузить отчёт: посетители сайта сегодня, за 7 и 30 дней, по дням и по `paths` за 30 дней.
  * Первый запрос (сегодня) решает, работает ли счётчик: его ошибка — ошибка всего отчёта.
  * Ошибка отдельного адреса — ноль (у адреса, где ещё никого не было, счётчик может ответить 404).
+ *
+ * Конец периода `end` счётчик понимает как начало этого дня (полночь по UTC): с `end` = сегодня
+ * сегодняшние заходы не попадали, и в игре были нули, а на сайте счётчика — заходы (07.10.2026).
+ * Поэтому конец периода — следующий день. Дни счётчик считает по UTC, игра — по часам телефона:
+ * на графике по дням возможен сдвиг на несколько часов.
  */
 export async function loadReport(site: string, paths: string[], now = Date.now(), fetcher: typeof fetch = fetch): Promise<StatsReport> {
   const today = isoDay(now);
+  const tomorrow = isoDay(daysAgo(now, -1));
   const month = isoDay(daysAgo(now, 29));
   const week = isoDay(daysAgo(now, 6));
+  /** Следующий день после «2026-10-07». */
+  const nextDay = (day: string) => isoDay(new Date(`${day}T12:00:00`).getTime() + 86_400_000);
   let failed = 0;
   const get = async (path: string, start: string, end: string, strict = false): Promise<number> => {
     let res: Response;
@@ -121,13 +129,13 @@ export async function loadReport(site: string, paths: string[], now = Date.now()
     }
   };
 
-  const todayCount = await get('TOTAL', today, today, true);
+  const todayCount = await get('TOTAL', today, tomorrow, true);
   const chartDays = Array.from({ length: CHART_DAYS - 1 }, (_, i) => isoDay(daysAgo(now, CHART_DAYS - 1 - i)));
   const tasks: (() => Promise<number>)[] = [
-    () => get('TOTAL', week, today),
-    () => get('TOTAL', month, today),
-    ...chartDays.map((day) => () => get('TOTAL', day, day)),
-    ...paths.map((path) => () => get(path, month, today)),
+    () => get('TOTAL', week, tomorrow),
+    () => get('TOTAL', month, tomorrow),
+    ...chartDays.map((day) => () => get('TOTAL', day, nextDay(day))),
+    ...paths.map((path) => () => get(path, month, tomorrow)),
   ];
   const [weekCount, monthCount, ...rest] = await pool(tasks, PARALLEL);
   const dayCounts = rest.slice(0, chartDays.length);

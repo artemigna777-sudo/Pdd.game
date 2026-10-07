@@ -31,24 +31,27 @@ test('адрес открытого счётчика: путь закодиро�
 
 test('отчёт: сегодня, 7 и 30 дней, дни графика, числа по адресам; без ключа и cookies', async () => {
   const calls: { url: URL; init?: RequestInit }[] = [];
+  // Как настоящий счётчик: «end» — полночь начала этого дня, заходы в сам день «end» не входят.
+  const visits: Record<string, Record<string, number>> = {
+    TOTAL: { '2026-09-08': 1019, '2026-10-01': 7, '2026-10-06': 7, '2026-10-07': 4 },
+    '/city/ch1': { '2026-10-07': 6 },
+  };
   const fetcher = (async (input: string, init?: RequestInit) => {
     const url = new URL(input);
     calls.push({ url, init });
     const path = decodeURIComponent(url.pathname.replace(/^\/counter\//, '').replace(/\.json$/, ''));
-    const start = url.searchParams.get('start');
-    const end = url.searchParams.get('end');
-    if (path === 'TOTAL') {
-      if (start === end) return reply({ count: start === '2026-10-07' ? '4' : start === '2026-10-06' ? '7' : '0' });
-      return reply({ count: start === '2026-10-01' ? '11' : '1,030' });
-    }
-    if (path === '/city/ch1') return reply({ count: '6' });
+    const start = url.searchParams.get('start') ?? '';
+    const end = url.searchParams.get('end') ?? '9999';
     if (path === 'boss-fail') return reply({ error: 'no such path' }, 404);
     if (path === 'install') return reply({}, 500);
-    return reply({ count: '0' });
+    const sum = Object.entries(visits[path] ?? {})
+      .filter(([day]) => day >= start && day < end)
+      .reduce((s, [, n]) => s + n, 0);
+    return reply({ count: sum.toLocaleString('en-US') });
   }) as typeof fetch;
   const paths = trackedPaths(['ch1', 'ch2']);
   const r = await loadReport('kurier-pdd', paths, NOW, fetcher);
-  assert.deepEqual([r.today, r.week, r.month], [4, 11, 1030]);
+  assert.deepEqual([r.today, r.week, r.month], [4, 18, 1037], 'сегодняшние заходы входят во все периоды');
   assert.equal(r.days.length, CHART_DAYS);
   assert.deepEqual(r.days.slice(-2), [
     { day: '2026-10-06', count: 7 },
@@ -64,6 +67,7 @@ test('отчёт: сегодня, 7 и 30 дней, дни графика, чи�
   const first = calls[0].url;
   assert.equal(first.pathname, '/counter/TOTAL.json', 'первым — посетители сегодня');
   assert.equal(first.searchParams.get('start'), '2026-10-07');
+  assert.equal(first.searchParams.get('end'), '2026-10-08', 'конец периода — следующий день');
 });
 
 test('отчёт: счётчик выключен или нет сети — понятные ошибки', async () => {

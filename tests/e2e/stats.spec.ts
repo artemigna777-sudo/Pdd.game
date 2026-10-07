@@ -27,10 +27,15 @@ async function secretTaps(page: Page) {
 }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const TODAY = iso(new Date());
-const WEEK_AGO = iso(new Date(Date.now() - 6 * 86_400_000));
+const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86_400_000));
+const TODAY = daysAgo(0);
+/** Посетители сайта по дням: за 7 дней — 9, за 30 — 1 027. */
+const TOTAL_BY_DAY: Record<string, number> = { [daysAgo(0)]: 4, [daysAgo(1)]: 5, [daysAgo(20)]: 1018 };
 
-/** Открытый счётчик GoatCounter, как настоящий: простой GET, ответ с CORS. `state.fail` — ответить ошибкой. */
+/**
+ * Открытый счётчик GoatCounter, как настоящий: простой GET, ответ с CORS; «end» — полночь начала этого
+ * дня, заходы в сам день «end» не входят. Все заходы на экраны — сегодня. `state.fail` — ответить ошибкой.
+ */
 async function mockCounter(page: Page, state: { fail?: number; requests: { method: string; auth: string | null; url: URL }[] }) {
   await page.route('https://test-site.goatcounter.com/**', async (route) => {
     const req = route.request();
@@ -39,13 +44,17 @@ async function mockCounter(page: Page, state: { fail?: number; requests: { metho
     const cors = { 'Access-Control-Allow-Origin': '*' };
     if (state.fail) return route.fulfill({ status: state.fail, json: { error: 'visitor counter disabled' }, headers: cors });
     const path = decodeURIComponent(url.pathname.replace(/^\/counter\//, '').replace(/\.json$/, ''));
-    const start = url.searchParams.get('start');
-    const end = url.searchParams.get('end');
+    const start = url.searchParams.get('start') ?? '';
+    const end = url.searchParams.get('end') ?? '9999';
+    const inRange = (day: string) => day >= start && day < end;
+    if (path === 'TOTAL') {
+      const total = Object.entries(TOTAL_BY_DAY).reduce((sum, [day, n]) => sum + (inRange(day) ? n : 0), 0);
+      return route.fulfill({ json: { count: total.toLocaleString('en-US') }, headers: cors });
+    }
     const counts: Record<string, string> = { '/': '20', '/city/ch1': '12', 'chapter-done/ch1': '7', '/city/ch2': '5', 'exam-pass': '3', '/exam': '9' };
-    const count =
-      path === 'TOTAL' ? (start === end ? (start === TODAY ? '4' : '2') : start === WEEK_AGO ? '9' : '1,027') : counts[path];
+    const count = counts[path];
     if (count === undefined) return route.fulfill({ status: 404, json: { error: 'no such path' }, headers: cors });
-    return route.fulfill({ json: { count }, headers: cors });
+    return route.fulfill({ json: { count: inRange(TODAY) ? count : '0' }, headers: cors });
   });
 }
 

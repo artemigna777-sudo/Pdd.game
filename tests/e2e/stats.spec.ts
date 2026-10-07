@@ -1,6 +1,6 @@
 /**
- * Статистика для автора игры: секретный вход (7 касаний по «Версия игры»), ключ, отчёт из счётчика
- * (ответы сервера GoatCounter подменены), «Забыть ключ»; без счётчика — инструкция.
+ * Статистика для автора игры: секретный вход (7 касаний по «Версия игры»), отчёт из открытого
+ * счётчика GoatCounter (его ответы подменены), ошибка счётчика с подсказкой; без счётчика — инструкция.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -26,30 +26,38 @@ async function secretTaps(page: Page) {
   for (let i = 0; i < 7; i++) await heading.tap();
 }
 
-const today = new Date();
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const TODAY = iso(new Date());
+const WEEK_AGO = iso(new Date(Date.now() - 6 * 86_400_000));
 
-test('секретный вход: 7 касаний — статистика по ключу из счётчика', async ({ page }) => {
-  await seed(page, 'test-site');
-  const auth: string[] = [];
-  await page.route('https://test-site.goatcounter.com/api/v0/**', async (route) => {
-    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Accept' };
-    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
-    auth.push((await route.request().headerValue('authorization')) ?? '');
-    const url = new URL(route.request().url());
-    const body = url.pathname.endsWith('/stats/total')
-      ? url.searchParams.get('start') === url.searchParams.get('end')
-        ? { total: 4, stats: [] }
-        : { total: url.searchParams.get('start')! > iso(new Date(Date.now() - 10 * 86_400_000)) ? 9 : 27, stats: [{ day: iso(today), daily: 4 }] }
-      : url.pathname.endsWith('/stats/hits')
-        ? { hits: [{ path: '/', title: 'Меню', count: 20 }, { path: '/city/ch1', title: 'Город: глава 1', count: 12 }, { path: '/city/ch2', title: 'Город: глава 2', count: 5 }, { path: 'exam-pass', title: 'Тренировочный экзамен сдан', event: true, count: 3 }] }
-        : url.pathname.endsWith('/stats/toprefs')
-          ? { stats: [{ name: 'tiktok', count: 8 }] }
-          : url.pathname.endsWith('/stats/systems')
-            ? { stats: [{ name: 'Android', count: 15 }, { name: 'iOS', count: 6 }] }
-            : { stats: [{ name: 'Россия', count: 21 }] };
-    await route.fulfill({ json: body, headers: cors });
+/** Открытый счётчик GoatCounter, как настоящий: простой GET, ответ с CORS. `state.fail` — ответить ошибкой. */
+async function mockCounter(page: Page, state: { fail?: number; requests: { method: string; auth: string | null; url: URL }[] }) {
+  await page.route('https://test-site.goatcounter.com/**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    state.requests.push({ method: req.method(), auth: await req.headerValue('authorization'), url });
+    const cors = { 'Access-Control-Allow-Origin': '*' };
+    if (state.fail) return route.fulfill({ status: state.fail, json: { error: 'visitor counter disabled' }, headers: cors });
+    const path = decodeURIComponent(url.pathname.replace(/^\/counter\//, '').replace(/\.json$/, ''));
+    const start = url.searchParams.get('start');
+    const end = url.searchParams.get('end');
+    const counts: Record<string, string> = { '/': '20', '/city/ch1': '12', 'chapter-done/ch1': '7', '/city/ch2': '5', 'exam-pass': '3', '/exam': '9' };
+    const count =
+      path === 'TOTAL' ? (start === end ? (start === TODAY ? '4' : '2') : start === WEEK_AGO ? '9' : '1,027') : counts[path];
+    if (count === undefined) return route.fulfill({ status: 404, json: { error: 'no such path' }, headers: cors });
+    return route.fulfill({ json: { count }, headers: cors });
   });
+}
+
+test('секретный вход: 7 касаний — статистика из открытого счётчика, без ключа', async ({ page }) => {
+  await seed(page, 'test-site');
+  // Ключ API из прошлой версии больше не нужен и стирается.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('admin-seeded')) localStorage.setItem('pdd-game:admin', JSON.stringify({ unlocked: false, token: 'old-key', selfIgnore: true }));
+    sessionStorage.setItem('admin-seeded', '1');
+  });
+  const state = { requests: [] as { method: string; auth: string | null; url: URL }[] };
+  await mockCounter(page, state);
 
   await openSettings(page);
   await expect(page.getByRole('button', { name: 'Анонимная статистика' })).toHaveAttribute('aria-pressed', 'true');
@@ -61,32 +69,49 @@ test('секретный вход: 7 касаний — статистика п�
   await expect(page.locator('.stats')).toContainText('Счётчик подключён');
   await expect(page.getByRole('link', { name: 'Открыть полную статистику ↗' })).toHaveAttribute('href', 'https://test-site.goatcounter.com');
   await expect(page.getByRole('button', { name: 'Не считать мои заходы' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('Ключ API GoatCounter')).toHaveCount(0);
 
-  await page.getByLabel('Ключ API GoatCounter').fill('gc-key-123abc');
-  await page.getByRole('button', { name: 'Сохранить ключ' }).tap();
   await expect(page.locator('.stat-tile')).toHaveCount(3);
   await expect(page.locator('.stat-tile').nth(0)).toContainText('4');
   await expect(page.locator('.stat-tile').nth(1)).toContainText('9');
-  await expect(page.locator('.stat-tile').nth(2)).toContainText('27');
-  await expect(page.locator('.day-chart__col')).toHaveCount(30);
+  await expect(page.locator('.stat-tile').nth(2)).toContainText('1 027');
+  await expect(page.locator('.day-chart__col')).toHaveCount(14);
   await expect(page.locator('.stats')).toContainText('Глава 1. Первый день');
+  await expect(page.locator('.stats')).toContainText('прошли: 7');
   await expect(page.locator('.stats')).toContainText('Тренировочный экзамен сдан');
-  await expect(page.locator('.stats')).toContainText('tiktok');
-  await expect(page.locator('.stats')).toContainText('Android');
-  expect(auth.length).toBe(6);
-  expect(auth.every((a) => a === 'Bearer gc-key-123abc')).toBe(true);
+  await expect(page.getByRole('link', { name: 'Открыть на сайте ↗' })).toHaveAttribute('href', 'https://test-site.goatcounter.com');
+  await expect(page.locator('.stats')).not.toContainText('Не загрузилось');
+  // Как у настоящего сайта со счётчиком: простые GET без ключа, без предварительных запросов браузера.
+  expect(state.requests.every((r) => r.method === 'GET' && r.auth === null && r.url.pathname.startsWith('/counter/'))).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!))).toEqual({ unlocked: true, selfIgnore: true });
 
   // Касание столбика — число за день.
   await page.locator('.day-chart__col').last().tap();
   await expect(page.locator('.day-chart__caption')).toHaveText('Сегодня: 4 посетителя');
 
-  // После входа в настройках есть кнопка «Статистика игры»; ключ можно забыть.
+  // После входа в настройках есть кнопка «Статистика игры»; отчёт не загружается заново без «Обновить».
+  const before = state.requests.length;
   await page.getByRole('button', { name: 'Назад' }).tap();
   await expect(page.locator('.topbar__title')).toHaveText('Настройки');
   await page.getByRole('button', { name: 'Статистика игры' }).tap();
-  await page.getByRole('button', { name: 'Забыть ключ' }).tap();
-  await expect(page.getByLabel('Ключ API GoatCounter')).toBeVisible();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!))).toMatchObject({ unlocked: true, token: '' });
+  await expect(page.locator('.stat-tile')).toHaveCount(3);
+  expect(state.requests.length).toBe(before);
+  await page.getByRole('button', { name: 'Обновить' }).tap();
+  await expect(page.locator('.stat-tile')).toHaveCount(3);
+  await expect.poll(() => state.requests.length).toBeGreaterThan(before);
+});
+
+test('счётчик не отдаёт числа: подсказка про галочку в настройках и «Попробовать ещё раз»', async ({ page }) => {
+  await seed(page, 'test-site');
+  const state = { fail: 403, requests: [] as { method: string; auth: string | null; url: URL }[] };
+  await mockCounter(page, state);
+  await openSettings(page);
+  await secretTaps(page);
+  await expect(page.locator('.banner--bad')).toContainText('Allow adding visitor counts on your website');
+  await expect(page.getByRole('link', { name: 'Открыть сайт счётчика ↗' })).toHaveAttribute('href', 'https://test-site.goatcounter.com');
+  state.fail = 0;
+  await page.getByRole('button', { name: 'Попробовать ещё раз' }).tap();
+  await expect(page.locator('.stat-tile').nth(0)).toContainText('4');
 });
 
 test('без счётчика: секретный экран объясняет, как подключить; переключателя статистики нет', async ({ page }) => {
@@ -96,4 +121,5 @@ test('без счётчика: секретный экран объясняет,
   await secretTaps(page);
   await expect(page.locator('.stats')).toContainText('Счётчик ещё не подключён');
   await expect(page.locator('.stats-steps li')).toHaveCount(3);
+  await expect(page.locator('.stats-steps')).toContainText('Allow adding visitor counts on your website');
 });

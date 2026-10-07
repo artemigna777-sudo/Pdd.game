@@ -4075,6 +4075,12 @@ a.btn {
   overflow-wrap: anywhere;
 }
 
+.bar-list__note {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .bar-list__value {
   font-size: 15px;
   font-weight: 800;
@@ -4102,5 +4108,7 @@ a.btn {
 }
 
 .stats-at {
+  display: grid;
+  gap: 8px;
   text-align: center;
 }

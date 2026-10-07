@@ -20,7 +20,7 @@ const scene = `
   ${A.svg}${B.svg}`;
 
 // Демо: прыжки по ступенькам к флажку, каждая — пробный экзамен.
-const [t0, t1, t2, t3] = T.demo;
+const [t0, , t2, t3] = T.demo;
 const STONES: [number, number][] = [
   [170, 1460],
   [350, 1340],

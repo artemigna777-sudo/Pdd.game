@@ -9,6 +9,7 @@ import { el } from './dom.ts';
 import { dayLabel, plural, timeLabel } from './format.ts';
 import { answerDetails } from './ticketHistoryView.ts';
 import { showToast } from './toast.ts';
+import { trackEvent } from '../stats/track.ts';
 
 /** QR-код ссылки (SVG). */
 export function qrCode(url: string, label: string): HTMLElement {
@@ -287,7 +288,7 @@ export function duelResultView(r: DuelRecord, questions: readonly Question[], a:
         { class: 'panel duel-share' },
         el('h2', { class: 'panel__title' }, waiting ? 'Отправь вызов другу' : `Отправь результат: ${r.them!.name}`),
         el('p', { class: 'panel__note' }, waiting ? `Друг ответит на те же ${questions.length} вопросов и пришлёт ответную ссылку с итогом.` : 'По этой ссылке соперник увидит итог дуэли.'),
-        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => void shareLink(link, title, text) }, waiting ? 'Отправить вызов' : 'Отправить результат'),
+        el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => (trackEvent(waiting ? 'duel-challenge' : 'duel-reply', waiting ? 'Дуэль: отправили вызов' : 'Дуэль: отправили ответ'), void shareLink(link, title, text)) }, waiting ? 'Отправить вызов' : 'Отправить результат'),
         qrCode(link, 'QR-код ссылки на дуэль'),
         el('p', { class: 'panel__note' }, 'Или покажи QR-код — друг наведёт на него камеру телефона.'),
         el('input', { class: 'field__input duel-link', type: 'text', readonly: true, value: link, 'aria-label': 'Ссылка на дуэль', onfocus: (e: Event) => (e.target as HTMLInputElement).select() }),

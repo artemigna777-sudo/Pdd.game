@@ -20,7 +20,7 @@ const scene = `
   ${A.svg}${B.svg}`;
 
 // Демо: ошибки по дням тают.
-const [t0, t1, t2, t3] = T.demo;
+const [t0, , t2, t3] = T.demo;
 const ERR = [26, 19, 13, 7, 2];
 const DAYS = ['пн', 'вт', 'ср', 'чт', 'пт'];
 const demoSvg = `

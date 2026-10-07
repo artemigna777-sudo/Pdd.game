@@ -8,6 +8,8 @@ import { BUILD_TIME, applyUpdate, checkForUpdate, isUpdateReady, type UpdateChec
 import { playTutorial, showModal } from './cutscene.ts';
 import { shareFile } from './share.ts';
 import { el } from './dom.ts';
+import { statsSite } from '../stats/track.ts';
+import { adminState, updateAdmin } from '../stats/admin.ts';
 
 const OPTIONS: Array<{ mode: ControlMode; title: string; hint: string }> = [
   { mode: 'tap', title: 'Касание дороги', hint: 'Коснитесь места на дороге — машина сама проложит маршрут и поедет туда.' },
@@ -18,7 +20,7 @@ const OPTIONS: Array<{ mode: ControlMode; title: string; hint: string }> = [
  * Настройки: управление, звук и вибрация, вид (тема и шрифт), обучение. На полном экране
  * настроек (`full`) — ещё резервная копия прогресса и версия игры.
  */
-export function settingsPanel(full = false): HTMLElement {
+export function settingsPanel(full = false, opts: { openStats?: () => void } = {}): HTMLElement {
   const buttons = OPTIONS.map((o) =>
     el(
       'button',
@@ -31,7 +33,7 @@ export function settingsPanel(full = false): HTMLElement {
     updateSettings({ control: mode });
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(OPTIONS[i].mode === mode)));
   }
-  const toggle = (key: 'sound' | 'vibration' | 'bigText' | 'events', title: string, hint: string) => {
+  const toggle = (key: 'sound' | 'vibration' | 'bigText' | 'events' | 'stats', title: string, hint: string) => {
     const button = el(
       'button',
       { class: 'choice choice--toggle', type: 'button', 'aria-pressed': String(getSettings()[key]), onclick: () => flip() },
@@ -72,7 +74,19 @@ export function settingsPanel(full = false): HTMLElement {
     el('h2', { class: 'settings__title settings__title--next' }, 'Обучение'),
     tutorial,
     full ? backupSection() : null,
-    full ? versionSection() : null,
+    full && statsSite()
+      ? el(
+          'div',
+          {},
+          el('h2', { class: 'settings__title settings__title--next' }, 'Статистика'),
+          el(
+            'div',
+            { class: 'choices' },
+            toggle('stats', 'Анонимная статистика', 'Автор игры видит, сколько человек играет, какие экраны открывают и докуда доходят. Без имени, ответов и данных телефона.'),
+          ),
+        )
+      : null,
+    full ? versionSection(opts.openStats) : null,
   );
 }
 
@@ -201,8 +215,11 @@ const CHECK_TEXT: Record<Exclude<UpdateCheck, 'ready'>, string> = {
   unavailable: 'Проверить не получилось: в этом браузере игра не обновляется сама. Обновите страницу.',
 };
 
-/** Версия игры (время сборки) и проверка обновлений. */
-function versionSection(): HTMLElement {
+/** Секретный вход автора в статистику: столько касаний по «Версия игры» подряд. */
+export const SECRET_TAPS = 7;
+
+/** Версия игры (время сборки) и проверка обновлений. Здесь же — секретный вход в статистику. */
+function versionSection(openStats?: () => void): HTMLElement {
   const status = el('p', { class: 'choice__hint', 'aria-live': 'polite' });
   const built = new Date(BUILD_TIME);
   const version = Number.isNaN(built.getTime()) ? '' : built.toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -221,12 +238,25 @@ function versionSection(): HTMLElement {
     else status.textContent = CHECK_TEXT[result];
   };
   if (isUpdateReady()) ready();
+  // 7 касаний подряд по заголовку или строке версии (паузы не дольше 1,5 с) открывают статистику.
+  let taps = 0;
+  let last = 0;
+  const secret = () => {
+    const now = Date.now();
+    taps = now - last < 1500 ? taps + 1 : 1;
+    last = now;
+    if (taps < SECRET_TAPS || !openStats) return;
+    taps = 0;
+    updateAdmin({ unlocked: true });
+    openStats();
+  };
+  const stats = adminState().unlocked && openStats ? el('button', { class: 'btn btn--secondary', type: 'button', onclick: openStats }, 'Статистика игры') : null;
   return el(
     'section',
     { class: 'version' },
-    el('h2', { class: 'settings__title settings__title--next' }, 'Версия игры'),
-    el('p', { class: 'choice__hint' }, version ? `Версия от ${version}.` : 'Версия для разработки.'),
-    el('div', { class: 'choices' }, button),
+    el('h2', { class: 'settings__title settings__title--next', onclick: secret }, 'Версия игры'),
+    el('p', { class: 'choice__hint', onclick: secret }, version ? `Версия от ${version}.` : 'Версия для разработки.'),
+    el('div', { class: 'choices' }, button, stats),
     status,
   );
 }

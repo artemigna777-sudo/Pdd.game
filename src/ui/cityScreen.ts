@@ -53,6 +53,7 @@ import { EVENTS, pickEventQuestion, pickQuestion } from '../world/events.ts';
 import { CLEAN_XP } from '../progress/progress.ts';
 import { RULES, questionsFor, type Violation } from '../world/rules.ts';
 import { vibrateError } from '../audio/feedback.ts';
+import { trackEvent } from '../stats/track.ts';
 
 export interface CityScreen {
   element: HTMLElement;
@@ -445,6 +446,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (!info || !story || !mapping) return;
     if (!(await cutscene(story.finale, 'Награда'))) return;
     const out = deliver(progress(), info, Date.now());
+    trackEvent(`chapter-done/${info.id}`, `Глава ${info.id.replace(/\D/g, '')} пройдена`);
     const race = rival ? settleRace(progress(), info, rival, Date.now()) : undefined;
     saveProgress();
     goalShown = false;

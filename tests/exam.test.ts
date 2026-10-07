@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { EXAM_RULES, answerExam, blockOf, checkTime, clock, currentItem, extraCount, mainMistakes, startExam, type ExamState } from '../src/exam/exam.ts';
-import { EXAM_HISTORY_LIMIT, allExams, findExam, recordExam, sanitizeExams, type ExamAttempt } from '../src/exam/examHistory.ts';
+import { EXAM_RULES, answerExam, answeredCount, blockOf, checkTime, clock, currentItem, extraCount, goToExam, mainMistakes, openItems, skipExam, startExam, type ExamState } from '../src/exam/exam.ts';
+import { EXAM_HISTORY_LIMIT, allExams, answeredAt, findExam, recordExam, sanitizeExams, savedChoices, type ExamAttempt } from '../src/exam/examHistory.ts';
 
 interface Q {
   id: string;
@@ -82,7 +82,7 @@ test('две ошибки в разных блоках — 10 дополните
   assert.equal(s.deadline - s.startedAt, 30 * MIN);
   play(s, [true, true, false]);
   assert.deepEqual([s.outcome?.passed, s.outcome?.reason], [false, 'extra']);
-  assert.equal(s.results.length, 23, 'экзамен закончился сразу');
+  assert.equal(answeredCount(s), 23, 'экзамен закончился сразу');
 });
 
 test('две ошибки в одном блоке — не сдал сразу', () => {
@@ -101,7 +101,7 @@ test('три ошибки в разных блоках — не сдал', () =>
   marks[11] = false;
   play(s, marks);
   assert.deepEqual([s.outcome?.passed, s.outcome?.reason], [false, 'three']);
-  assert.equal(s.results.length, 12);
+  assert.equal(answeredCount(s), 12);
 });
 
 test('время вышло — не сдал; ответы после срока не принимаются', () => {
@@ -110,7 +110,7 @@ test('время вышло — не сдал; ответы после срок�
   assert.equal(checkTime(s, T0 + 19 * MIN), false);
   answerExam(s, 0, true, QUESTIONS, T0 + 20 * MIN + 1);
   assert.deepEqual([s.outcome?.passed, s.outcome?.reason], [false, 'time']);
-  assert.equal(s.results.length, 10);
+  assert.equal(answeredCount(s), 10);
   // После ошибки время растёт вместе с дополнительными вопросами.
   const t = startExam(QUESTIONS, T0, rng());
   const marks = Array(20).fill(true);
@@ -119,6 +119,68 @@ test('время вышло — не сдал; ответы после срок�
   assert.equal(checkTime(t, T0 + 21 * MIN), false);
   assert.equal(checkTime(t, T0 + 25 * MIN), true);
   assert.equal(t.outcome?.reason, 'time');
+});
+
+test('как в ГИБДД: вопрос можно пропустить и вернуться к нему, подтверждённый ответ не меняется', () => {
+  const s = startExam(QUESTIONS, T0, rng());
+  assert.equal(currentItem(s), s.items[0]);
+  skipExam(s); // пропустить вопрос 1
+  assert.equal(s.cursor, 1);
+  answerExam(s, 0, true, QUESTIONS, T0 + MIN); // вопрос 2
+  assert.equal(s.cursor, 2, 'после ответа — следующий вопрос без ответа');
+  assert.equal(goToExam(s, 1), false, 'к отвеченному вопросу не вернуться');
+  assert.equal(goToExam(s, 0), true, 'к пропущенному — можно');
+  assert.equal(currentItem(s), s.items[0]);
+  answerExam(s, 1, true, QUESTIONS, T0 + MIN); // вопрос 1
+  assert.deepEqual([s.chosen[0], s.chosen[1]], [1, 0]);
+  assert.equal(s.cursor, 2);
+  // Пропустить три вопроса подряд: после последнего круг возвращается к пропущенным.
+  for (let i = 2; i < 20; i++) {
+    if (i === 5 || i === 9 || i === 14) skipExam(s);
+    else answerExam(s, 0, true, QUESTIONS, T0 + MIN);
+  }
+  assert.deepEqual(openItems(s), [5, 9, 14]);
+  assert.equal(s.cursor, 5, 'после последнего вопроса — первый пропущенный');
+  assert.equal(s.outcome === undefined, true, 'экзамен не кончается, пока есть вопросы без ответа');
+  skipExam(s);
+  assert.equal(s.cursor, 9);
+  play(s, [true, true, true]);
+  assert.equal(s.outcome?.passed, true);
+  assert.equal(answeredCount(s), 20);
+});
+
+test('пропуск: ошибки считаются по блокам при любом порядке; дополнительные — после всех основных', () => {
+  const s = startExam(QUESTIONS, T0, rng());
+  skipExam(s); // вопрос 1 — потом
+  const marks = Array(19).fill(true);
+  marks[5] = false; // вопрос 7 — блок 2
+  play(s, marks);
+  assert.equal(extraCount(s), 0, 'пока вопрос 1 без ответа, дополнительных нет');
+  assert.equal(s.cursor, 0);
+  answerExam(s, 0, true, QUESTIONS, T0 + MIN);
+  assert.equal(extraCount(s), 5);
+  assert.equal(s.cursor, 20, 'дальше — первый дополнительный');
+  assert.deepEqual(openItems(s), [20, 21, 22, 23, 24]);
+  assert.equal(goToExam(s, 0), false, 'основные позади');
+  skipExam(s);
+  assert.equal(s.cursor, 21, 'дополнительный тоже можно пропустить');
+  play(s, [true, true, true, true]);
+  assert.equal(s.cursor, 20);
+  play(s, [true]);
+  assert.equal(s.outcome?.passed, true);
+  // Две ошибки в одном блоке — провал сразу, даже если до них были пропуски.
+  const t = startExam(QUESTIONS, T0, rng());
+  skipExam(t);
+  skipExam(t);
+  play(t, [false, false]); // вопросы 3 и 4 — блок 1
+  assert.deepEqual([t.outcome?.passed, t.outcome?.reason], [false, 'block']);
+});
+
+test('история экзамена: пропущенные вопросы без ответа сохраняются как −1', () => {
+  assert.deepEqual(savedChoices([1, undefined, 0, undefined, undefined]), [1, -1, 0]);
+  const a = { at: 5, ms: 1, passed: false, reason: 'time', boss: false, items: ['B01-Q01', 'B01-Q02', 'B01-Q03'], extra: 0, chosen: [1, -1, 0] };
+  assert.deepEqual(sanitizeExams([a, { ...a, at: 6, chosen: [1, -2] }]).map((x) => x.at), [5]);
+  assert.deepEqual([0, 1, 2, 3].map((i) => answeredAt(a, i)), [true, false, true, false]);
 });
 
 test('часы экзамена', () => {

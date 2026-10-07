@@ -53,6 +53,47 @@ async function timeLeft(page: Page): Promise<number> {
   return m * 60 + s;
 }
 
+test('как в ГИБДД: вопрос можно пропустить и вернуться к нему по номеру, подтверждённый ответ не открывается', async ({ page }) => {
+  await seed(page);
+  await openExam(page);
+  await expect(page.locator('.exam-nav__q')).toHaveCount(20);
+  const card = async () => (await page.locator('.card').getAttribute('aria-label'))!;
+  const first = await card();
+
+  await page.getByRole('button', { name: 'Пропустить вопрос' }).tap();
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 2 из 20 · блок 1 · пропущено: 1');
+  await expect(page.getByRole('button', { name: 'Вопрос 1: пропущен' })).toHaveClass(/is-skipped/);
+  await answer(page, true); // вопрос 2
+  await expect(page.getByRole('button', { name: 'Вопрос 2: ответ подтверждён' })).toBeDisabled();
+
+  // Вернуться к пропущенному вопросу 1 — та же карточка.
+  await page.getByRole('button', { name: 'Вопрос 1: пропущен' }).tap();
+  // Вопрос 3 был открыт и остался без ответа — теперь он тоже пропущен.
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 1 из 20 · блок 1 · пропущено: 1');
+  expect(await card()).toBe(first);
+  await answer(page, false);
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 3 из 20 · блок 1');
+
+  // Остальные — верно; последний пропущенный вопрос открывается сам, когда остальные отвечены.
+  await page.getByRole('button', { name: 'Вопрос 20: без ответа' }).tap();
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 20 из 20 · блок 4 · пропущено: 1');
+  await page.getByRole('button', { name: 'Пропустить вопрос' }).tap();
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 3 из 20 · блок 1 · пропущено: 1');
+  for (let i = 3; i <= 19; i++) await answer(page, true);
+  await expect(page.locator('.exam-status')).toHaveText('Вопрос 20 из 20 · блок 4');
+  await expect(page.getByRole('button', { name: 'Пропустить вопрос' })).toBeDisabled();
+  await answer(page, true);
+
+  // Одна ошибка (вопрос 1) — дополнительные вопросы.
+  await expect(page.locator('.modal__title')).toHaveText('Дополнительные вопросы');
+  await page.getByRole('button', { name: 'Продолжить' }).tap();
+  await expect(page.locator('.exam-nav__q')).toHaveCount(5);
+  await expect(page.getByRole('button', { name: 'Дополнительный вопрос 1: открыт' })).toBeDisabled();
+  for (let i = 1; i <= 5; i++) await answer(page, true);
+  await expect(page.locator('.exam-result__verdict')).toHaveText('Экзамен сдан!');
+  await expect(page.locator('.exam-result')).toContainText('Основные вопросы: верно 19 из 20.');
+});
+
 test('одна ошибка — 5 дополнительных вопросов из её блока и +5 минут; без ошибок в них — экзамен сдан', async ({ page }) => {
   await seed(page);
   await openExam(page);
@@ -140,14 +181,14 @@ test('экзамен-босс в финале: сдан — концовка, п
   await page.getByRole('button', { name: 'Сдать экзамен в ГИБДД' }).tap();
   // Эпилог со всеми персонажами, затем — перед экзаменом.
   await expect(page.locator('.cutscene')).toContainText('В диспетчерской «Стрелы» собрались все');
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await expect(page.locator('.cutscene')).toContainText('Здание ГИБДД Светофорска');
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await expect(page.locator('.topbar__title')).toHaveText('Экзамен в ГИБДД');
   for (let i = 1; i <= 20; i++) await answer(page, true);
 
   await expect(page.locator('.cutscene')).toContainText('Экзамен сдан');
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await expect(page.locator('.banner')).toContainText('История пройдена!');
   await page.getByRole('button', { name: 'К финалу' }).tap();
   await expect(page.locator('.exam-result__verdict')).toHaveText('Права получены!');

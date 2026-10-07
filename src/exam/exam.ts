@@ -6,7 +6,9 @@
  *  - одна ошибка или две в разных блоках — по 5 дополнительных вопросов из блока каждой
  *    ошибки и по 5 минут на каждые 5 вопросов; в дополнительных вопросах ошибаться нельзя;
  *  - две ошибки в одном блоке, три ошибки, ошибка в дополнительных вопросах или конец
- *    времени — не сдал. Экзамен заканчивается сразу, как только результат ясен.
+ *    времени — не сдал. Экзамен заканчивается сразу, как только результат ясен;
+ *  - порядок ответов выбирает сам сдающий: вопрос можно пропустить и вернуться к нему позже,
+ *    но подтверждённый ответ изменить нельзя. Дополнительные вопросы — после всех основных.
  *
  * Вопросы экзамена: на каждое место с 1 по 20 — вопрос с тем же номером из случайного билета,
  * поэтому тематические блоки такие же, как в билетах. Дополнительные вопросы — с тех же мест
@@ -43,10 +45,12 @@ export type FailReason = 'block' | 'three' | 'extra' | 'time';
 
 export interface ExamState {
   items: ExamItem[];
-  /** Верность ответов по порядку вопросов. */
-  results: boolean[];
-  /** Выбранные варианты по порядку вопросов. */
-  chosen: number[];
+  /** Верность ответов по местам вопросов (undefined — ответа ещё нет). */
+  results: (boolean | undefined)[];
+  /** Выбранные варианты по местам вопросов (undefined — ответа ещё нет). */
+  chosen: (number | undefined)[];
+  /** Место текущего вопроса. */
+  cursor: number;
   startedAt: number;
   /** Когда кончается время (растёт с дополнительными вопросами). */
   deadline: number;
@@ -74,11 +78,41 @@ export function startExam(questions: readonly ExamSource[], now: number, rnd: ()
     if (!candidates?.length) throw new Error(`Нет вопросов с номером ${n}`);
     items.push({ id: pick(candidates, rnd).id, block: blockOf(n), extra: false });
   }
-  return { items, results: [], chosen: [], startedAt: now, deadline: now + EXAM_RULES.minutes * MINUTE };
+  return { items, results: items.map(() => undefined), chosen: items.map(() => undefined), cursor: 0, startedAt: now, deadline: now + EXAM_RULES.minutes * MINUTE };
 }
 
 /** Текущий вопрос (или undefined, если экзамен окончен). */
-export const currentItem = (s: ExamState): ExamItem | undefined => (s.outcome ? undefined : s.items[s.results.length]);
+export const currentItem = (s: ExamState): ExamItem | undefined => (s.outcome ? undefined : s.items[s.cursor]);
+
+/** Сколько вопросов уже отвечено. */
+export const answeredCount = (s: ExamState): number => s.chosen.filter((c) => c !== undefined).length;
+
+/** Места вопросов текущей части экзамена: основные, а после них — дополнительные. */
+export function phaseItems(s: ExamState): number[] {
+  const extra = s.items.some((i) => i.extra);
+  return s.items.flatMap((item, i) => (item.extra === extra ? [i] : []));
+}
+
+/** Места вопросов текущей части без ответа (пропущенные и ещё не открытые). */
+export const openItems = (s: ExamState): number[] => phaseItems(s).filter((i) => s.chosen[i] === undefined);
+
+/** Следующий вопрос без ответа после места `from` (по кругу); если других нет — `from`. */
+function nextOpen(s: ExamState, from: number): number {
+  const open = openItems(s);
+  return open.find((i) => i > from) ?? open.find((i) => i !== from) ?? from;
+}
+
+/** Пропустить текущий вопрос: к нему можно вернуться позже. */
+export function skipExam(s: ExamState): void {
+  if (!s.outcome) s.cursor = nextOpen(s, s.cursor);
+}
+
+/** Перейти к вопросу без ответа на месте `index`. Отвеченный вопрос не открывается: ответ уже подтверждён. */
+export function goToExam(s: ExamState, index: number): boolean {
+  if (s.outcome || !openItems(s).includes(index)) return false;
+  s.cursor = index;
+  return true;
+}
 
 /** Ошибки основной части по блокам. */
 export function mainMistakes(s: ExamState): number[] {
@@ -102,26 +136,30 @@ export function checkTime(s: ExamState, now: number): boolean {
  */
 export function answerExam(s: ExamState, chosen: number, correct: boolean, questions: readonly ExamSource[], now: number, rnd: () => number = Math.random): ExamState {
   if (checkTime(s, now) || s.outcome) return s;
-  const item = s.items[s.results.length];
-  if (!item) return s;
-  s.results.push(correct);
-  s.chosen.push(chosen);
+  const at = s.cursor;
+  const item = s.items[at];
+  if (!item || s.chosen[at] !== undefined) return s;
+  s.results[at] = correct;
+  s.chosen[at] = chosen;
   const finish = (passed: boolean, reason?: FailReason) => {
     s.outcome = { passed, reason, at: now };
+    return s;
+  };
+  const next = () => {
+    s.cursor = nextOpen(s, at);
     return s;
   };
 
   if (item.extra) {
     if (!correct) return finish(false, 'extra');
-    return s.results.length === s.items.length ? finish(true) : s;
+    return openItems(s).length ? next() : finish(true);
   }
 
   const mistakes = mainMistakes(s);
   if (mistakes.some((m) => m >= 2)) return finish(false, 'block');
   const total = mistakes.reduce((a, b) => a + b, 0);
   if (total >= 3) return finish(false, 'three');
-  const mainAnswered = s.items.filter((it, i) => !it.extra && i < s.results.length).length;
-  if (mainAnswered < EXAM_RULES.questions) return s;
+  if (openItems(s).length) return next();
 
   // Основная часть позади.
   if (total === 0) return finish(true);
@@ -136,9 +174,14 @@ export function answerExam(s: ExamState, chosen: number, correct: boolean, quest
       const q = pick(candidates, rnd);
       used.add(q.id);
       s.items.push({ id: q.id, block, extra: true });
+      s.results.push(undefined);
+      s.chosen.push(undefined);
     }
     s.deadline += EXAM_RULES.extraMinutes * MINUTE * Math.ceil(EXAM_RULES.extraQuestions / EXAM_RULES.blockSize);
   });
+  const first = s.items.findIndex((it) => it.extra);
+  if (first < 0) return finish(true); // дополнительных вопросов не нашлось (в базе их всегда хватает)
+  s.cursor = first;
   return s;
 }
 

@@ -2374,6 +2374,8 @@ button {
   --selected: #dbe7ff;
   --ok-text: var(--ok);
   --bad-text: var(--bad);
+  /* Столбики статистики: проверены на контраст с карточкой (светлая и тёмная тема). */
+  --chart: #2f6fe0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2398,6 +2400,7 @@ button {
     --selected: #1d3357;
     --ok-text: #6fd08f;
     --bad-text: #ff8a95;
+    --chart: #4a8cf7;
   --silhouette: grayscale(1) brightness(0) invert(1);
   }
 }
@@ -2423,6 +2426,7 @@ button {
   --ok-text: #6fd08f;
   --bad-text: #ff8a95;
   --silhouette: grayscale(1) brightness(0) invert(1);
+  --chart: #4a8cf7;
 }
 
 .btn--secondary {
@@ -2809,33 +2813,91 @@ button {
   font-weight: 800;
 }
 
-.plan-date__input {
-  width: 100%;
-  min-height: 52px;
-  padding: 10px 12px;
-  border: 2px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--text);
-  font: inherit;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.plan-date__input:focus {
-  outline: 3px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.plan-date__error {
+.plan-date__chosen {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  color: var(--bad-text);
+  color: var(--text-muted);
 }
 
-.plan-date__error:empty {
-  display: none;
+/* Календарь даты экзамена: свой, а не системный (на iPhone системный закрывает кнопку «Сохранить»). */
+.cal {
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--card);
+}
+
+.cal__head {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.cal__title {
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.cal__nav {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--soft);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cal__nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.cal__wd {
+  padding: 2px 0 4px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.cal__day {
+  min-height: 46px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--soft);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal__day.is-today {
+  border-color: var(--focus);
+}
+
+.cal__day.is-picked {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent-press);
+}
+
+.cal__day:disabled {
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.45;
+  cursor: default;
 }
 
 .plan-task {
@@ -3820,4 +3882,225 @@ button {
 
 .courier-route:active {
   transform: translateY(1px);
+}
+
+/* Экзамен: номера вопросов (как в ГИБДД — к пропущенным можно вернуться) и «Пропустить» рядом с «Ответить». */
+.exam-nav {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.exam-nav__q {
+  min-height: 40px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.exam-nav__q.is-current {
+  border-color: var(--focus);
+  background: var(--selected);
+}
+
+.exam-nav__q.is-done {
+  border-color: transparent;
+  background: var(--soft);
+  color: var(--text-muted);
+}
+
+.exam-nav__q.is-skipped {
+  border-style: dashed;
+  border-color: var(--warn);
+}
+
+.exam-nav__q:disabled {
+  cursor: default;
+}
+
+.exam-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.exam-actions .btn {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* ---------- Статистика игры (секретный экран автора) ---------- */
+
+.stats-steps {
+  margin: 8px 0 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.stat-tile {
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.stat-tile__label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.stat-tile__value {
+  margin: 2px 0 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* «1 240» и «12 345» должны помещаться в плитку и на экране 320 px. */
+.stat-tile__value--lg {
+  font-size: clamp(19px, 6vw, 28px);
+}
+
+.stat-tile__value--xl {
+  font-size: clamp(16px, 4.8vw, 24px);
+}
+
+a.btn {
+  text-decoration: none;
+}
+
+.day-chart {
+  margin: 14px 0 0;
+}
+
+.day-chart__plot {
+  position: relative;
+  padding-top: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-chart__max {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.day-chart__cols {
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 2px;
+  height: 120px;
+  align-items: end;
+}
+
+.day-chart__col {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.day-chart__bar {
+  display: block;
+  width: 100%;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+  background: var(--chart);
+  opacity: 0.75;
+}
+
+.day-chart__col.is-today .day-chart__bar,
+.day-chart__col.is-picked .day-chart__bar {
+  opacity: 1;
+}
+
+.day-chart__col.is-picked {
+  background: var(--soft);
+  border-radius: 4px 4px 0 0;
+}
+
+.day-chart__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.day-chart__caption {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bar-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.bar-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: baseline;
+}
+
+.bar-list__name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.bar-list__value {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-list__track {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.bar-list__fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--chart);
+}
+
+.stats .field__input {
+  width: 100%;
+  margin: 8px 0;
+}
+
+.stats-at {
+  text-align: center;
 }

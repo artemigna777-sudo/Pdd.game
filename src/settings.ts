@@ -27,6 +27,8 @@ export interface Settings {
   rules: boolean;
   /** Имя игрока в дуэлях (этап 10). */
   name: string;
+  /** Анонимная статистика для автора игры: какие экраны открывают и докуда доходят. */
+  stats: boolean;
   /**
    * Длительность смен в режимах (этапы 12–13), доля от обычной. В настройках её нет: смены
    * укорачивают только автотесты.
@@ -37,11 +39,12 @@ export interface Settings {
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '' };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
 if (typeof current.name !== 'string') current.name = '';
+if (typeof current.stats !== 'boolean') current.stats = DEFAULTS.stats;
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

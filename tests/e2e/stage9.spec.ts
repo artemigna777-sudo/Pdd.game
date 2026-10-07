@@ -19,10 +19,14 @@ test.beforeEach(async ({ page }) => {
 
 /** Начало сегодняшнего дня (у теста и у браузера один часовой пояс) плюс `n` дней. */
 const dayStart = (n = 0) => new Date(new Date().setHours(0, 0, 0, 0) + n * DAY + 3 * 3_600_000).setHours(0, 0, 0, 0);
-const inputDate = (ts: number) => {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+/** Кнопка дня в календаре «Мой экзамен»: «18 октября 2026, суббота». */
+const dayButton = (page: Page, ts: number) =>
+  page.getByRole('button', { name: new RegExp(`^${new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })} ${new Date(ts).getFullYear()},`) });
+/** Выбрать день в календаре: перелистнуть месяцы и нажать на день. */
+async function pickDate(page: Page, ts: number) {
+  for (let i = 0; i < 13 && !(await dayButton(page, ts).count()); i++) await page.getByRole('button', { name: 'Следующий месяц' }).tap();
+  await dayButton(page, ts).tap();
+}
 
 /** Прогресс: первые `answered` вопросов базы отвечены верно, `mistakes` — ошибки, которые пора повторить. */
 function progressWith(answered: number, mistakes: string[] = [], plan?: unknown, ago = 2) {
@@ -64,15 +68,14 @@ test('дата экзамена: план на сегодня — цель дн�
   await page.locator('.plan-link').tap();
   await expect(page.locator('.plan')).toContainText('Когда твой экзамен в ГИБДД?');
 
-  // Прошедшую дату выбрать нельзя.
-  const input = page.getByLabel('Дата экзамена в ГИБДД');
+  // Календарь свой, а не системный. Прошедшую дату выбрать нельзя.
   const submit = page.getByRole('button', { name: 'Составить план' });
   await expect(submit).toBeDisabled();
-  await input.fill(inputDate(dayStart(-1)));
-  await expect(page.locator('.plan-date__error')).toHaveText('Эта дата уже прошла.');
-  await expect(submit).toBeDisabled();
-  await input.fill(inputDate(dayStart(10)));
-  await expect(page.locator('.plan-date__error')).toHaveText('');
+  await expect(page.getByRole('button', { name: 'Предыдущий месяц' })).toBeDisabled();
+  await expect(dayButton(page, dayStart())).toBeEnabled();
+  if (new Date(dayStart(-1)).getMonth() === new Date(dayStart()).getMonth()) await expect(dayButton(page, dayStart(-1))).toBeDisabled();
+  await pickDate(page, dayStart(10));
+  await expect(page.locator('.plan-date__chosen')).toContainText('через 10 дней');
   await submit.tap();
 
   await expect(page.locator('.plan-head .big-number')).toContainText('10');
@@ -113,6 +116,33 @@ test('дата экзамена: план на сегодня — цель дн�
   await goal.tap();
   await expect(page.locator('.topbar__title')).toHaveText('Мой экзамен');
   await expect(page.locator('.plan-head')).toContainText('до экзамена в ГИБДД');
+});
+
+test('изменить дату: свой календарь, «Сохранить дату» и «Отмена»', async ({ page }) => {
+  await seed(page, progressWith(400, [], { date: dayStart(30), total: 800, from: dayStart(-1) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Экзамен\. / }).tap();
+  await page.locator('.plan-link').tap();
+  await expect(page.locator('.plan-head .big-number')).toContainText('30');
+
+  // «Отмена» закрывает календарь, дата прежняя.
+  await page.getByRole('button', { name: 'Изменить дату' }).tap();
+  const save = page.getByRole('button', { name: 'Сохранить дату' });
+  await expect(save).toBeDisabled(); // выбрана нынешняя дата — сохранять нечего
+  await expect(page.locator('.plan-date__chosen')).toContainText('Сейчас:');
+  await expect(dayButton(page, dayStart(30))).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Отмена' }).tap();
+  await expect(page.locator('.cal')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Изменить дату' })).toBeVisible();
+
+  // Новая дата сохраняется одним нажатием на кнопку под календарём.
+  await page.getByRole('button', { name: 'Изменить дату' }).tap();
+  await pickDate(page, dayStart(45));
+  await expect(page.locator('.plan-date__chosen')).toContainText('Выбрано:');
+  await save.tap();
+  await expect(page.locator('#toast')).toContainText('План к экзамену');
+  await expect(page.locator('.plan-head .big-number')).toContainText('45');
+  expect((await readProgress(page)).plan.date).toBe(dayStart(45));
 });
 
 test('повторы под дату: в разборе ошибок промежутки короче; повтор из плана засчитывается', async ({ page }) => {

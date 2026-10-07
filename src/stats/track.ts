@@ -34,13 +34,27 @@ let first = true;
 /** Режим разработки Vite. В автотестах на Node `import.meta.env` нет. */
 const isDev = () => Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
 
-/** Код сайта счётчика. В режиме разработки автотесты подставляют свой (`pdd-game:stats-site-dev`). */
+/**
+ * Код сайта счётчика. В режиме разработки автотесты подставляют свой (`pdd-game:stats-site-dev`),
+ * пустая строка там — «счётчик не подключён».
+ */
 export function statsSite(): string {
   if (isDev()) {
-    const dev = load<unknown>('pdd-game:stats-site-dev', '');
-    if (typeof dev === 'string' && dev) return dev;
+    const dev = load<unknown>('pdd-game:stats-site-dev', null);
+    if (typeof dev === 'string') return dev;
   }
   return STATS_SITE;
+}
+
+/**
+ * Откуда пришли: метка из ссылки (`?ref=tiktok`, `utm_source`, `src`, `source`), иначе сайт, с которого
+ * перешли. GoatCounter берёт метку только вместе с названием кампании, поэтому передаём её сами.
+ */
+export function sourceOf(search: string, referrer: string, origin: string): string {
+  const query = new URLSearchParams(search);
+  const tag = ['ref', 'utm_source', 'src', 'source'].map((k) => query.get(k)?.trim()).find(Boolean);
+  if (tag) return tag.slice(0, 60);
+  return referrer && !referrer.startsWith(origin) ? referrer : '';
 }
 
 /** Считать ли сейчас. */
@@ -86,9 +100,10 @@ export function flushStats(): void {
 
 function send(hit: Hit): void {
   if (!statsActive()) return;
-  if (first) {
+  // Откуда пришли — к первому открытому экрану, а не к событию: так это видно в источниках посещений.
+  if (first && !hit.e) {
     first = false;
-    const ref = document.referrer && !document.referrer.startsWith(location.origin) ? document.referrer : '';
+    const ref = sourceOf(location.search, document.referrer, location.origin);
     if (ref) hit.r = ref;
     if (location.search) hit.q = location.search;
   }

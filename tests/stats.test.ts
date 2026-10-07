@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { StatsError, isoDay, loadReport, parseHits, parseNamed, parseTotal } from '../src/stats/goatcounter.ts';
-import { countUrl, statsActive } from '../src/stats/track.ts';
+import { countUrl, sourceOf, statsActive } from '../src/stats/track.ts';
 
 const NOW = new Date(2026, 9, 7, 15, 0).getTime();
 
@@ -74,7 +74,18 @@ test('адрес счётчика: экран, событие, откуда пр
   assert.equal(new URL(countUrl('x', { p: '/', t: 'Меню' }, '1,1,1', 'r')).searchParams.has('e'), false);
 });
 
-test('без кода сайта и без браузера статистика не собирается', () => {
+test('откуда пришли: метка из ссылки важнее сайта, свои переходы не считаются', () => {
+  const origin = 'https://artemigna777-sudo.github.io';
+  assert.equal(sourceOf('?ref=tiktok', '', origin), 'tiktok');
+  assert.equal(sourceOf('?utm_source=telegram&utm_campaign=ads', 'https://t.me/', origin), 'telegram');
+  assert.equal(sourceOf('?src=bio', '', origin), 'bio');
+  assert.equal(sourceOf('', 'https://www.tiktok.com/', origin), 'https://www.tiktok.com/');
+  assert.equal(sourceOf('', `${origin}/Pdd.game/`, origin), '');
+  assert.equal(sourceOf('?ref=', '', origin), '');
+  assert.equal(sourceOf('#duel=abc', '', origin), '');
+});
+
+test('без браузера (автотесты на Node) статистика не собирается', () => {
   assert.equal(statsActive(), false);
   assert.equal(isoDay(NOW), '2026-10-07');
 });

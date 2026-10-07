@@ -9,7 +9,7 @@ function seed(page: Page, site?: string) {
     if (sessionStorage.getItem('seeded')) return;
     localStorage.clear();
     localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false }));
-    if (value) localStorage.setItem('pdd-game:stats-site-dev', JSON.stringify(value));
+    localStorage.setItem('pdd-game:stats-site-dev', JSON.stringify(value ?? ''));
     sessionStorage.setItem('seeded', '1');
   }, site);
 }

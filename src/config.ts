@@ -9,4 +9,4 @@ export const EXPLANATIONS_SOURCE = { name: 'pdd_russia', url: 'https://github.co
  * Анонимная статистика: код сайта в GoatCounter (https://<код>.goatcounter.com). Пусто — статистика
  * не собирается. Что считается и как посмотреть — `src/stats/track.ts` и журнал в CLAUDE.md.
  */
-export const STATS_SITE = '';
+export const STATS_SITE = 'kurier-pdd';

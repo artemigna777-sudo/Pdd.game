@@ -98,7 +98,7 @@ function report(r: StatsReport, chapters: { id: string; title: string }[]): HTML
     section('Сюжет: докуда дошли', 'Сколько человек за 30 дней открывали главу в городе.', barList(storyFunnel(r.pages, chapters), 'Пока никто не играл в сюжет.')),
     section('Что открывают', 'Экраны игры за 30 дней, кроме глав.', barList(screens.map((p) => ({ name: p.title || p.path, count: p.count })), 'Пока пусто.')),
     section('Что сделали', 'События за 30 дней: дошли до финала главы, сдали экзамен, отправили дуэль…', barList(events.map((p) => ({ name: p.title || p.path, count: p.count })), 'Событий пока не было.')),
-    section('Откуда пришли', 'С каких сайтов и приложений перешли в игру. Метка из ссылки (например, ?\u2060ref=\u2060tiktok) — тоже здесь.', barList(r.refs.map((x) => ({ ...x, name: x.name || 'Напрямую' })), 'Пока все заходили напрямую.')),
+    section('Откуда пришли', 'С каких сайтов и приложений перешли в игру. Ссылка с меткой (например, …/Pdd.game/?\u2060ref=\u2060tiktok) попадает сюда под этой меткой.', barList(r.refs.map((x) => ({ ...x, name: x.name || 'Напрямую' })), 'Пока все заходили напрямую.')),
     section('Телефоны', '', barList(r.systems, 'Пока пусто.')),
     section('Страны', '', barList(r.locations, 'Пока пусто.')),
     el('p', { class: 'panel__note stats-at' }, `Обновлено ${new Date(r.at).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`),

@@ -130,7 +130,7 @@ export function statsView(chapters: { id: string; title: string }[], onChange: (
           { class: 'stats-steps' },
           el('li', {}, 'Зарегистрируйся на goatcounter.com (Sign up): почта, пароль и код сайта, например kurier-pdd.'),
           el('li', {}, 'Пришли код сайта Claude — он впишет его в игру. После публикации игра начнёт считать заходы.'),
-          el('li', {}, 'На сайте счётчика: Settings → API → New API key, отметь «Read statistics» и вставь ключ ниже — статистика появится прямо здесь.'),
+          el('li', {}, 'На сайте счётчика коснись своего имени вверху (справа от Settings) → вкладка API: отметь «Read statistics», создай ключ и вставь его ниже — статистика появится прямо здесь.'),
         ),
       ),
     );
@@ -161,7 +161,7 @@ export function statsView(chapters: { id: string; title: string }[], onChange: (
   } else {
     const input = el('input', { class: 'field__input', type: 'password', autocomplete: 'off', placeholder: 'Ключ API GoatCounter', 'aria-label': 'Ключ API GoatCounter' });
     keyPanel.append(
-      el('p', { class: 'panel__note' }, 'Ключ с правом «Read statistics» из настроек счётчика (Settings → API). Хранится только на этом телефоне.'),
+      el('p', { class: 'panel__note' }, 'Ключ с правом «Read statistics»: на сайте счётчика — твоё имя вверху (справа от Settings) → вкладка API. Хранится только на этом телефоне.'),
       input,
       el(
         'button',

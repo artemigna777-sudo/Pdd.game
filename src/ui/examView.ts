@@ -3,7 +3,7 @@
  */
 import type { Question } from '../data/types.ts';
 import { EXAM_RULES, FAIL_TEXT } from '../exam/exam.ts';
-import type { ExamAttempt } from '../exam/examHistory.ts';
+import { answeredAt, type ExamAttempt } from '../exam/examHistory.ts';
 import { el } from './dom.ts';
 import { dayLabel, durationLabel, plural, timeLabel } from './format.ts';
 import { answerDetails } from './ticketHistoryView.ts';
@@ -27,12 +27,12 @@ export function examRulesView(): HTMLElement {
       ),
       el('li', { class: 'rules__bad' }, 'Две ошибки в одном блоке, три ошибки или конец времени — не сдан.'),
     ),
-    el('p', { class: 'panel__note' }, 'Во время экзамена не видно, верен ли ответ, — как в ГИБДД. Разбор ошибок — после экзамена.'),
+    el('p', { class: 'panel__note' }, 'Как в ГИБДД: вопрос можно пропустить и вернуться к нему позже — по номерам вверху, но подтверждённый ответ изменить нельзя. Во время экзамена не видно, верен ли ответ. Разбор ошибок — после экзамена.'),
   );
 }
 
 const resultText = (a: ExamAttempt) => (a.passed ? 'Сдан' : 'Не сдан');
-const mistakes = (a: ExamAttempt, byId: Map<string, Question>) => a.chosen.filter((c, i) => c !== byId.get(a.items[i])?.correct).length;
+const mistakes = (a: ExamAttempt, byId: Map<string, Question>) => a.chosen.filter((c, i) => answeredAt(a, i) && c !== byId.get(a.items[i])?.correct).length;
 
 /** Список прошлых экзаменов. */
 export function examHistoryView(attempts: readonly ExamAttempt[], byId: Map<string, Question>, onOpen: (a: ExamAttempt) => void): HTMLElement {
@@ -76,24 +76,27 @@ export function examHistoryView(attempts: readonly ExamAttempt[], byId: Map<stri
 /** Результат экзамена и разбор всех ответов. */
 export function examResultView(a: ExamAttempt, byId: Map<string, Question>): HTMLElement {
   const main = a.items.length - a.extra;
-  const answeredMain = Math.min(a.chosen.length, main);
-  const rightMain = a.chosen.slice(0, main).filter((c, i) => c === byId.get(a.items[i])?.correct).length;
-  const answeredExtra = Math.max(0, a.chosen.length - main);
-  const rightExtra = a.chosen.slice(main).filter((c, i) => c === byId.get(a.items[main + i])?.correct).length;
-  const left = a.items.length - a.chosen.length;
+  const places = a.items.map((_, i) => i);
+  const right = (i: number) => answeredAt(a, i) && a.chosen[i] === byId.get(a.items[i])?.correct;
+  const answeredMain = places.filter((i) => i < main && answeredAt(a, i)).length;
+  const rightMain = places.filter((i) => i < main && right(i)).length;
+  const answeredExtra = places.filter((i) => i >= main && answeredAt(a, i)).length;
+  const rightExtra = places.filter((i) => i >= main && right(i)).length;
+  const left = a.items.length - answeredMain - answeredExtra;
+  // Пропущенные вопросы, на которые так и не ответили (до последнего отвеченного).
+  const skipped = places.filter((i) => i < main && i < a.chosen.length && !answeredAt(a, i)).map((i) => i + 1);
 
   const lines = [
     `Основные вопросы: верно ${rightMain} из ${answeredMain}${answeredMain < main ? ` (отвечено ${answeredMain} из ${main})` : ''}.`,
     a.extra ? `Дополнительные: верно ${rightExtra} из ${answeredExtra}${answeredExtra < a.extra ? ` (отвечено ${answeredExtra} из ${a.extra})` : ''}.` : '',
+    skipped.length ? `Пропущены и остались без ответа: ${skipped.length === 1 ? 'вопрос' : 'вопросы'} ${skipped.join(', ')}.` : '',
     `Время: ${durationLabel(a.ms)}.`,
     left && !a.passed && a.reason !== 'time' ? `Экзамен закончился досрочно: результат уже был ясен.` : '',
   ].filter(Boolean);
 
-  const answers = a.chosen.map((chosen, i) => {
-    const q = byId.get(a.items[i])!;
-    const title = i < main ? `Вопрос ${i + 1}` : `Дополнительный ${i - main + 1}`;
-    return answerDetails(q, chosen, title);
-  });
+  const answers = places
+    .filter((i) => answeredAt(a, i))
+    .map((i) => answerDetails(byId.get(a.items[i])!, a.chosen[i], i < main ? `Вопрос ${i + 1}` : `Дополнительный ${i - main + 1}`));
 
   return el(
     'div',

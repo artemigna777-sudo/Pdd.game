@@ -1,5 +1,6 @@
 import { registerSW } from 'virtual:pwa-register';
 import { showToast } from './ui/toast.ts';
+import { trackEvent } from './stats/track.ts';
 
 /** Событие Chrome/Android «можно установить приложение» (нет в стандартных типах DOM). */
 interface BeforeInstallPromptEvent extends Event {
@@ -38,7 +39,8 @@ export async function promptInstall(): Promise<void> {
   const event = installEvent;
   installEvent = null;
   await event.prompt();
-  await event.userChoice;
+  const choice = await event.userChoice;
+  if (choice.outcome === 'accepted') trackEvent('install', 'Установили игру на телефон');
   notify();
 }
 

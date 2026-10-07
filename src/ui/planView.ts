@@ -36,50 +36,87 @@ export function countdownLabel(s: PlanSummary): string {
 }
 
 const startOfToday = (now: number) => new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
-const toInput = (ts: number) => {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-/** «2026-10-18» → начало этого дня (местное время). */
-function fromInput(value: string): number | undefined {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!m) return undefined;
-  const d = new Date(+m[1], +m[2] - 1, +m[3]);
-  return d.getMonth() === +m[2] - 1 ? d.getTime() : undefined;
+
+const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const WEEK = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const weekday = (ts: number) => new Date(ts).toLocaleDateString('ru-RU', { weekday: 'long' });
+/** «сегодня», «завтра», «через 12 дней». */
+function fromToday(ts: number, today: number): string {
+  const n = Math.round((ts - today) / DAY_MS);
+  return n === 0 ? 'сегодня' : n === 1 ? 'завтра' : `через ${days(n)}`;
 }
 
-/** Выбор даты экзамена: сегодня или позже, не дальше чем через год. */
-function dateForm(now: number, current: number | undefined, label: string, onPick: (date: number) => void): HTMLElement {
+/**
+ * Выбор даты экзамена: свой календарь, сегодня или позже, не дальше чем через год.
+ * Системный календарь телефона не используем: на iPhone он открывается поверх кнопки «Сохранить»,
+ * и нажатие попадает в календарь, а не в кнопку.
+ */
+function dateForm(now: number, current: number | undefined, label: string, onPick: (date: number) => void, onCancel?: () => void): HTMLElement {
   const today = startOfToday(now);
   const max = today + 365 * DAY_MS;
-  const input = el('input', { class: 'plan-date__input', type: 'date', id: 'plan-date', min: toInput(today), max: toInput(max), required: true });
-  if (current !== undefined && current >= today) input.value = toInput(current);
-  const error = el('p', { class: 'plan-date__error', role: 'alert' });
-  const submit = el('button', { class: 'btn btn--primary btn--lg', type: 'submit' }, label);
-  const check = () => {
-    const date = fromInput(input.value);
-    const msg = !input.value ? '' : date === undefined ? 'Не получилось прочитать дату.' : date < today ? 'Эта дата уже прошла.' : date > max ? 'Дата дальше чем через год.' : '';
-    error.textContent = msg;
-    submit.disabled = !input.value || !!msg;
-    return msg ? undefined : date;
+  const known = current !== undefined && current >= today && current <= max ? startOfToday(current) : undefined;
+  let picked = known;
+  const shown = new Date(picked ?? today);
+  let year = shown.getFullYear();
+  let month = shown.getMonth();
+  const monthIndex = (ts: number) => new Date(ts).getFullYear() * 12 + new Date(ts).getMonth();
+
+  const title = el('p', { class: 'cal__title', 'aria-live': 'polite' });
+  const step = (by: number) => {
+    const d = new Date(year, month + by, 1);
+    year = d.getFullYear();
+    month = d.getMonth();
+    render();
   };
-  input.addEventListener('input', check);
-  input.addEventListener('change', check);
-  check();
+  const prev = el('button', { class: 'cal__nav', type: 'button', 'aria-label': 'Предыдущий месяц', onclick: () => step(-1) }, '‹');
+  const next = el('button', { class: 'cal__nav', type: 'button', 'aria-label': 'Следующий месяц', onclick: () => step(1) }, '›');
+  const grid = el('div', { class: 'cal__grid' });
+  const chosen = el('p', { class: 'plan-date__chosen', 'aria-live': 'polite' });
+  const submit = el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => picked !== undefined && picked !== known && onPick(picked) }, label);
+
+  function render() {
+    title.textContent = `${MONTHS[month]} ${year}`;
+    prev.disabled = year * 12 + month <= monthIndex(today);
+    next.disabled = year * 12 + month >= monthIndex(max);
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7;
+    const count = new Date(year, month + 1, 0).getDate();
+    const cells: HTMLElement[] = WEEK.map((w) => el('span', { class: 'cal__wd', 'aria-hidden': 'true' }, w));
+    for (let i = 0; i < lead; i++) cells.push(el('span', { class: 'cal__gap' }));
+    for (let d = 1; d <= count; d++) {
+      const ts = new Date(year, month, d).getTime();
+      const off = ts < today || ts > max;
+      cells.push(
+        el(
+          'button',
+          {
+            class: `cal__day${ts === today ? ' is-today' : ''}${ts === picked ? ' is-picked' : ''}`,
+            type: 'button',
+            disabled: off,
+            'aria-pressed': ts === picked ? 'true' : 'false',
+            'aria-label': `${dateLabel(ts)} ${year}, ${weekday(ts)}${ts === today ? ', сегодня' : ''}`,
+            onclick: () => {
+              picked = ts;
+              render();
+            },
+          },
+          String(d),
+        ),
+      );
+    }
+    grid.replaceChildren(...cells);
+    chosen.textContent =
+      picked === undefined ? 'Выбери день в календаре.' : `${picked === known ? 'Сейчас' : 'Выбрано'}: ${dateLabel(picked)}, ${weekday(picked)} — ${fromToday(picked, today)}.`;
+    submit.disabled = picked === undefined || picked === known;
+  }
+  render();
+
   return el(
-    'form',
-    {
-      class: 'plan-date',
-      onsubmit: (e: Event) => {
-        e.preventDefault();
-        const date = check();
-        if (date !== undefined) onPick(date);
-      },
-    },
-    el('label', { class: 'plan-date__label', for: 'plan-date' }, 'Дата экзамена в ГИБДД'),
-    input,
-    error,
-    submit,
+    'div',
+    { class: 'plan-date', role: 'group', 'aria-labelledby': 'plan-date-label' },
+    el('p', { class: 'plan-date__label', id: 'plan-date-label' }, 'Дата экзамена в ГИБДД'),
+    el('div', { class: 'cal' }, el('div', { class: 'cal__head' }, prev, title, next), grid),
+    chosen,
+    onCancel ? el('div', { class: 'menu__row plan-edit' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: onCancel }, 'Отмена'), submit) : submit,
   );
 }
 
@@ -210,9 +247,19 @@ export function planView(data: ProgressData, now: number, readinessNow: number |
         class: 'btn btn--secondary',
         type: 'button',
         onclick: (e: Event) => {
-          (e.currentTarget as HTMLElement).hidden = true;
-          editing.replaceChildren(dateForm(now, s.date, 'Сохранить дату', actions.setDate));
-          editing.querySelector('input')?.focus();
+          const row = (e.currentTarget as HTMLElement).closest<HTMLElement>('.plan-edit');
+          if (row) row.hidden = true;
+          editing.replaceChildren(
+            el(
+              'section',
+              { class: 'panel' },
+              dateForm(now, s.date, 'Сохранить дату', actions.setDate, () => {
+                editing.replaceChildren();
+                if (row) row.hidden = false;
+              }),
+            ),
+          );
+          editing.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         },
       },
       label,

@@ -14,7 +14,10 @@ export interface ExamAttempt {
   items: string[];
   /** Сколько из них дополнительных (последние). */
   extra: number;
-  /** Выбранные варианты по порядку (отвеченных вопросов может быть меньше, чем вопросов). */
+  /**
+   * Выбранные варианты по местам вопросов; −1 — вопрос остался без ответа (пропущен, а экзамен закончился).
+   * Массив может быть короче списка вопросов: тогда на последние вопросы ответа нет.
+   */
   chosen: number[];
 }
 
@@ -42,7 +45,7 @@ export function sanitizeExams(raw: unknown): ExamAttempt[] {
         a.extra <= a.items.length &&
         Array.isArray(a.chosen) &&
         a.chosen.length <= a.items.length &&
-        a.chosen.every((x: unknown) => isInt(x, 0)),
+        a.chosen.every((x: unknown) => isInt(x, -1)),
     )
     .map(({ at, ms, passed, reason, boss, items, extra, chosen }) => ({ at, ms, passed, ...(reason ? { reason } : {}), boss, items: [...items], extra, chosen: [...chosen] }))
     .sort((a, b) => a.at - b.at);
@@ -72,4 +75,14 @@ export function recordExam(attempt: ExamAttempt): ExamAttempt {
 /** Для тестов: забыть копию в памяти. */
 export function resetExamCache(): void {
   memory = undefined;
+}
+
+/** Отвечен ли вопрос на месте `i` (не пропущен и не остался без ответа). */
+export const answeredAt = (a: Pick<ExamAttempt, 'chosen'>, i: number): boolean => (a.chosen[i] ?? -1) >= 0;
+
+/** Ответы экзамена для истории: −1 вместо пропущенных, без хвоста из вопросов без ответа. */
+export function savedChoices(chosen: readonly (number | undefined)[]): number[] {
+  const out = chosen.map((c) => c ?? -1);
+  while (out.length && out[out.length - 1] === -1) out.pop();
+  return out;
 }

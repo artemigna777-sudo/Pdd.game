@@ -4,8 +4,8 @@ import { GAME_SUBTITLE, GAME_TITLE } from '../config.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
-import { EXAM_RULES, answerExam, blockOf, checkTime, clock, currentItem, extraCount, startExam } from '../exam/exam.ts';
-import { allExams, findExam, recordExam } from '../exam/examHistory.ts';
+import { EXAM_RULES, answerExam, answeredCount, blockOf, checkTime, clock, currentItem, extraCount, goToExam, openItems, phaseItems, skipExam, startExam } from '../exam/exam.ts';
+import { allExams, answeredAt, findExam, recordExam, savedChoices } from '../exam/examHistory.ts';
 import { setGameActive } from '../game/game.ts';
 import {
   CONTROL_TICKETS,
@@ -62,6 +62,8 @@ import { patrolScreen } from './patrolScreen.ts';
 import { courierScreen } from './courierScreen.ts';
 import { COURIER } from '../progress/modes.ts';
 import { loadSigns, signsView, watchNewSigns } from './signsView.ts';
+import { statsView } from './statsView.ts';
+import { startStats, trackEvent, trackOnce, trackOncePerDay, trackView } from '../stats/track.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 
 /**
@@ -114,7 +116,9 @@ type Route =
   /** Идущая дуэль: новая или ответ на вызов. */
   | { name: 'duel-run'; invite?: DuelPayload }
   /** Итог дуэли из истории. */
-  | { name: 'duel-result'; id: string; role: 'from' | 'to'; elsewhere?: string };
+  | { name: 'duel-result'; id: string; role: 'from' | 'to'; elsewhere?: string }
+  /** Статистика игры для автора (секретный вход из настроек). */
+  | { name: 'stats' };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
@@ -126,7 +130,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier';
+type BackTarget = 'menu' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -158,6 +162,7 @@ const DEPTH: Record<RouteName, number> = {
   'duel-invite': 3,
   'duel-run': 3,
   'duel-result': 3,
+  stats: 2,
 };
 
 // Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
@@ -189,6 +194,54 @@ function reviewNote(out: AnswerOutcome, due?: number): string {
   return '';
 }
 
+/** Адрес и название экрана для статистики (без личных данных: только какой экран открыт). */
+function screenForStats(route: Route): [string, string] | undefined {
+  switch (route.name) {
+    case 'menu':
+      return ['/', 'Меню'];
+    case 'city':
+      return [`/city/${route.chapter}`, `Город: глава ${route.chapter.replace(/\D/g, '')}`];
+    case 'patrol-run':
+      return ['/patrol/run', 'Пост ДПС: смена'];
+    case 'courier-run':
+      return ['/courier/run', 'Смена курьера: смена'];
+    case 'exam-run':
+      return route.boss ? ['/exam/boss', 'Экзамен-босс'] : ['/exam/run', 'Экзамен: идёт'];
+    case 'drill':
+      return [`/drill/${route.mode}`, `Тренировка: ${route.mode}`];
+    case 'stats':
+      return undefined;
+    default: {
+      const titles: Partial<Record<RouteName, string>> = {
+        chapters: 'Главы',
+        settings: 'Настройки',
+        tickets: 'Билеты',
+        ticket: 'Билет',
+        history: 'История билетов',
+        attempt: 'Разбор билета',
+        review: 'Разбор ошибок',
+        progress: 'Прогресс',
+        plan: 'Мой экзамен',
+        garage: 'Гараж',
+        finale: 'Финал',
+        control: 'Контрольный билет',
+        exam: 'Экзамен',
+        'exam-result': 'Экзамен: результат',
+        modes: 'Режимы',
+        duel: 'Дуэль',
+        signs: 'Знакодекс',
+        patrol: 'Пост ДПС',
+        courier: 'Смена курьера',
+        'duel-invite': 'Дуэль: вызов по ссылке',
+        'duel-run': 'Дуэль: идёт',
+        'duel-result': 'Дуэль: итог',
+      };
+      const title = titles[route.name];
+      return title ? [`/${route.name}`, title] : undefined;
+    }
+  }
+}
+
 export class App {
   private route: Route = { name: 'menu' };
   private cleanup: (() => void) | undefined;
@@ -211,6 +264,10 @@ export class App {
     // Ссылка на дуэль (#duel=…): адрес очищается, чтобы «Назад» и перезагрузка не открывали её снова.
     const link = hashHasDuel(location.hash) ? location.hash : undefined;
     history.replaceState({ name: 'menu' }, '', link ? location.pathname + location.search : undefined);
+    // Статистика: новый игрок и вход с главного экрана — по разу, затем экраны по мере открытия.
+    startStats();
+    trackOnce('new-player', 'Новый игрок');
+    if (isStandalone()) trackOncePerDay('home-screen', 'Открыли игру с главного экрана');
     this.render({ name: 'menu' });
     unlockAudioOnFirstTouch();
     // Знакодекс: сообщение о новом знаке после любого верного ответа.
@@ -310,7 +367,10 @@ export class App {
         break;
       }
       case 'settings':
-        screen = this.page('Настройки', settingsPanel(true), { back: 'menu' });
+        screen = this.page('Настройки', settingsPanel(true, { openStats: () => this.open({ name: 'stats' }) }), { back: 'menu' });
+        break;
+      case 'stats':
+        screen = this.statsScreen();
         break;
       case 'tickets':
         screen = this.ticketsScreen();
@@ -399,6 +459,8 @@ export class App {
     }
     this.root.replaceChildren(screen);
     screen.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true });
+    const view = screenForStats(route);
+    if (view) trackView(...view);
   }
 
   // ─── Меню ──────────────────────────────────────────────────────────────────────
@@ -773,6 +835,7 @@ export class App {
         planView(data, now, ready(), {
           setDate: (date) => {
             setExamDate(data, date, questions.length, Date.now());
+            trackEvent('plan-date', 'Указали дату экзамена');
             showToast(`План к экзамену ${dateLabel(date)} готов`);
             refresh();
           },
@@ -789,6 +852,7 @@ export class App {
             ]),
           result: (passed) => {
             recordExamResult(data, passed, ready(), Date.now());
+            trackEvent(passed ? 'real-exam-pass' : 'real-exam-fail', passed ? 'Сдали экзамен в ГИБДД' : 'Не сдали экзамен в ГИБДД');
             playSound(passed ? 'pass' : 'fail');
             refresh();
           },
@@ -810,6 +874,16 @@ export class App {
       );
     });
     return this.page('Мой экзамен', body, { back: 'menu' });
+  }
+
+  private statsScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    loadMapping().then((mapping) => {
+      if (this.route !== route) return;
+      body.replaceChildren(statsView(mapping.chapters.map((c) => ({ id: c.id, title: c.title })), () => this.replace({ name: 'stats' })));
+    });
+    return this.page('Статистика игры', body, { back: 'settings' });
   }
 
   private reviewScreen(): HTMLElement {
@@ -929,7 +1003,10 @@ export class App {
     const progressEl = el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
     const status = el('p', { class: 'exam-status', 'aria-live': 'polite' });
     const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    // Номера вопросов: как в ГИБДД, порядок ответов выбирает сам сдающий, к пропущенным можно вернуться.
+    const nav = el('div', { class: 'exam-nav', role: 'group', 'aria-label': 'Вопросы экзамена' });
     const answer = el('button', { class: 'btn btn--primary btn--lg', type: 'button', disabled: true }, 'Ответить');
+    const skip = el('button', { class: 'btn btn--secondary btn--lg', type: 'button', disabled: true, 'aria-label': 'Пропустить вопрос' }, 'Пропустить');
     let ticker: number | undefined;
     const stop = () => window.clearInterval(ticker);
     this.cleanup = stop;
@@ -939,7 +1016,13 @@ export class App {
         { label: 'Продолжить экзамен', primary: true },
         { label: 'Выйти', onClick: () => this.back(back) },
       ]);
-    const screen = this.page(route.boss ? 'Экзамен в ГИБДД' : 'Экзамен', el('div', {}, status, body), { back, aside: timer, progress: progressEl, footer: answer, onBack: leave });
+    const screen = this.page(route.boss ? 'Экзамен в ГИБДД' : 'Экзамен', el('div', {}, nav, status, body), {
+      back,
+      aside: timer,
+      progress: progressEl,
+      footer: el('div', { class: 'exam-actions' }, skip, answer),
+      onBack: leave,
+    });
     const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
 
     loadQuestions().then((all) => {
@@ -950,18 +1033,45 @@ export class App {
       let lastTick = -1;
       playSound('start');
 
+      const seen = new Set<number>();
       const show = () => {
         const item = currentItem(s);
         if (!item) return;
         const q = byId.get(item.id)!;
-        const index = s.results.length;
+        const index = s.cursor;
+        seen.add(index);
         const main = s.items.length - extraCount(s);
-        status.textContent = item.extra
-          ? `Дополнительный вопрос ${index - main + 1} из ${extraCount(s)} · блок ${item.block + 1} · без ошибок`
-          : `Вопрос ${index + 1} из ${EXAM_RULES.questions} · блок ${item.block + 1}`;
+        const skipped = openItems(s).filter((i) => i !== index && seen.has(i)).length;
+        status.textContent =
+          (item.extra
+            ? `Дополнительный вопрос ${index - main + 1} из ${extraCount(s)} · блок ${item.block + 1} · без ошибок`
+            : `Вопрос ${index + 1} из ${EXAM_RULES.questions} · блок ${item.block + 1}`) + (skipped ? ` · пропущено: ${skipped}` : '');
+        const done = answeredCount(s);
         progressEl.setAttribute('aria-valuemax', String(s.items.length));
-        progressEl.setAttribute('aria-valuenow', String(index));
-        bar.style.width = `${(index / s.items.length) * 100}%`;
+        progressEl.setAttribute('aria-valuenow', String(done));
+        bar.style.width = `${(done / s.items.length) * 100}%`;
+        nav.replaceChildren(
+          ...phaseItems(s).map((i) => {
+            const answered = s.chosen[i] !== undefined;
+            const n = s.items[i].extra ? i - main + 1 : i + 1;
+            const state = i === index ? 'открыт' : answered ? 'ответ подтверждён' : seen.has(i) ? 'пропущен' : 'без ответа';
+            return el(
+              'button',
+              {
+                class: `exam-nav__q${i === index ? ' is-current' : answered ? ' is-done' : seen.has(i) ? ' is-skipped' : ''}`,
+                type: 'button',
+                disabled: answered || i === index,
+                'aria-current': i === index ? 'step' : undefined,
+                'aria-label': `${s.items[i].extra ? 'Дополнительный вопрос' : 'Вопрос'} ${n}: ${state}`,
+                onclick: () => {
+                  if (goToExam(s, i)) show();
+                },
+              },
+              s.items[i].extra ? `Д${n}` : String(n),
+            );
+          }),
+        );
+        skip.disabled = openItems(s).length < 2;
         selected = -1;
         answer.disabled = true;
         body.replaceChildren(
@@ -973,13 +1083,18 @@ export class App {
         scroller.scrollTop = 0;
       };
 
+      skip.onclick = () => {
+        skipExam(s);
+        show();
+      };
+
       const finish = () => {
         stop();
         const now = Date.now();
         const outcome = s.outcome!;
         const data = progress();
         // Ответы идут в прогресс только теперь: во время экзамена ничто не подсказывает, верен ли ответ.
-        const outcomes = s.chosen.map((chosen, i) => recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now));
+        const outcomes = s.chosen.flatMap((chosen, i) => (chosen === undefined ? [] : [recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now)]));
         const reward = outcome.passed ? recordExamPass(data, route.boss, now) : undefined;
         // Пробный экзамен засчитывается в план к экзамену в ГИБДД (сдан или нет).
         outcomes.push(recordPlanExam(data, now));
@@ -992,9 +1107,11 @@ export class App {
           boss: route.boss,
           items: s.items.map((i) => i.id),
           extra: extraCount(s),
-          chosen: [...s.chosen],
+          chosen: savedChoices(s.chosen),
         });
         playSound(outcome.passed ? 'pass' : 'fail');
+        if (route.boss) trackEvent(outcome.passed ? 'boss-pass' : 'boss-fail', outcome.passed ? 'Экзамен-босс сдан' : 'Экзамен-босс не сдан');
+        else trackEvent(outcome.passed ? 'exam-pass' : 'exam-fail', outcome.passed ? 'Тренировочный экзамен сдан' : 'Тренировочный экзамен не сдан');
         levelUpToast(reward?.levelUp, false);
         if (reward?.xp) showToast(`+${reward.xp} опыта · +${reward.coins ?? 0} монет`);
         goalToast(outcomes.find((o) => o.goal), data);
@@ -1062,7 +1179,7 @@ export class App {
     loadQuestions().then((questions) => {
       if (this.route !== route) return;
       const byId = new Map(questions.map((q) => [q.id, q]));
-      const mistakes = attempt.chosen.some((c, i) => c !== byId.get(attempt.items[i])?.correct);
+      const mistakes = attempt.chosen.some((c, i) => answeredAt(attempt, i) && c !== byId.get(attempt.items[i])?.correct);
       const story =
         attempt.boss && attempt.passed
           ? el('p', { class: 'banner banner--ok' }, 'История пройдена! Права получены — поздравляем от всей «Стрелы».')
@@ -1072,7 +1189,8 @@ export class App {
               ? el('p', { class: 'banner banner--bad' }, 'Ошибок нет, но время вышло. Экзамен-босса можно сдать снова из финала.')
               : null;
       const main = attempt.items.length - attempt.extra;
-      const right = attempt.chosen.filter((c, i) => c === byId.get(attempt.items[i])?.correct).length;
+      const right = attempt.chosen.filter((c, i) => answeredAt(attempt, i) && c === byId.get(attempt.items[i])?.correct).length;
+      const answered = attempt.chosen.filter((_, i) => answeredAt(attempt, i)).length;
       const share = attempt.passed
         ? el(
             'button',
@@ -1083,7 +1201,7 @@ export class App {
                 void shareResult({
                   kicker: attempt.boss ? 'Экзамен в ГИБДД' : 'Тренировочный экзамен',
                   title: attempt.boss ? 'Права получены!' : 'Экзамен сдан!',
-                  big: `${right} из ${attempt.chosen.length}`,
+                  big: `${right} из ${answered}`,
                   lines: [`${main} основных вопросов${attempt.extra ? ` и ${attempt.extra} дополнительных` : ''}`, `Время: ${Math.max(1, Math.round(attempt.ms / 60000))} мин`],
                 }),
             },

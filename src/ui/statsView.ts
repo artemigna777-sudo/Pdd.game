@@ -1,12 +1,15 @@
 /**
- * Секретный экран автора игры: сколько людей заходит, что открывают и докуда доходят.
- * Вход — 7 касаний по «Версия игры» в настройках. Числа — из открытого счётчика GoatCounter
- * (src/stats/goatcounter.ts); откуда пришли, телефоны и страны — на сайте счётчика.
+ * Секретный экран автора игры: сколько людей заходит, что открывают, докуда доходят, откуда пришли.
+ * Вход — 7 касаний по «Версия игры» в настройках и пароль автора. Числа — через посредника с ключом
+ * автора (src/stats/proxy.ts); если он не ответил — из открытого счётчика GoatCounter
+ * (src/stats/goatcounter.ts), там нет источников, телефонов и стран.
  */
 import { adminState, updateAdmin } from '../stats/admin.ts';
 import { EVENTS, FINALE, SCREENS, chapterDone, chapterPath, trackedPaths } from '../stats/catalog.ts';
 import { StatsError, loadReport, type Named, type StatsReport } from '../stats/goatcounter.ts';
-import { statsSite } from '../stats/track.ts';
+import { ProxyError, loadProxyReport, type ProxyFailure } from '../stats/proxy.ts';
+import { statsProxy, statsSite } from '../stats/track.ts';
+import { askAuthorPassword } from './authorLogin.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
 
@@ -19,8 +22,8 @@ const SETTING = '«Allow adding visitor counts on your website»';
 /** Строка списка: название, число и подпись под названием. */
 type Row = Named & { note?: string };
 
-/** Отчёт за сессию игры: повторно не загружается, пока не нажать «Обновить». */
-let cached: StatsReport | undefined;
+/** Отчёт за сессию игры (и почему не через посредника): повторно не загружается, пока не нажать «Обновить». */
+let cached: { report: StatsReport; proxyFailure?: ProxyFailure } | undefined;
 
 /** Плитка с числом. */
 function tile(label: string, value: number): HTMLElement {
@@ -113,13 +116,21 @@ function report(r: StatsReport, chapters: { id: string; title: string }[], refre
     section('Сюжет: докуда дошли', 'Сколько человек за 30 дней открывали главу в городе и сколько её прошли.', barList(storyFunnel(r.counts, chapters), 'Пока никто не играл в сюжет.')),
     section('Что открывают', 'Экраны игры за 30 дней, кроме глав.', barList(ranked(SCREENS, r.counts), 'Пока пусто.')),
     section('Что сделали', 'События за 30 дней.', barList(ranked(EVENTS, r.counts), 'Событий пока не было.')),
-    el(
-      'section',
-      { class: 'panel' },
-      el('h2', { class: 'panel__title' }, 'Откуда пришли, телефоны, страны'),
-      el('p', { class: 'panel__note' }, 'Эти разделы игра показать не может — они на сайте счётчика. Там же метка из ссылки (например, «tiktok»).'),
-      el('a', { class: 'btn btn--secondary', href: siteUrl(), target: '_blank', rel: 'noopener' }, 'Открыть на сайте ↗'),
-    ),
+    ...(r.refs && r.systems && r.locations
+      ? [
+          section('Откуда пришли', 'С каких сайтов и приложений перешли в игру за 30 дней. Метка из ссылки (например, «tiktok») — тоже здесь.', barList(r.refs.map((x) => ({ ...x, name: x.name || 'Напрямую' })), 'Пока все заходили напрямую.')),
+          section('Телефоны', '', barList(r.systems, 'Пока пусто.')),
+          section('Страны', '', barList(r.locations, 'Пока пусто.')),
+        ]
+      : [
+          el(
+            'section',
+            { class: 'panel' },
+            el('h2', { class: 'panel__title' }, 'Откуда пришли, телефоны, страны'),
+            el('p', { class: 'panel__note' }, 'Открытый счётчик их не отдаёт — они на сайте счётчика и через посредника. Там же метка из ссылки (например, «tiktok»).'),
+            el('a', { class: 'btn btn--secondary', href: siteUrl(), target: '_blank', rel: 'noopener' }, 'Открыть на сайте ↗'),
+          ),
+        ]),
     r.failed ? el('p', { class: 'panel__note' }, `Не загрузилось чисел: ${r.failed}, вместо них нули. Нажми «Обновить».`) : null,
     el(
       'div',
@@ -129,6 +140,14 @@ function report(r: StatsReport, chapters: { id: string; title: string }[], refre
     ),
   ].filter((x): x is HTMLElement => x !== null);
 }
+
+const PROXY_FAILURE: Record<ProxyFailure, string> = {
+  key: 'Посредник не принял ключ автора: проверь секрет STATS_KEY в Cloudflare (Settings → Variables and Secrets) или войди в статистику заново.',
+  setup: 'У посредника не заданы секреты GC_TOKEN и STATS_KEY: Cloudflare → kurier-pdd-stats → Settings → Variables and Secrets.',
+  'gc-token': 'GoatCounter не принял ключ посредника: создай в GoatCounter новый ключ API с правом «Read statistics» и замени им секрет GC_TOKEN в Cloudflare.',
+  server: 'Посредник ответил ошибкой.',
+  network: 'Посредник не ответил: нет интернета или Cloudflare недоступен.',
+};
 
 const FAILURE: Record<StatsError['kind'], string> = {
   disabled: `Счётчик не отдал числа. На сайте счётчика открой Settings, отметь ${SETTING} и нажми Save.`,
@@ -191,25 +210,52 @@ export function statsView(chapters: { id: string; title: string }[], onChange: (
 
   if (site) {
     const refresh = () => ((cached = undefined), onChange());
-    const show = (r: StatsReport) => out.replaceChildren(...report(r, chapters, refresh));
+    const proxy = statsProxy();
+    // Вход до посредника: ключа автора на телефоне нет, его даёт только пароль.
+    const relogin =
+      proxy && !admin.key
+        ? el(
+            'section',
+            { class: 'panel' },
+            el('p', { class: 'banner' }, 'Статистика теперь идёт через посредника, только для автора. Введи пароль ещё раз — тогда здесь появятся и источники, телефоны, страны.'),
+            el('button', { class: 'btn btn--primary', type: 'button', onclick: () => askAuthorPassword(refresh) }, 'Ввести пароль'),
+          )
+        : null;
+    const proxyNote = (kind?: ProxyFailure) => (kind ? el('p', { class: 'banner banner--bad' }, `${PROXY_FAILURE[kind]} Пока показываю открытый счётчик.`) : null);
+    const show = (c: NonNullable<typeof cached>) => out.replaceChildren(...[relogin, proxyNote(c.proxyFailure), ...report(c.report, chapters, refresh)].filter((x): x is HTMLElement => x !== null));
     if (cached) show(cached);
     else {
       out.replaceChildren(el('p', { class: 'loading' }, 'Загружаю статистику…'));
-      loadReport(site, trackedPaths(chapters.map((c) => c.id))).then(
+      let proxyFailure: ProxyFailure | undefined;
+      const load = async (): Promise<StatsReport> => {
+        if (proxy && admin.key) {
+          try {
+            return await loadProxyReport(proxy, admin.key);
+          } catch (e) {
+            proxyFailure = e instanceof ProxyError ? e.kind : 'network';
+          }
+        }
+        return loadReport(site, trackedPaths(chapters.map((c) => c.id)));
+      };
+      load().then(
         (r) => {
-          cached = r;
-          if (out.isConnected) show(r);
+          cached = { report: r, proxyFailure };
+          if (out.isConnected) show(cached);
         },
         (e: unknown) => {
           const kind = e instanceof StatsError ? e.kind : 'network';
           out.replaceChildren(
-            el(
-              'section',
-              { class: 'panel' },
-              el('p', { class: 'banner banner--bad' }, FAILURE[kind]),
-              el('a', { class: 'btn btn--secondary', href: siteUrl(), target: '_blank', rel: 'noopener' }, 'Открыть сайт счётчика ↗'),
-              el('button', { class: 'btn btn--secondary', type: 'button', onclick: refresh }, 'Попробовать ещё раз'),
-            ),
+            ...[
+              relogin,
+              proxyFailure ? el('p', { class: 'banner banner--bad' }, PROXY_FAILURE[proxyFailure]) : null,
+              el(
+                'section',
+                { class: 'panel' },
+                el('p', { class: 'banner banner--bad' }, FAILURE[kind]),
+                el('a', { class: 'btn btn--secondary', href: siteUrl(), target: '_blank', rel: 'noopener' }, 'Открыть сайт счётчика ↗'),
+                el('button', { class: 'btn btn--secondary', type: 'button', onclick: refresh }, 'Попробовать ещё раз'),
+              ),
+            ].filter((x): x is HTMLElement => x !== null),
           );
         },
       );

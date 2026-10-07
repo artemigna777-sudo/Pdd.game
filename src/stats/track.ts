@@ -9,7 +9,7 @@
  * это телефон автора с «не считать мои заходы», режим разработки и автотесты.
  * Без интернета хиты копятся в очереди (до 40) и уходят, когда сеть появится.
  */
-import { STATS_SITE } from '../config.ts';
+import { STATS_PROXY, STATS_SITE } from '../config.ts';
 import { getSettings } from '../settings.ts';
 import { load, save } from '../storage.ts';
 import { adminState } from './admin.ts';
@@ -44,6 +44,15 @@ export function statsSite(): string {
     if (typeof dev === 'string') return dev;
   }
   return STATS_SITE;
+}
+
+/** Адрес посредника статистики. В режиме разработки автотесты подставляют свой (`pdd-game:stats-proxy-dev`). */
+export function statsProxy(): string {
+  if (isDev()) {
+    const dev = load<unknown>('pdd-game:stats-proxy-dev', null);
+    if (typeof dev === 'string') return dev;
+  }
+  return STATS_PROXY;
 }
 
 /**

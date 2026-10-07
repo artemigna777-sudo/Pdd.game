@@ -9,7 +9,8 @@ import { playTutorial, showModal } from './cutscene.ts';
 import { shareFile } from './share.ts';
 import { el } from './dom.ts';
 import { statsSite } from '../stats/track.ts';
-import { adminState, updateAdmin } from '../stats/admin.ts';
+import { adminState } from '../stats/admin.ts';
+import { askAuthorPassword } from './authorLogin.ts';
 
 const OPTIONS: Array<{ mode: ControlMode; title: string; hint: string }> = [
   { mode: 'tap', title: 'Касание дороги', hint: 'Коснитесь места на дороге — машина сама проложит маршрут и поедет туда.' },
@@ -247,8 +248,9 @@ function versionSection(openStats?: () => void): HTMLElement {
     last = now;
     if (taps < SECRET_TAPS || !openStats) return;
     taps = 0;
-    updateAdmin({ unlocked: true });
-    openStats();
+    // Статистика — только для автора: на новом телефоне сначала пароль.
+    if (adminState().unlocked) openStats();
+    else askAuthorPassword(openStats);
   };
   const stats = adminState().unlocked && openStats ? el('button', { class: 'btn btn--secondary', type: 'button', onclick: openStats }, 'Статистика игры') : null;
   return el(

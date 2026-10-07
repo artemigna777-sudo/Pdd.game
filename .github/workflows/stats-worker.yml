@@ -1,0 +1,42 @@
+name: Посредник статистики на Cloudflare
+
+# Загружает stats-worker/worker.js в Cloudflare Worker kurier-pdd-stats: на iPhone вставить код
+# в редактор Cloudflare не получается. Нужен секрет репозитория CLOUDFLARE_API_TOKEN
+# (Cloudflare → профиль → API Tokens → шаблон «Edit Cloudflare Workers»). Секреты самого
+# посредника (GC_TOKEN, STATS_KEY) задаются в Cloudflare и при загрузке кода не меняются.
+
+on:
+  push:
+    branches: [main]
+    paths: ['stats-worker/**', '.github/workflows/stats-worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stats-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Загрузить посредника в Cloudflare
+        working-directory: stats-worker
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::Нет секрета CLOUDFLARE_API_TOKEN — посредник не загружен. Добавьте его в Settings → Secrets and variables → Actions."
+            exit 0
+          fi
+          export CLOUDFLARE_API_TOKEN="$TOKEN"
+          # Номер аккаунта нужен, только если у ключа доступ к нескольким аккаунтам Cloudflare.
+          if [ -n "$ACCOUNT" ]; then export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT"; fi
+          npx --yes wrangler@4 deploy

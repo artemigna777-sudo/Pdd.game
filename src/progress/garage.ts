@@ -3,6 +3,7 @@
  * ответы и награды не влияет.
  */
 import { DEFAULT_PAINT, DEFAULT_STICKER, spendCoins, type ProgressData } from './progress.ts';
+import { shopPrice } from './storyProgress.ts';
 
 export interface Paint {
   id: string;
@@ -67,7 +68,8 @@ export function buyOrSelect(data: ProgressData, id: string): 'selected' | 'bough
   let result: 'selected' | 'bought' = 'selected';
   if (!data.garage.owned.includes(id)) {
     if ('signGroup' in it && it.signGroup) return 'locked';
-    if (!spendCoins(data, it.price)) return 'no-coins';
+    // С дядей Геной от 4 сердечек — скидка (этап 17).
+    if (!spendCoins(data, shopPrice(data, it.price))) return 'no-coins';
     data.garage.owned.push(id);
     result = 'bought';
   }

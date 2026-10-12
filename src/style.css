@@ -4688,3 +4688,145 @@ a.btn {
   font-weight: 800;
   color: var(--ok);
 }
+
+/* ─── «Моя история» (этап 17) ───────────────────────────────────────────── */
+.story {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.story-link {
+  width: 100%;
+  margin-bottom: 12px;
+  white-space: normal;
+}
+
+.story__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.team {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team__hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.team__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.team__name {
+  font-weight: 700;
+}
+
+.team__role,
+.team__perk {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.team__perk.is-on {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.hearts {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--line);
+  font-size: 17px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hearts .is-on {
+  color: var(--bad);
+}
+
+.story__decisions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+  font-size: 15px;
+}
+
+.story__decisions li.is-big::marker {
+  color: var(--bad);
+  font-weight: 800;
+}
+
+.story__chapter {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.story__rewind .btn {
+  white-space: normal;
+}
+
+.endings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ending {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.ending.is-open {
+  border-style: solid;
+  border-color: var(--ok);
+}
+
+.ending__icon {
+  font-size: 28px;
+}
+
+.ending__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ending__hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.ending__play {
+  min-height: 48px;
+}
+
+.garage__discount {
+  color: var(--ok);
+  font-weight: 700;
+}

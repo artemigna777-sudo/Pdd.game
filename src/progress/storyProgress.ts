@@ -64,3 +64,16 @@ export function latestEnding(data: ProgressData, source: PlotSource = PLOT, endi
 export function endingScene(ending: Ending | undefined): Line[] {
   return [...FINALE_STORY.passed, ...(ending?.lines ?? []), ...FINALE_STORY.end];
 }
+
+/** Помощь героев за отношения: у дяди Гены от 4 сердечек — скидка в гараже и магазине. */
+export const GENA_DISCOUNT = { hearts: 4, share: 0.2 } as const;
+
+/** Скидка дяди Гены сейчас (доля), 0 — нет. */
+export function shopDiscount(data: ProgressData): number {
+  return storyContext(data).bonds.gena >= GENA_DISCOUNT.hearts ? GENA_DISCOUNT.share : 0;
+}
+
+/** Цена покупки с учётом скидки дяди Гены. */
+export function shopPrice(data: ProgressData, price: number): number {
+  return Math.round(price * (1 - shopDiscount(data)));
+}

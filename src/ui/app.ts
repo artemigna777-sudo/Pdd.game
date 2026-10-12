@@ -41,13 +41,16 @@ import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuest
 import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
 import { sendDuelReply, syncDuels } from '../duel/sync.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
-import { endingScene, finishStory, latestEnding } from '../progress/storyProgress.ts';
+import { endingScene, finishStory, latestEnding, storyContext } from '../progress/storyProgress.ts';
+import { characterTitle } from '../story/plot.ts';
+import { ENDINGS } from '../story/turbo.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
 import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
+import { storyView } from './storyView.ts';
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
 import { planSummary, refreshOrder } from '../progress/examPlan.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
@@ -99,6 +102,8 @@ type Route =
   /** Гараж: покраска и наклейки машины за монеты. */
   | { name: 'garage' }
   | { name: 'finale' }
+  /** «Моя история» (этап 17): характер, команда, решения, «Вернуть решение», галерея концовок. */
+  | { name: 'story' }
   /** Контрольный билет финала (номер места из трёх). */
   | { name: 'control'; slot: number }
   /** Экзамен: правила, история, начало тренировки. */
@@ -157,6 +162,7 @@ const DEPTH: Record<RouteName, number> = {
   progress: 1,
   drill: 2,
   finale: 2,
+  story: 2,
   control: 3,
   exam: 1,
   garage: 1,
@@ -239,6 +245,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         plan: 'Мой экзамен',
         garage: 'Гараж',
         finale: 'Финал',
+        story: 'Моя история',
         control: 'Контрольный билет',
         exam: 'Экзамен',
         'exam-result': 'Экзамен: результат',
@@ -429,6 +436,9 @@ export class App {
         break;
       case 'exam-result':
         screen = this.examResultScreen(route);
+        break;
+      case 'story':
+        screen = this.page('Моя история', storyView(progress(), () => saveProgress()), { back: 'chapters' });
         break;
       case 'garage':
         screen = this.page('Гараж', garageView(progress(), () => saveProgress()), { back: 'menu' });
@@ -672,7 +682,12 @@ export class App {
           ),
         ),
       );
-      list.replaceChildren(...cards, finaleCard);
+      const mine = el(
+        'button',
+        { class: 'btn btn--secondary story-link', type: 'button', onclick: () => this.open({ name: 'story' }) },
+        `📖 Моя история: ${characterTitle(storyContext(data).traits).toLowerCase()} · концовок ${Object.keys(data.story?.endings ?? {}).length} из ${ENDINGS.length}`,
+      );
+      list.replaceChildren(mine, ...cards, finaleCard);
     });
     return this.page('Главы', list, {
       back: 'menu',
@@ -780,6 +795,7 @@ export class App {
             ),
           ),
           el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => void playCutscene(endingScene(latestEnding(data)), { last: 'Конец' }) }, 'Концовка ещё раз'),
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'story' }) }, `🏆 Галерея концовок · ${Object.keys(data.story?.endings ?? {}).length} из ${ENDINGS.length}`),
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'exam' }) }, 'Тренировочный экзамен'),
         );
         return;
@@ -845,6 +861,7 @@ export class App {
         planLink(data, now, () => this.open({ name: 'plan' })),
         dailyCard(data, daily, now),
         el('div', { class: 'menu__row progress-actions' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'garage' }) }, `Гараж · 🪙 ${data.coins}`), share),
+        el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'story' }) }, '📖 Моя история: команда и концовки'),
         progressView(progress(), questions, mapping, {
           train: (topic) => this.open({ name: 'drill', mode: 'topic', topic, via: 'progress' }),
           openChapter: (id) => this.open({ name: 'city', chapter: id }),

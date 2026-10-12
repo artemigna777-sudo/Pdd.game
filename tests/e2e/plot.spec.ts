@@ -77,3 +77,76 @@ test('большая развилка главы 3: «Пропустить» д�
   await page.waitForTimeout(1500);
   await expect(dialog).toHaveCount(0);
 });
+
+test('«Моя история»: характер, команда, решения, «Вернуть решение» открывает новую концовку, скидка дяди Гены', async ({ page }) => {
+  const choices = [
+    ['ch2.kids', 'sokolov'],
+    ['ch3.artem', 'stay'],
+    ['ch4.gena', 'keep'],
+    ['ch6.bakery', 'save'],
+    ['ch7.witness', 'tell'],
+    ['ch9.video', 'erase'],
+  ].map(([id, value], i) => ({ id, value, at: i + 1 }));
+  await seed(page, {
+    xp: 20000,
+    coins: 260,
+    questions: {},
+    // Поручения дяди Гены выполнены (главы 5 и 9): вместе с «Гайкой» — 4 сердечка.
+    chapters: { ch5: { points: [], seen: [], stars: 0, side: { step: 2, done: 1 } }, ch9: { points: [], seen: [], stars: 0, side: { step: 2, done: 1 } } },
+    story: { choices, endings: { best: 1_700_000_000_000 }, rewinds: 0 },
+    finale: { control: [], seen: [], exam: 1_700_000_000_000 },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Главы', exact: true }).tap();
+  await page.getByRole('button', { name: /Моя история/ }).tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Моя история');
+
+  await expect(page.locator('.story__title')).toHaveText('Отзывчивый водитель');
+  await expect(page.locator('[data-hero="gena"] .hearts')).toHaveAttribute('aria-label', '4 из 5 сердечек');
+  await expect(page.locator('[data-hero="gena"] .team__perk')).toHaveClass(/is-on/);
+  await expect(page.locator('[data-hero="sokolov"] .hearts')).toHaveAttribute('aria-label', '1 из 5 сердечек');
+  await expect(page.locator('.story__decisions li')).toHaveCount(6);
+  await expect(page.locator('.story__decisions li.is-big')).toHaveCount(3);
+
+  // Галерея: одна концовка открыта, секретная скрыта.
+  await expect(page.locator('.section-title', { hasText: 'Галерея концовок' })).toHaveText('Галерея концовок · 1 из 6');
+  await expect(page.locator('[data-ending="secret"] b')).toHaveText('???');
+  await expect(page.locator('[data-ending="best"]')).toHaveClass(/is-open/);
+
+  // Вернуть решение главы 9: отдать запись Соколову — у него 4 сердечка, и открывается «Школа безопасности».
+  await expect(page.locator('.story__rewind')).toContainText('Запись видеорегистратора');
+  await page.getByRole('button', { name: 'Отдать запись Соколову · 🪙 200' }).tap();
+  await expect(page.locator('.modal__title')).toHaveText('Вернуть решение?');
+  await page.getByRole('button', { name: 'Вернуть за 🪙 200' }).tap();
+  const dialog = page.locator('.cutscene:not(.cutscene--modal)');
+  await expect(dialog).toContainText('Экзамен сдан');
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
+  await expect(page.locator('#toast')).toContainText('Открыта концовка «Школа безопасности»');
+  await expect(page.locator('.section-title', { hasText: 'Галерея концовок' })).toHaveText('Галерея концовок · 2 из 6');
+  await expect(page.locator('[data-hero="sokolov"] .hearts')).toHaveAttribute('aria-label', '4 из 5 сердечек');
+
+  const saved = await readProgress(page);
+  expect(saved.coins).toBe(60);
+  expect(saved.story.rewinds).toBe(1);
+  expect(Object.keys(saved.story.endings).sort()).toEqual(['best', 'school']);
+
+  // Посмотреть открытую концовку ещё раз.
+  await page.locator('[data-ending="school"] .ending__play').tap();
+  await expect(dialog).toContainText('Экзамен сдан');
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
+  await expect(dialog).toHaveCount(0);
+
+  // Монет на второй раз не хватает.
+  await page.getByRole('button', { name: /Стереть запись/ }).tap();
+  await page.getByRole('button', { name: 'Вернуть за 🪙 200' }).tap();
+  await expect(page.locator('#toast')).toContainText('Не хватает монет');
+
+  // Скидка дяди Гены в гараже: красная покраска за 48 вместо 60.
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Монеты: 60. Гараж' }).tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Гараж');
+  await expect(page.locator('.garage__discount')).toContainText('−20%');
+  await expect(page.locator('.garage__item', { hasText: 'Красная' }).locator('.garage__price')).toHaveText('🪙 48');
+  await page.locator('.garage__item', { hasText: 'Красная' }).tap();
+  expect((await readProgress(page)).coins).toBe(12);
+});

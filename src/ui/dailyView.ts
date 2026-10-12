@@ -3,6 +3,7 @@
  */
 import { playSound } from '../audio/feedback.ts';
 import { PAINTS, STICKERS, buyOrSelect, carLook, type CarLook, type StickerId } from '../progress/garage.ts';
+import { shopDiscount, shopPrice } from '../progress/storyProgress.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
 import { SIGN_GROUPS } from '../signs/signs.ts';
@@ -134,7 +135,8 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
     const look = carLook(data);
     const preview = el('div', { class: 'garage__car' });
     preview.innerHTML = carSvg(look);
-    const item = (id: string, name: string, price: number, swatch: HTMLElement, signGroup?: string) => {
+    const item = (id: string, name: string, base: number, swatch: HTMLElement, signGroup?: string) => {
+      const price = shopPrice(data, base);
       const owned = data.garage.owned.includes(id);
       const group = signGroup ? SIGN_GROUPS.find((g) => g.id === signGroup) : undefined;
       const selected = data.garage.paint === id || data.garage.sticker === id;
@@ -177,6 +179,7 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
       el('p', { class: 'panel__note' }, 'Монеты — за верные ответы, цель дня, пройденные главы и экзамены. Покраска и наклейки меняют только внешний вид машины.'),
+      shopDiscount(data) ? el('p', { class: 'panel__note garage__discount' }, `🔧 Скидка дяди Гены: −${Math.round(shopDiscount(data) * 100)}% — за дружбу.`) : '',
       el('h2', { class: 'section-title' }, 'Покраска'),
       el('div', { class: 'garage__grid' }, ...paints),
       el('h2', { class: 'section-title' }, 'Наклейки'),

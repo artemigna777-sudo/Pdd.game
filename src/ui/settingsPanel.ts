@@ -51,10 +51,21 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
     return button;
   };
   const tutorial = el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => void playTutorial() }, 'Показать обучение');
+  const soundSection = () => [
+    el('h2', { class: `settings__title${full ? ' settings__title--next' : ''}` }, 'Звук и вибрация'),
+    el(
+      'div',
+      { class: 'choices' },
+      toggle('sound', 'Звуки', 'Сигналы ответов, награды, экзамен, мотор и шум улицы в городе. На iPhone звука не будет, если включён беззвучный режим.'),
+      toggle('vibration', 'Вибрация при ошибке', 'На Android — вибрация, на iPhone (iOS 18 и новее) — лёгкий отклик.'),
+    ),
+  ];
   return el(
     'section',
     { class: 'settings' },
-    el('h2', { class: 'settings__title' }, 'Управление машиной'),
+    // В городе звук — первым: его чаще всего хочется выключить прямо за рулём.
+    ...(full ? [] : soundSection()),
+    el('h2', { class: `settings__title${full ? '' : ' settings__title--next'}` }, 'Управление машиной'),
     el('div', { class: 'choices' }, ...buttons),
     el('h2', { class: 'settings__title settings__title--next' }, 'Город'),
     el(
@@ -63,13 +74,7 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
       difficultyChoice(),
       toggle('events', 'События в пути', 'Иногда по дороге что-то случается: сзади скорая, на дорогу выкатился мяч, пошёл дождь. После события — вопрос по его теме.'),
     ),
-    el('h2', { class: 'settings__title settings__title--next' }, 'Звук и вибрация'),
-    el(
-      'div',
-      { class: 'choices' },
-      toggle('sound', 'Звуки', 'Сигналы ответов, награды, экзамен, мотор и шум улицы в городе. На iPhone звука не будет, если включён беззвучный режим.'),
-      toggle('vibration', 'Вибрация при ошибке', 'На Android — вибрация, на iPhone (iOS 18 и новее) — лёгкий отклик.'),
-    ),
+    ...(full ? soundSection() : []),
     el('h2', { class: 'settings__title settings__title--next' }, 'Вид'),
     el('div', { class: 'choices' }, themeChoice(), toggle('bigText', 'Крупный шрифт', 'Вопросы, варианты ответов, пояснения и реплики — крупнее.')),
     el('h2', { class: 'settings__title settings__title--next' }, 'Обучение'),

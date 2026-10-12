@@ -1151,6 +1151,12 @@ button {
   right: 12px;
   left: 12px;
   max-width: 420px;
+  /* Настройки длиннее экрана телефона: листаются внутри окна, а не уезжают за край. */
+  max-height: calc(100% - 64px - var(--safe-top) - 12px - var(--safe-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   margin-left: auto;
   padding: 16px;
   border-radius: var(--radius);

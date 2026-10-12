@@ -124,3 +124,26 @@ test('«Дело о перевёрнутом знаке»: три развязк
   assert.equal(play({ 'sign.bolts': 'check', 'sign.log': 'read', 'sign.culprit': 'turbo' }), 'false');
   assert.equal(play({ 'sign.culprit': 'kids' }), 'false');
 });
+
+test('«Последний шанс Артёма»: наставник года, сдал, мопед «Турбо», ещё одна попытка', () => {
+  const tale = TALES.find((t) => t.id === 'artem')!;
+  const play = (picks: Record<string, string>, right = 34, total = 36) => {
+    const s = emptyTale();
+    for (const [id, v] of Object.entries(picks)) assert.ok(taleDecide(s, tale, id, v, 1), id);
+    s.right = right;
+    s.total = total;
+    return finishTale(s, tale, 5).ending.id;
+  };
+  const best = { 'artem.plan': 'test', 'artem.style': 'game', 'artem.turbin': 'talk', 'artem.sleep': 'sleep', 'artem.panic': 'calm', 'artem.words': 'read' };
+  assert.equal(play(best), 'mentor');
+  assert.equal(play(best, 28, 36), 'pass');
+  assert.equal(play({ ...best, 'artem.style': 'strict' }), 'pass');
+  assert.equal(play({ 'artem.turbin': 'ignore', 'artem.panic': 'quit' }), 'scooter');
+  assert.equal(play({ ...best, 'artem.sleep': 'more' }), 'retake');
+  assert.equal(play({ 'artem.plan': 'cram', 'artem.panic': 'calm', 'artem.sleep': 'sleep' }), 'retake');
+  assert.equal(TALES.length, 3);
+  assert.deepEqual(
+    TALES.map((t) => t.price),
+    [600, 750, 900],
+  );
+});

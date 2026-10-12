@@ -145,3 +145,17 @@ test('«Дело о перевёрнутом знаке»: в магазине �
   expect(['priority']).toContain(JSON.parse(readFileSync('data/situations/s07-09.json', 'utf8')).concat(JSON.parse(readFileSync('data/situations/s10-13.json', 'utf8'))).find((s: { id: string }) => s.id === id).skill);
   expect((await readProgress(page)).tales.sign.choices[0]).toMatchObject({ id: 'sign.first', value: 'photo' });
 });
+
+test('«Моя история»: три дополнительных сюжета с ценами; «Последний шанс Артёма» начинается с признания', async ({ page }) => {
+  await seed(page, { xp: 0, coins: 950, questions: {}, chapters: {}, finale: { control: [], seen: [] } });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Главы', exact: true }).tap();
+  await page.getByRole('button', { name: /Моя история/ }).tap();
+  await expect(page.locator('.tale-card')).toHaveCount(3);
+  await expect(page.locator('.tale-card .btn')).toHaveText(['Купить · 🪙 600', 'Купить · 🪙 750', 'Купить · 🪙 900']);
+  await page.locator('[data-tale="artem"] .btn').tap();
+  await page.getByRole('button', { name: 'Купить за 🪙 900' }).tap();
+  await page.locator('[data-tale="artem"]').getByRole('button', { name: 'Играть' }).tap();
+  await expect(page.locator('.cutscene')).toContainText('Не сдан', SLOW);
+  expect((await readProgress(page)).coins).toBe(50);
+});

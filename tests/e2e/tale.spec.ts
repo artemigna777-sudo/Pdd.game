@@ -121,3 +121,27 @@ test('«Ночной рейс»: последний шаг — концовка 
   await expect(dialog).toContainText('урчит фура Семёна', SLOW);
   expect((await readProgress(page)).tales.night).toMatchObject({ step: 0, right: 0, total: 0, endings: { angel: expect.any(Number) } });
 });
+
+test('«Дело о перевёрнутом знаке»: в магазине рядом с «Ночным рейсом», первый шаг — выбор и городские ситуации', async ({ page }) => {
+  await seed(page, { xp: 0, coins: 800, questions: {}, chapters: {}, finale: { control: [], seen: [] } });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Монеты: 800. Магазин' }).tap();
+  await expect(page.locator('[data-tale="night"]')).toBeVisible();
+  const card = page.locator('[data-tale="sign"]');
+  await expect(card).toContainText('Три развязки');
+  await card.getByRole('button', { name: 'Купить · 🪙 750' }).tap();
+  await page.getByRole('button', { name: 'Купить за 🪙 750' }).tap();
+  await card.getByRole('button', { name: 'Играть' }).tap();
+  const dialog = page.locator('.cutscene:not(.cutscene--modal)');
+  await expect(dialog).toContainText('Звонок с незнакомого номера', SLOW);
+  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await dialog.getByRole('button', { name: 'Сфотографировать знак и перекрёсток' }).tap();
+  while (await dialog.count()) {
+    await dialog.locator('.btn--primary:visible').first().tap();
+    await page.waitForTimeout(100);
+  }
+  await expect(page.locator('.quiz .sit-card')).toBeVisible();
+  const id = (await page.locator('.quiz .sit-card').getAttribute('aria-label'))!.replace('Ситуация ', '');
+  expect(['priority']).toContain(JSON.parse(readFileSync('data/situations/s07-09.json', 'utf8')).concat(JSON.parse(readFileSync('data/situations/s10-13.json', 'utf8'))).find((s: { id: string }) => s.id === id).skill);
+  expect((await readProgress(page)).tales.sign.choices[0]).toMatchObject({ id: 'sign.first', value: 'photo' });
+});

@@ -4,7 +4,7 @@
  * («не из билетов») и повторы своих ошибок из билетов в оригинальной карточке (правило 3).
  * Основная точка встречи вопросов не меняется: здесь вопросы базы — только повторы, как в тренировках.
  */
-import type { Situation } from '../situations/types.ts';
+import type { Situation, Skill } from '../situations/types.ts';
 import { THEMES, type ThemeId } from '../situations/run.ts';
 import { check, emptyStory, plotContext, type Decision, type Ending, type PlotContext } from './plot.ts';
 import type { CharacterId, Line } from './story.ts';
@@ -13,8 +13,10 @@ export interface TaleTrial {
   /** Сколько ситуаций и вопросов из билетов. */
   situations: number;
   questions: number;
-  /** Ситуации — из этих тем (`THEMES` этапа 15). */
+  /** Ситуации — из этих тем (`THEMES` этапа 15)… */
   themes: ThemeId[];
+  /** …или с этими навыками (для городских историй). */
+  skills?: Skill[];
   /** Если своих ошибок не хватает — вопросы из этих тем билетов. */
   topics: string[];
 }
@@ -144,7 +146,7 @@ export function pickTrial(
   rnd: () => number = Math.random,
 ): TrialItem[] {
   const matchers = THEMES.filter((t) => trial.themes.includes(t.id)).map((t) => t.match);
-  const pool = situations.filter((x) => matchers.some((m) => m(x)));
+  const pool = situations.filter((x) => matchers.some((m) => m(x)) || trial.skills?.includes(x.skill));
   const sits = [...shuffle(pool.filter((x) => !used.has(x.id)), rnd), ...shuffle(pool.filter((x) => used.has(x.id)), rnd)].slice(0, trial.situations);
   const fresh = (ids: string[]) => ids.filter((id) => !used.has(id));
   const all = questions.map((q) => q.id);

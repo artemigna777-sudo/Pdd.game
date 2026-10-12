@@ -30,7 +30,7 @@ test('данные сюжетов: развилки и концовки без �
       if (s.decision) assert.ok(tale.decisions.some((d) => d.id === s.decision), s.decision);
       if (!s.trial) continue;
       for (const t of s.trial.topics) assert.ok(TOPICS.has(t), `${tale.id}: нет темы ${t}`);
-      const pool = SITUATIONS.filter((x) => THEMES.filter((th) => s.trial!.themes.includes(th.id)).some((th) => th.match(x)));
+      const pool = SITUATIONS.filter((x) => THEMES.filter((th) => s.trial!.themes.includes(th.id)).some((th) => th.match(x)) || s.trial!.skills?.includes(x.skill));
       assert.ok(pool.length >= s.trial.situations, `${tale.id}/${s.title}: ситуаций в темах ${pool.length}`);
       items += s.trial.situations + s.trial.questions;
     }
@@ -101,4 +101,26 @@ test('«Ночной рейс»: покупка, выборы, четыре ко
   const back = sanitizeProgress(JSON.parse(JSON.stringify(data)));
   assert.deepEqual(back.tales, data.tales);
   assert.deepEqual(sanitizeTales({ night: { step: 1, right: 5, total: 3, runs: 0 } }), {});
+});
+
+test('«Дело о перевёрнутом знаке»: три развязки — раскрыто, ложный след, в архиве', () => {
+  const tale = TALES.find((t) => t.id === 'sign')!;
+  const play = (picks: Record<string, string>, right = 30, total = 36) => {
+    const s = emptyTale();
+    for (const [id, v] of Object.entries(picks)) assert.ok(taleDecide(s, tale, id, v, 1), id);
+    s.right = right;
+    s.total = total;
+    return finishTale(s, tale, 5).ending.id;
+  };
+  assert.deepEqual(
+    tale.endings.map((e) => e.id),
+    ['solved', 'false', 'cold'],
+  );
+  assert.equal(play({ 'sign.bolts': 'check', 'sign.log': 'read', 'sign.culprit': 'crew' }), 'solved');
+  assert.equal(play({ 'sign.bolts': 'check', 'sign.video': 'ask', 'sign.culprit': 'crew' }), 'solved');
+  // Улики собраны, но ответов мало верных — дело не доведено.
+  assert.equal(play({ 'sign.bolts': 'check', 'sign.log': 'read', 'sign.culprit': 'crew' }, 10, 36), 'cold');
+  assert.equal(play({ 'sign.bolts': 'skip', 'sign.culprit': 'crew' }), 'cold');
+  assert.equal(play({ 'sign.bolts': 'check', 'sign.log': 'read', 'sign.culprit': 'turbo' }), 'false');
+  assert.equal(play({ 'sign.culprit': 'kids' }), 'false');
 });

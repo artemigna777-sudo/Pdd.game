@@ -15,6 +15,7 @@
 import { load, save } from '../storage.ts';
 import { sanitizeSituations, type SituationsState } from '../situations/run.ts';
 import { sanitizeStory, type StoryState } from '../story/plot.ts';
+import { sanitizeTales, type TaleState } from '../story/tales.ts';
 import { KMH_PER_PX } from '../world/rules.ts';
 
 export const REVIEW_DAYS = [1, 3, 7] as const;
@@ -233,6 +234,8 @@ export interface ProgressData {
   modes?: ModesState;
   /** Решения в сюжете и открытые концовки (этап 17). */
   story?: StoryState;
+  /** Дополнительные сюжеты из магазина: прохождение и концовки. */
+  tales?: Record<string, TaleState>;
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -322,6 +325,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
   }
   const story = sanitizeStory(raw.story);
   if (story) data.story = story;
+  const tales = sanitizeTales(raw.tales);
+  if (tales) data.tales = tales;
   if (isObj(raw.signs)) data.signs = { claimed: [...new Set(strings(raw.signs.claimed))] };
   if (isObj(raw.modes)) {
     const m = raw.modes;

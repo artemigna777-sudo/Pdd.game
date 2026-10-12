@@ -44,6 +44,8 @@ export type Cond =
   | { traitsAll: number }
   /** Поручение главы выполнено. */
   | { helped: string }
+  /** Доля верных ответов в дополнительном сюжете не меньше (0–1). */
+  | { score: number }
   | { all: readonly Cond[] }
   | { any: readonly Cond[] }
   | { not: Cond };
@@ -66,7 +68,7 @@ export interface DecisionOption {
 }
 
 /** Сюжетные сцены главы, в которых бывают развилки. */
-export type StoryScene = 'intro' | 'beat1' | 'beat2' | 'ready' | 'finale';
+export type StoryScene = 'intro' | 'beat1' | 'beat2' | 'ready' | 'finale' | 'tale';
 
 export interface Decision {
   /** `ch3.artem` — глава и короткое имя. */
@@ -139,6 +141,8 @@ export interface PlotContext {
   helped: string[];
   bonds: Record<HeroId, number>;
   traits: Record<TraitId, number>;
+  /** Доля верных ответов (дополнительные сюжеты). */
+  score?: number;
 }
 
 /** Откуда сюжет берёт данные: развилки и кто давал поручения в главах. */
@@ -193,6 +197,7 @@ export function check(cond: Cond | undefined, ctx: PlotContext): boolean {
   if ('trait' in cond) return ctx.traits[cond.trait] >= cond.min;
   if ('traitsAll' in cond) return TRAIT_IDS.every((t) => ctx.traits[t] >= cond.traitsAll);
   if ('helped' in cond) return ctx.helped.includes(cond.helped);
+  if ('score' in cond) return (ctx.score ?? 0) >= cond.score;
   if ('all' in cond) return cond.all.every((c) => check(c, ctx));
   if ('any' in cond) return cond.any.some((c) => check(c, ctx));
   return !check(cond.not, ctx);
@@ -212,7 +217,7 @@ export function characterTitle(traits: Record<TraitId, number>): string {
 export function resolveLines(lines: readonly Line[], ctx: PlotContext): Line[] {
   return lines
     .filter((l) => check(l.if, ctx))
-    .map((l) => (l.choices ? { ...l, choices: l.choices.map((c) => (c.reply ? { ...c, reply: resolveLines(c.reply, ctx) } : c)) } : l));
+    .map(({ if: _cond, ...l }) => (l.choices ? { ...l, choices: l.choices.map((c) => (c.reply ? { ...c, reply: resolveLines(c.reply, ctx) } : c)) } : l));
 }
 
 /** Развилка в виде реплик: последняя — вопрос с кнопками, у неё `decision`, чтобы выбор записался. */
@@ -284,7 +289,7 @@ export function rewindDecision(story: StoryState, value: string, now: number, so
 
 // ─── Проверка данных ─────────────────────────────────────────────────────────────
 
-const SCENES: StoryScene[] = ['intro', 'beat1', 'beat2', 'ready', 'finale'];
+const SCENES: StoryScene[] = ['intro', 'beat1', 'beat2', 'ready', 'finale', 'tale'];
 
 /** Ошибки в данных сюжета: развилки, варианты, условия и концовки. Пустой список — всё в порядке. */
 export function validatePlot(source: PlotSource, endings: readonly Ending[], chapters: readonly string[], /** Реплики глав с условиями (`STORY`). */ extra: readonly Line[] = []): string[] {

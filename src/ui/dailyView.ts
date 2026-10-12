@@ -133,7 +133,7 @@ export function carSvg(look: CarLook): string {
 }
 
 /** Магазин: темы города, покраска и наклейки за монеты. `onChange` — после покупки или выбора (сохранить прогресс). */
-export function garageView(data: ProgressData, onChange: () => void): HTMLElement {
+export function garageView(data: ProgressData, onChange: () => void, /** Карточки дополнительных сюжетов (их строит экран: им нужны данные игры). */ tales?: () => HTMLElement): HTMLElement {
   const root = el('div', { class: 'garage' });
   /** Клаксон, который уже прослушан: следующее касание его покупает. */
   let armedHorn: string | undefined;
@@ -291,6 +291,8 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
       el('p', { class: 'panel__note' }, 'Монеты — за верные ответы, цель дня, пройденные главы и экзамены. Всё в магазине меняет только внешний вид: на вопросы и ответы не влияет.'),
       shopDiscount(data) ? el('p', { class: 'panel__note garage__discount' }, `🔧 Скидка дяди Гены: −${Math.round(shopDiscount(data) * 100)}% — за дружбу.`) : '',
+      tales ? el('h2', { class: 'section-title' }, 'Дополнительные сюжеты') : '',
+      tales ? tales() : '',
       el('h2', { class: 'section-title' }, 'Темы города'),
       el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню.'),
       el('div', { class: 'garage__grid' }, ...themes),

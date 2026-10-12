@@ -51,6 +51,8 @@ import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './c
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { storyView } from './storyView.ts';
+import { runTale, talesList } from './taleView.ts';
+import { ownsTale, taleById } from '../progress/taleProgress.ts';
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
 import { planSummary, refreshOrder } from '../progress/examPlan.ts';
 import { examHistoryView, examResultView, examRulesView } from './examView.ts';
@@ -104,6 +106,8 @@ type Route =
   | { name: 'finale' }
   /** «Моя история» (этап 17): характер, команда, решения, «Вернуть решение», галерея концовок. */
   | { name: 'story' }
+  /** Дополнительный сюжет из магазина (этап 17). */
+  | { name: 'tale'; id: string }
   /** Контрольный билет финала (номер места из трёх). */
   | { name: 'control'; slot: number }
   /** Экзамен: правила, история, начало тренировки. */
@@ -146,7 +150,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier' | 'situations';
+type BackTarget = 'menu' | 'story' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier' | 'situations';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -163,6 +167,7 @@ const DEPTH: Record<RouteName, number> = {
   drill: 2,
   finale: 2,
   story: 2,
+  tale: 3,
   control: 3,
   exam: 1,
   garage: 1,
@@ -246,6 +251,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         garage: 'Магазин',
         finale: 'Финал',
         story: 'Моя история',
+        tale: 'Дополнительный сюжет',
         control: 'Контрольный билет',
         exam: 'Экзамен',
         'exam-result': 'Экзамен: результат',
@@ -438,10 +444,13 @@ export class App {
         screen = this.examResultScreen(route);
         break;
       case 'story':
-        screen = this.page('Моя история', storyView(progress(), () => saveProgress()), { back: 'chapters' });
+        screen = this.page('Моя история', storyView(progress(), () => saveProgress(), (id) => this.open({ name: 'tale', id })), { back: 'chapters' });
+        break;
+      case 'tale':
+        screen = this.taleScreen(route);
         break;
       case 'garage':
-        screen = this.page('Магазин', garageView(progress(), () => saveProgress()), { back: 'menu' });
+        screen = this.page('Магазин', garageView(progress(), () => saveProgress(), () => talesList(progress(), (id) => this.open({ name: 'tale', id }), () => saveProgress())), { back: 'menu' });
         break;
       case 'plan':
         screen = this.planScreen();
@@ -1467,6 +1476,47 @@ export class App {
       };
 
       show(0);
+    });
+    return screen;
+  }
+
+  private taleScreen(route: Extract<Route, { name: 'tale' }>): HTMLElement {
+    const tale = taleById(route.id);
+    const bar = el('div', { class: 'progress__bar' });
+    const progressEl = el('div', { class: 'progress', role: 'progressbar' }, bar);
+    const status = el('p', { class: 'exam-status', 'aria-live': 'polite' });
+    const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    let run: { stop: () => void } | undefined;
+    this.cleanup = () => run?.stop();
+    const leave = () =>
+      void showModal('Выйти из сюжета?', el('p', { class: 'rewards__line' }, 'Пройденные шаги и выборы сохранятся. Испытание этого шага начнётся заново.'), [
+        { label: 'Продолжить', primary: true },
+        { label: 'Выйти', onClick: () => this.back('story') },
+      ]);
+    const screen = this.page(tale ? `${tale.icon} ${tale.title}` : 'Сюжет', el('div', {}, status, body), { back: 'story', progress: progressEl, onBack: leave });
+    const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
+    if (!tale || !ownsTale(progress(), tale.id)) {
+      body.replaceChildren(el('p', { class: 'intro' }, 'Этот сюжет можно купить в магазине.'));
+      return screen;
+    }
+    void Promise.all([loadSituations(), loadQuestions()]).then(([situations, questions]) => {
+      if (this.route !== route) return;
+      run = runTale(tale, situations, questions, {
+        body,
+        scroller,
+        status,
+        bar,
+        alive: () => this.route === route,
+        answerQuestion: (q, correct) => {
+          const data = progress();
+          const out = recordAnswer(data, q.id, correct, Date.now());
+          saveProgress();
+          levelUpToast(out.levelUp);
+          goalToast(out, data);
+          return reviewNote(out, data.questions[q.id].review?.due);
+        },
+        done: () => this.back('story'),
+      });
     });
     return screen;
   }

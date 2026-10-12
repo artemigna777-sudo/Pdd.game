@@ -11,6 +11,7 @@ import { DECISIONS, ENDINGS, PLOT } from '../story/turbo.ts';
 import { avatar, playCutscene, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { showToast } from './toast.ts';
+import { talesList } from './taleView.ts';
 
 /** Что даёт дружба: подпись под героем. */
 const PERKS: Partial<Record<HeroId, string>> = {
@@ -24,7 +25,7 @@ function hearts(n: number): HTMLElement {
 }
 
 /** `onChange` — после «Вернуть решение» (сохранить прогресс). */
-export function storyView(data: ProgressData, onChange: () => void): HTMLElement {
+export function storyView(data: ProgressData, onChange: () => void, openTale: (id: string) => void): HTMLElement {
   const root = el('div', { class: 'story' });
 
   const render = () => {
@@ -183,7 +184,8 @@ export function storyView(data: ProgressData, onChange: () => void): HTMLElement
       el('p', { class: 'panel__note' }, 'Концовка открывается, когда сдан экзамен-босс. Другие концовки — через «Вернуть решение».'),
     );
 
-    root.replaceChildren(character, teamPanel, decisions, rewindPanel, gallery);
+    const tales = el('section', { class: 'panel' }, el('h2', { class: 'section-title' }, 'Дополнительные сюжеты'), el('p', { class: 'panel__note' }, 'Отдельные истории со своими выборами и концовками: ситуации на дороге и повторы твоих ошибок.'), talesList(data, openTale, onChange));
+    root.replaceChildren(character, teamPanel, decisions, rewindPanel, gallery, tales);
   };
   render();
   return root;

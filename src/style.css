@@ -4886,3 +4886,53 @@ a.btn {
   font: inherit;
   text-transform: uppercase;
 }
+
+/* Дополнительные сюжеты (этап 17) */
+.tales {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tale-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.tale-card.is-owned {
+  border-color: var(--ok);
+}
+
+.tale-card__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.tale-card__title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tale-card__meta,
+.tale-card__about {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.tale-repeat {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tale-summary p {
+  margin: 0;
+}

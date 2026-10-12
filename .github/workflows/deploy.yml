@@ -29,6 +29,8 @@ jobs:
         run: npm run validate
       - name: Покрытие вопросов
         run: npm run coverage
+      - name: Проверка ситуаций
+        run: npm run situations
       - name: Тесты
         run: npm test
       - name: Сборка

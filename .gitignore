@@ -25,3 +25,7 @@ trailer/ad/*.mp4
 trailer/ads/out/
 trailer/ads/mp4/
 trailer/ads/music/
+# Ролик-история: музыка из образца, сборка и готовые MP4 (см. trailer/story/README.md)
+trailer/story/out/
+trailer/story/mp4/
+trailer/story/music/

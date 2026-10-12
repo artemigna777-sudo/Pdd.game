@@ -10,6 +10,8 @@ export interface Settings {
   sound: boolean;
   /** Вибрация при ошибке. */
   vibration: boolean;
+  /** Голос инспектора в «Провокациях инспектора» (синтез речи телефона). */
+  voice: boolean;
   /** Обучение при первом запуске уже показано. */
   tutorial: boolean;
   /** Тема: как в телефоне, светлая или тёмная. */
@@ -41,13 +43,14 @@ export interface Settings {
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, voice: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
 if (typeof current.name !== 'string') current.name = '';
 if (typeof current.stats !== 'boolean') current.stats = DEFAULTS.stats;
 if (typeof current.installTip !== 'boolean') current.installTip = DEFAULTS.installTip;
+if (typeof current.voice !== 'boolean') current.voice = DEFAULTS.voice;
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

@@ -47,3 +47,41 @@ test('скидка дяди Гены: от 4 сердечек — на 20% де�
   assert.equal(buyOrSelect(data, 'red'), 'bought');
   assert.equal(data.coins, 32);
 });
+
+test('модели, клаксоны и номер с ником: цены, покупка, выбор, сохранение', async () => {
+  const { HORNS, MODELS, PLATE, buyOrSelectExtra, carLook, hornOf, plateText, setPlate } = await import('../src/progress/garage.ts');
+  for (const m of MODELS.slice(1)) assert.ok(m.price >= 300 && m.price <= 500, m.id);
+  assert.equal(MODELS.length, 6);
+  for (const h of HORNS.slice(1)) assert.ok(h.price >= 80 && h.price <= 150, h.id);
+  assert.equal(HORNS.length, 6);
+  assert.equal(PLATE.price, 150);
+
+  const data = emptyProgress();
+  assert.deepEqual(carLook(data), { color: 0xffb703, sticker: 'none', model: 'sedan' });
+  assert.equal(hornOf(data), 'beep');
+  data.coins = 750;
+  assert.equal(buyOrSelectExtra(data, 'model', 'electro'), 'bought');
+  assert.equal(buyOrSelectExtra(data, 'model', 'sedan'), 'selected');
+  assert.equal(buyOrSelectExtra(data, 'model', 'electro'), 'selected');
+  assert.equal(data.coins, 250);
+  assert.equal(buyOrSelectExtra(data, 'horn', 'duck'), 'bought');
+  assert.equal(buyOrSelectExtra(data, 'horn', 'нет'), 'unknown');
+  assert.equal(buyOrSelectExtra(data, 'model', 'pickup'), 'no-coins');
+
+  assert.equal(plateText('  артём-1 !!  '), 'АРТЕМ-1');
+  assert.equal(plateText('очень длинный ник'), 'ОЧЕНЬ ДЛ');
+  assert.equal(plateText('???'), undefined);
+  assert.equal(setPlate(data, '!!!'), 'invalid');
+  assert.equal(setPlate(data, 'курьер'), 'bought');
+  assert.equal(data.coins, 0);
+  assert.equal(setPlate(data, 'стрела'), 'saved');
+  assert.deepEqual(carLook(data), { color: 0xffb703, sticker: 'none', model: 'electro', plate: 'СТРЕЛА' });
+
+  const back = sanitizeProgress(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(carLook(back), carLook(data));
+  assert.equal(hornOf(back), 'duck');
+  // Не купленное — не выбирается, даже если записано в сохранении.
+  const forged = sanitizeProgress({ garage: { paint: 'yellow', sticker: 'none', owned: [], model: 'van', horn: 'tune', plate: 'ХАК' } });
+  assert.deepEqual(carLook(forged), { color: 0xffb703, sticker: 'none', model: 'sedan' });
+  assert.equal(hornOf(forged), 'beep');
+});

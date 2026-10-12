@@ -8,7 +8,8 @@
  * пройдены и верных от 80%, на карте появляется флажок доставки → финал главы и награды.
  */
 import type * as Phaser from 'phaser';
-import { playSound } from '../audio/feedback.ts';
+import { playHorn, playSound } from '../audio/feedback.ts';
+import { hornOf } from '../progress/garage.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import type { CityData, CityScene, RuleHint } from '../game/city/CityScene.ts';
 import {
@@ -455,6 +456,8 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   /** Посылка доставлена: финал главы, награды, следующая глава. */
   const onGoal = async () => {
     if (!info || !story || !mapping) return;
+    // Посылка у адресата — клаксон из магазина.
+    playHorn(hornOf(progress()));
     if (!(await cutscene(plotScene('finale', story.finale), 'Награда'))) return;
     const out = deliver(progress(), info, Date.now());
     trackEvent(chapterDone(info.id), `Глава ${info.id.replace(/\D/g, '')} пройдена`);

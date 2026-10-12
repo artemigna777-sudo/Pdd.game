@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
-import { carLook } from '../progress/garage.ts';
+import { carLook, hornOf } from '../progress/garage.ts';
+import { playHorn } from '../audio/feedback.ts';
 import { onProgressChange, progress } from '../progress/progress.ts';
 import { bakedImage, bakedTexture } from './bake.ts';
 import { drawPlayerCar } from './city/art.ts';
@@ -65,6 +66,7 @@ export class StreetScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.Graphics;
   private markings!: Phaser.GameObjects.Graphics;
   private player!: Phaser.GameObjects.Image;
+  private plate!: Phaser.GameObjects.Text;
   private cars: Car[] = [];
   private props: Prop[] = [];
   private speed = CRUISE_SPEED;
@@ -96,6 +98,13 @@ export class StreetScene extends Phaser.Scene {
     this.ground = this.add.graphics();
     this.markings = this.add.graphics();
     this.player = this.add.image(0, 0, '__DEFAULT').setDepth(3);
+    this.plate = this.add
+      .text(0, 0, '', { fontFamily: 'system-ui, sans-serif', fontStyle: 'bold', fontSize: `${11 * PIXEL_RATIO}px`, color: '#1b2430', backgroundColor: '#ffffff', padding: { x: 4 * PIXEL_RATIO, y: 1 * PIXEL_RATIO } })
+      .setOrigin(0.5, 0)
+      .setScale(1 / PIXEL_RATIO)
+      .setDepth(3);
+    // Касание машины — клаксон из магазина.
+    this.player.setInteractive({ useHandCursor: true }).on('pointerdown', () => playHorn(hornOf(progress())));
     this.updatePlayerLook();
     // Новая тема из магазина — перерисовать улицу целиком.
     const unsubscribe = onProgressChange(() => (progress().garage.theme !== this.theme ? this.scene.restart() : this.updatePlayerLook()));
@@ -130,6 +139,7 @@ export class StreetScene extends Phaser.Scene {
     const bottom = document.querySelector('.menu')?.getBoundingClientRect().top;
     const y = top !== undefined && bottom !== undefined && bottom > top ? Math.min((top + bottom) / 2, bottom - 40) : Math.min(this.viewH * 0.52, this.viewH - 330);
     this.player.y = Math.round(Math.min(y, this.viewH - 40));
+    this.plate?.setPosition(this.player.x, this.player.y + 30);
   }
 
   /** Центр полосы: 0 и 1 — встречные, 2 и 3 — попутные. */
@@ -178,15 +188,17 @@ export class StreetScene extends Phaser.Scene {
     }
   }
 
-  /** Машина курьера — с покраской и наклейкой из гаража, чуть крупнее, чем в городе. */
+  /** Машина курьера — с моделью, покраской и наклейкой из магазина, чуть крупнее, чем в городе. */
   private updatePlayerLook(): void {
     const look = carLook(progress());
     const k = 30 / 22;
-    const key = bakedTexture(this, `street-player:${look.color}:${look.sticker}`, 40, 66, (g) => {
+    const key = bakedTexture(this, `street-player:${look.model}:${look.color}:${look.sticker}`, 40, 66, (g) => {
       g.scaleCanvas(k, k);
-      drawPlayerCar(g, look.color, look.sticker);
+      drawPlayerCar(g, look.color, look.sticker, look.model);
     });
     this.player.setTexture(key).setScale(1 / PIXEL_RATIO);
+    // Номер с ником — табличкой под машиной (на самой машине его было бы не разглядеть).
+    this.plate.setText(look.plate ?? '').setVisible(!!look.plate);
   }
 
   /** Машина — готовая картинка (текстура рисуется один раз на цвет). */
@@ -293,6 +305,7 @@ export class StreetScene extends Phaser.Scene {
     }
 
     this.player.x = this.laneCenter(2) + Math.sin(time / 900) * 2;
+    this.plate.setPosition(this.player.x, this.player.y + 30);
     if (++this.frames % 30 === 0) this.placePlayer();
   }
 }

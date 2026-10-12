@@ -50,3 +50,45 @@ test('тема города: купить «Зимний город» — сне
   expect(saved.garage.theme).toBeUndefined();
   expect(saved.garage.owned).toContain('theme:winter');
 });
+
+test('модель машины, клаксон (сначала послушать) и номер с ником', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    localStorage.setItem('pdd-game:progress', JSON.stringify({ xp: 0, coins: 700, questions: {}, chapters: {}, finale: { control: [], seen: [] } }));
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true }));
+    sessionStorage.setItem('seeded', '1');
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Монеты: 700. Магазин' }).tap();
+  await page.locator('[data-model="pickup"]').tap();
+  await expect(page.locator('[data-model="pickup"]')).toHaveClass(/is-selected/);
+  await expect(page.locator('.garage__coins')).toContainText('300');
+
+  // Клаксон: первое касание — послушать, второе — купить.
+  await page.locator('[data-horn="duck"]').tap();
+  await expect(page.locator('#toast')).toContainText('Коснись ещё раз, чтобы купить клаксон «Утка» за 100');
+  await expect(page.locator('.garage__coins')).toContainText('300');
+  await page.locator('[data-horn="duck"]').tap();
+  await expect(page.locator('[data-horn="duck"]')).toHaveClass(/is-selected/);
+  await expect(page.locator('.garage__coins')).toContainText('200');
+
+  // Номер с ником: неверный ник не принимается, верный — покупка, потом смена бесплатно.
+  await page.locator('.plate-input').fill('!!!');
+  await page.getByRole('button', { name: /Купить номер/ }).tap();
+  await expect(page.locator('#toast')).toContainText('Напиши ник');
+  await page.locator('.plate-input').fill('курьер-7');
+  await page.getByRole('button', { name: /Купить номер/ }).tap();
+  await expect(page.locator('.plate-preview')).toHaveText('КУРЬЕР-7');
+  await expect(page.locator('.garage__coins')).toContainText('50');
+  await page.locator('.plate-input').fill('Стрела');
+  await page.getByRole('button', { name: 'Сохранить номер' }).tap();
+  await expect(page.locator('.plate-preview')).toHaveText('СТРЕЛА');
+  await expect(page.locator('.garage__coins')).toContainText('50');
+
+  await page.reload();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:progress')!));
+  expect(saved.garage).toMatchObject({ model: 'pickup', horn: 'duck', plate: 'СТРЕЛА' });
+  // Номер — под машиной в меню.
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => (window as Any).__game?.scene.getScene('street')?.plate?.text)).toBe('СТРЕЛА');
+});

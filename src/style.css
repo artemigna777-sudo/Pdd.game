@@ -4846,3 +4846,43 @@ a.btn {
   width: 100%;
   height: 100%;
 }
+
+/* Клаксоны и номер с ником (этап 17) */
+.garage__icon {
+  font-size: 32px;
+  line-height: 40px;
+}
+
+.plate-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.plate-row .btn {
+  grid-column: 1 / -1;
+}
+
+.plate-preview {
+  min-width: 96px;
+  padding: 4px 10px;
+  border: 2px solid #1b2430;
+  border-radius: 6px;
+  background: #fff;
+  color: #1b2430;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.plate-input {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-transform: uppercase;
+}

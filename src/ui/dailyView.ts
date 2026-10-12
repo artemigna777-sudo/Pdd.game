@@ -1,8 +1,8 @@
 /**
  * Этап 6 в интерфейсе: готовность к экзамену, цель дня и серия, монеты и гараж.
  */
-import { playSound } from '../audio/feedback.ts';
-import { CITY_THEMES, PAINTS, STICKERS, buyOrSelect, buyOrSelectTheme, carLook, type CarLook, type StickerId } from '../progress/garage.ts';
+import { playHorn, playSound } from '../audio/feedback.ts';
+import { CITY_THEMES, HORNS, MODELS, PAINTS, PLATE, STICKERS, buyOrSelect, buyOrSelectExtra, buyOrSelectTheme, carLook, hornOf, setPlate, type CarLook, type ModelId, type StickerId } from '../progress/garage.ts';
 import { shopDiscount, shopPrice } from '../progress/storyProgress.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
@@ -115,22 +115,28 @@ export function carSvg(look: CarLook): string {
     arrow: '<circle cx="0" cy="-16" r="3.6" fill="#1d6fd6"/><path d="M0 -18.6 L-1.9 -16.4 L1.9 -16.4 Z M-0.7 -16.6 H0.7 V-13.6 H-0.7 Z" fill="#fff"/>',
     checker: '<g><rect x="-4" y="-18" width="8" height="4" fill="#fff"/><rect x="-4" y="-18" width="2" height="2" fill="#1b1b1b"/><rect x="0" y="-18" width="2" height="2" fill="#1b1b1b"/><rect x="-2" y="-16" width="2" height="2" fill="#1b1b1b"/><rect x="2" y="-16" width="2" height="2" fill="#1b1b1b"/></g>',
   };
-  return `<svg viewBox="-16 -24 32 50" aria-hidden="true">
-    <rect x="-8" y="-16" width="22" height="40" rx="7" fill="#000" opacity=".25"/>
-    <rect x="-11" y="-20" width="22" height="40" rx="7" fill="${body}"/>
-    <rect x="-8" y="-12" width="16" height="7" rx="2" fill="#1d3557"/>
-    <rect x="-8" y="-4" width="16" height="14" rx="3" fill="#ffd166"/>
-    <rect x="-5" y="-2" width="10" height="9" fill="#c77d3a"/><rect x="-5" y="1.5" width="10" height="2" fill="#9c5c26"/>
-    <rect x="-7" y="11" width="14" height="5" rx="2" fill="#1d3557"/>
-    <rect x="-9" y="-19" width="5" height="3" fill="#fff3b0"/><rect x="4" y="-19" width="5" height="3" fill="#fff3b0"/>
-    <rect x="-9" y="17" width="5" height="2" fill="#e63946"/><rect x="4" y="17" width="5" height="2" fill="#e63946"/>
-    ${stickers[look.sticker]}
-  </svg>`;
+  const roof = '<rect x="-5" y="-2" width="10" height="9" fill="#c77d3a"/><rect x="-5" y="1.5" width="10" height="2" fill="#9c5c26"/>';
+  const shadow = (w: number, h: number, r: number) => `<rect x="${-w / 2 + 3}" y="${-h / 2 + 4}" width="${w}" height="${h}" rx="${r}" fill="#000" opacity=".25"/>`;
+  const lights = (w: number, h: number) =>
+    `<rect x="${-w / 2 + 2}" y="${-h / 2 + 1}" width="5" height="3" fill="#fff3b0"/><rect x="${w / 2 - 7}" y="${-h / 2 + 1}" width="5" height="3" fill="#fff3b0"/>` +
+    `<rect x="${-w / 2 + 2}" y="${h / 2 - 3}" width="5" height="2" fill="#e63946"/><rect x="${w / 2 - 7}" y="${h / 2 - 3}" width="5" height="2" fill="#e63946"/>`;
+  const models: Record<ModelId, string> = {
+    sedan: `${shadow(22, 40, 7)}<rect x="-11" y="-20" width="22" height="40" rx="7" fill="${body}"/><rect x="-8" y="-12" width="16" height="7" rx="2" fill="#1d3557"/><rect x="-8" y="-4" width="16" height="14" rx="3" fill="#ffd166"/>${roof}<rect x="-7" y="11" width="14" height="5" rx="2" fill="#1d3557"/>${lights(22, 40)}`,
+    hatch: `${shadow(22, 36, 8)}<rect x="-11" y="-18" width="22" height="36" rx="8" fill="${body}"/><rect x="-8" y="-10" width="16" height="7" rx="2" fill="#1d3557"/><rect x="-8" y="-2" width="16" height="11" rx="3" fill="#ffd166"/>${roof}<rect x="-8" y="10" width="16" height="5" rx="2" fill="#1d3557"/>${lights(22, 36)}`,
+    pickup: `${shadow(22, 42, 5)}<rect x="-11" y="-21" width="22" height="42" rx="5" fill="${body}"/><rect x="-8" y="-14" width="16" height="6" rx="2" fill="#1d3557"/><rect x="-8" y="-7" width="16" height="7" rx="2" fill="#ffd166"/><rect x="-8" y="2" width="16" height="18" fill="#000" opacity=".28"/><rect x="-7" y="4" width="7" height="7" fill="#c77d3a"/><rect x="1" y="6" width="6" height="6" fill="#c77d3a"/><rect x="-5" y="13" width="9" height="6" fill="#c77d3a"/>${lights(22, 42)}`,
+    van: `${shadow(24, 44, 4)}<rect x="-12" y="-22" width="24" height="44" rx="4" fill="${body}"/><rect x="-9" y="-20" width="18" height="6" rx="2" fill="#1d3557"/><rect x="-11" y="-12" width="22" height="34" fill="#fff" opacity=".18"/><rect x="-11" y="-4" width="22" height="5" fill="#ffd166"/><g transform="translate(0 6)">${roof}</g>${lights(24, 44)}`,
+    retro: `${shadow(22, 40, 9)}<circle cx="-9" cy="-12" r="5" fill="${body}"/><circle cx="9" cy="-12" r="5" fill="${body}"/><circle cx="-9" cy="12" r="5" fill="${body}"/><circle cx="9" cy="12" r="5" fill="${body}"/><rect x="-10" y="-20" width="20" height="40" rx="9" fill="${body}"/><rect x="-9" y="-21" width="18" height="2" fill="#d9dde3"/><rect x="-9" y="19" width="18" height="2" fill="#d9dde3"/><rect x="-7" y="-11" width="14" height="6" rx="3" fill="#1d3557"/><rect x="-7" y="-4" width="14" height="12" rx="4" fill="#ffd166"/>${roof}<rect x="-6" y="10" width="12" height="5" rx="2" fill="#1d3557"/><circle cx="-7" cy="-17" r="2" fill="#fff3b0"/><circle cx="7" cy="-17" r="2" fill="#fff3b0"/>`,
+    electro: `${shadow(22, 40, 11)}<rect x="-11" y="-20" width="22" height="40" rx="11" fill="${body}"/><rect x="-8" y="-12" width="16" height="23" rx="6" fill="#1d3557" opacity=".9"/>${roof}<rect x="-8" y="-18.5" width="16" height="1.6" fill="#cff4ff"/><rect x="-8" y="17.5" width="16" height="1.4" fill="#e63946"/>`,
+  };
+  const plate = look.plate ? `<rect x="-9" y="21.5" width="18" height="4" rx="1" fill="#fff" stroke="#1b2430" stroke-width=".4"/><text x="0" y="24.7" font-size="3.2" font-weight="700" text-anchor="middle" fill="#1b2430" font-family="system-ui,sans-serif">${look.plate.replace(/[<>&"]/g, '')}</text>` : '';
+  return `<svg viewBox="-16 -24 32 ${look.plate ? 52 : 50}" aria-hidden="true">${models[look.model] ?? models.sedan}${stickers[look.sticker]}${plate}</svg>`;
 }
 
 /** Магазин: темы города, покраска и наклейки за монеты. `onChange` — после покупки или выбора (сохранить прогресс). */
 export function garageView(data: ProgressData, onChange: () => void): HTMLElement {
   const root = el('div', { class: 'garage' });
+  /** Клаксон, который уже прослушан: следующее касание его покупает. */
+  let armedHorn: string | undefined;
   const render = () => {
     const look = carLook(data);
     const preview = el('div', { class: 'garage__car' });
@@ -173,7 +179,7 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
     });
     const stickers = STICKERS.map((s) => {
       const sw = el('span', { class: 'garage__swatch garage__swatch--car', 'aria-hidden': 'true' });
-      sw.innerHTML = carSvg({ color: look.color, sticker: s.id });
+      sw.innerHTML = carSvg({ color: look.color, sticker: s.id, model: look.model });
       return item(s.id, s.name, s.price, sw, s.signGroup);
     });
     const themeCard = (id: string | undefined, name: string, icon: string, base: number, colors: readonly string[], about: string) => {
@@ -210,6 +216,76 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
         el('span', { class: 'garage__price' }, selected ? 'выбрано' : id === undefined ? 'бесплатно' : owned ? 'куплено' : `🪙 ${price}`),
       );
     };
+    // ─── Модели, клаксоны, номер (этап 17) ─────────────────────────────────────
+    const extraItem = (kind: 'model' | 'horn', id: string, name: string, base: number, swatch: HTMLElement) => {
+      const key = `${kind}:${id}`;
+      const owned = base === 0 || data.garage.owned.includes(key);
+      const selected = kind === 'model' ? look.model === id : hornOf(data) === id;
+      const price = shopPrice(data, base);
+      return el(
+        'button',
+        {
+          class: `garage__item${selected ? ' is-selected' : ''}`,
+          type: 'button',
+          'aria-pressed': String(selected),
+          [`data-${kind}`]: id,
+          onclick: () => {
+            // Клаксон сначала можно послушать: первое касание — звук, второе — покупка.
+            if (kind === 'horn' && !owned && armedHorn !== id) {
+              armedHorn = id;
+              playHorn(id);
+              showToast(`Коснись ещё раз, чтобы купить клаксон «${name}» за ${price}.`);
+              return;
+            }
+            const result = buyOrSelectExtra(data, kind, id);
+            if (result === 'no-coins') {
+              showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
+              return;
+            }
+            armedHorn = undefined;
+            if (kind === 'horn') playHorn(id);
+            else if (result === 'bought') playSound('reward');
+            onChange();
+            render();
+          },
+        },
+        swatch,
+        el('span', { class: 'garage__name' }, name),
+        el('span', { class: 'garage__price' }, selected ? 'выбрано' : base === 0 ? 'бесплатно' : owned ? 'куплено' : `🪙 ${price}`),
+      );
+    };
+    const models = MODELS.map((m) => {
+      const sw = el('span', { class: 'garage__swatch garage__swatch--car', 'aria-hidden': 'true' });
+      sw.innerHTML = carSvg({ color: look.color, sticker: look.sticker, model: m.id });
+      return extraItem('model', m.id, m.name, m.price, sw);
+    });
+    const horns = HORNS.map((h) => extraItem('horn', h.id, h.name, h.price, el('span', { class: 'garage__icon', 'aria-hidden': 'true' }, h.icon)));
+    const plateOwned = data.garage.owned.includes('plate');
+    const plateInput = el('input', { class: 'plate-input', type: 'text', maxlength: String(PLATE.max), autocomplete: 'off', placeholder: 'НИК', value: data.garage.plate ?? '', 'aria-label': 'Надпись на номере' }) as HTMLInputElement;
+    const plateButton = el(
+      'button',
+      {
+        class: 'btn btn--secondary',
+        type: 'button',
+        onclick: () => {
+          const result = setPlate(data, plateInput.value);
+          if (result === 'invalid') return showToast('Напиши ник: буквы, цифры, пробел или дефис, до 8 знаков.');
+          if (result === 'no-coins') return showToast(`Не хватает монет: нужно ${shopPrice(data, PLATE.price)}, есть ${data.coins}.`);
+          if (result === 'bought') playSound('reward');
+          showToast(`Номер «${data.garage.plate}» — на машине.`);
+          onChange();
+          render();
+        },
+      },
+      plateOwned ? 'Сохранить номер' : `Купить номер · 🪙 ${shopPrice(data, PLATE.price)}`,
+    );
+    const platePanel = el(
+      'div',
+      { class: 'plate-row' },
+      el('span', { class: 'plate-preview', 'aria-hidden': 'true' }, data.garage.plate ?? 'НИК'),
+      plateInput,
+      plateButton,
+    );
     const themes = [themeCard(undefined, 'Обычный', '🏙', 0, ['#5b9a4f', '#40454e', '#eef0f2', '#c8553d'], 'Светофорск как есть.'), ...CITY_THEMES.map((t) => themeCard(t.id, t.name, t.icon, t.price, t.preview, t.about))];
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
@@ -218,10 +294,18 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
       el('h2', { class: 'section-title' }, 'Темы города'),
       el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню.'),
       el('div', { class: 'garage__grid' }, ...themes),
+      el('h2', { class: 'section-title' }, 'Модель машины'),
+      el('div', { class: 'garage__grid' }, ...models),
       el('h2', { class: 'section-title' }, 'Покраска'),
       el('div', { class: 'garage__grid' }, ...paints),
       el('h2', { class: 'section-title' }, 'Наклейки'),
       el('div', { class: 'garage__grid' }, ...stickers),
+      el('h2', { class: 'section-title' }, 'Клаксон'),
+      el('p', { class: 'panel__note' }, 'Звучит, когда касаешься машины в меню и когда посылка доставлена.'),
+      el('div', { class: 'garage__grid' }, ...horns),
+      el('h2', { class: 'section-title' }, 'Номер с ником'),
+      el('p', { class: 'panel__note' }, plateOwned ? 'Надпись можно менять бесплатно.' : `Свой номер под машиной в меню и в магазине. Один раз за 🪙 ${shopPrice(data, PLATE.price)}, потом надпись меняется бесплатно.`),
+      platePanel,
     );
   };
   render();

@@ -13,7 +13,7 @@ import { SCENES, TIMELINE, type Scene } from './scenes.ts';
 
 const dir = new URL('./video/', import.meta.url);
 const font = (file: string) => readFileSync(new URL(`fonts/${file}`, dir)).toString('base64');
-const car = carSvg({ color: 0xffb703, sticker: 'none' }).replace('<svg ', '<svg width="100%" height="100%" ');
+const car = carSvg({ color: 0xffb703, sticker: 'none', model: 'sedan' }).replace('<svg ', '<svg width="100%" height="100%" ');
 
 /** «**слово**» — выделение жёлтым. */
 const rich = (text: string) => text.replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>');

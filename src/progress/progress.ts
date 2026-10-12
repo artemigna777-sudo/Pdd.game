@@ -185,6 +185,10 @@ export interface GarageState {
   sticker: string;
   /** Тема города (этап 17); нет — обычный город. */
   theme?: string;
+  /** Модель машины, клаксон и номер с ником (этап 17). */
+  model?: string;
+  horn?: string;
+  plate?: string;
   /** Купленные покраски и наклейки. */
   owned: string[];
 }
@@ -280,6 +284,9 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     const pick = (v: unknown, fallback: string) => (typeof v === 'string' && owned.includes(v) ? v : fallback);
     data.garage = { paint: pick(raw.garage.paint, DEFAULT_PAINT), sticker: pick(raw.garage.sticker, DEFAULT_STICKER), owned };
     if (typeof raw.garage.theme === 'string' && owned.includes(`theme:${raw.garage.theme}`)) data.garage.theme = raw.garage.theme;
+    if (typeof raw.garage.model === 'string' && owned.includes(`model:${raw.garage.model}`)) data.garage.model = raw.garage.model;
+    if (typeof raw.garage.horn === 'string' && owned.includes(`horn:${raw.garage.horn}`)) data.garage.horn = raw.garage.horn;
+    if (typeof raw.garage.plate === 'string' && owned.includes('plate') && /^[A-ZА-Я0-9 -]{1,8}$/.test(raw.garage.plate)) data.garage.plate = raw.garage.plate;
   }
   const dr = raw.drive;
   if (isObj(dr) && isNum(dr.clean) && isNum(dr.best) && isNum(dr.total) && isInt(dr.violations)) {

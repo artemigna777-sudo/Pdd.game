@@ -54,11 +54,15 @@ export const SCENE_ITEMS = new Set([
   // машины
   'car-behind', 'car-ahead-brake', 'car-ahead-close', 'oncoming-car', 'car-left-close', 'car-on-ring', 'car-on-road',
   'car-right-turning-right', 'car-stuck-in-crossroad', 'parked-car-own-side', 'dense-traffic', 'bus-leaving',
-  'yard-exit-right-car', 'spray-ahead',
+  'yard-exit-right-car', 'spray-ahead', 'bus-hazard', 'parked-cars', 'parked-car-oncoming-side', 'ambulance-behind',
+  'car-blindspot-left', 'motorcycle-blindspot', 'car-hazard-ahead', 'car-right-waiting', 'loud-car', 'oncoming-highbeam',
+  'one-way-oncoming', 'overtaking-car', 'accident-ahead', 'skid', 'reverse-parking', 'inspector-in-car',
   // места и дорога
   'equal-crossroad', 'roundabout', 'yard-exit', 'bus-stop', 'narrow-road', 'gas-station-exit', 'speed-bump', 'roadworks',
-  // люди
-  'pedestrian-sidewalk',
+  'hill', 'curb', 'curve', 'bridge', 'pothole', 'puddle', 'dirt-road', 'no-markings', 'heavy-rain', 'fog-wall',
+  // люди, велосипеды, животные
+  'pedestrian-sidewalk', 'pedestrian-shoulder', 'pedestrian-dark', 'people-on-road', 'child-runout', 'child-behind-car',
+  'door-opening', 'cyclist-right', 'cyclist-lane', 'animal',
 ]);
 
 export const SIGN_ITEM = /^sign(-temp)?:\d+(\.\d+){1,2}(-\d+)?$/;

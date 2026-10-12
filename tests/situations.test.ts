@@ -12,7 +12,7 @@ const LIST: Situation[] = readdirSync('data/situations')
   .flatMap((f) => JSON.parse(readFileSync(`data/situations/${f}`, 'utf8')));
 
 test('ситуации: данные без ошибок, у каждой — ссылка на правила', () => {
-  assert.ok(LIST.length >= 25);
+  assert.ok(LIST.length >= 73);
   assert.deepEqual(validateSituations(LIST, IDS), []);
 });
 
@@ -31,4 +31,17 @@ test('ситуации: проверка ловит ошибки', () => {
 test('ситуации: правильный ответ не всегда на одном месте', () => {
   const places = new Set(LIST.map((s) => s.correct));
   assert.ok(places.size >= 3, 'правильные ответы стоят на одном и том же месте');
+});
+
+test('ситуации: правильный ответ не угадать по длине', () => {
+  // Если верный вариант почти всегда самый длинный (или самый короткий), игрок научится угадывать.
+  const rank = (s: Situation) => [...s.options].sort((a, b) => a.length - b.length).indexOf(s.options[s.correct]);
+  const longest = LIST.filter((s) => rank(s) === s.options.length - 1).length;
+  const shortest = LIST.filter((s) => rank(s) === 0).length;
+  assert.ok(longest / LIST.length < 0.45, `верный ответ самый длинный в ${longest} из ${LIST.length}`);
+  assert.ok(shortest / LIST.length < 0.45, `верный ответ самый короткий в ${shortest} из ${LIST.length}`);
+});
+
+test('ситуации: все семь разделов запроса', () => {
+  assert.deepEqual([...new Set(LIST.map((s) => s.section))].sort((a, b) => a - b), [7, 8, 9, 10, 11, 12, 13]);
 });

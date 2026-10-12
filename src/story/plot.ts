@@ -10,7 +10,8 @@
  */
 import type { CharacterId, Choice, Line } from './story.ts';
 
-export type HeroId = Exclude<CharacterId, 'narrator'>;
+/** Герои с сердечками (хозяин «Турбо» — соперник, у него сердечек нет). */
+export type HeroId = Exclude<CharacterId, 'narrator' | 'turbin'>;
 export const HEROES: HeroId[] = ['victor', 'marina', 'sokolov', 'galina', 'artem', 'semyon', 'anya', 'gena'];
 
 /** Черты характера водителя: осторожность, отзывчивость, принципиальность. */
@@ -144,7 +145,7 @@ export interface PlotContext {
 export interface PlotSource {
   decisions: readonly Decision[];
   /** Глава → кто давал поручение (за выполненное — сердечко). */
-  givers: Readonly<Record<string, CharacterId>>;
+  givers: Readonly<Record<string, HeroId>>;
 }
 
 const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
@@ -169,7 +170,7 @@ export function plotContext(story: StoryState | undefined, helped: readonly stri
   }
   for (const chapter of helped) {
     const giver = source.givers[chapter];
-    if (giver && giver !== 'narrator') bonds[giver]++;
+    if (giver) bonds[giver]++;
   }
   for (const h of HEROES) bonds[h] = clamp(bonds[h], HEARTS_MAX);
   for (const t of TRAIT_IDS) traits[t] = clamp(traits[t], TRAIT_MAX);
@@ -286,7 +287,7 @@ export function rewindDecision(story: StoryState, value: string, now: number, so
 const SCENES: StoryScene[] = ['intro', 'beat1', 'beat2', 'ready', 'finale'];
 
 /** Ошибки в данных сюжета: развилки, варианты, условия и концовки. Пустой список — всё в порядке. */
-export function validatePlot(source: PlotSource, endings: readonly Ending[], chapters: readonly string[]): string[] {
+export function validatePlot(source: PlotSource, endings: readonly Ending[], chapters: readonly string[], /** Реплики глав с условиями (`STORY`). */ extra: readonly Line[] = []): string[] {
   const errors: string[] = [];
   const byId = new Map<string, Decision>();
   for (const d of source.decisions) {
@@ -328,6 +329,7 @@ export function validatePlot(source: PlotSource, endings: readonly Ending[], cha
       lineRefs(o.reply ?? [], `${d.id}/${o.value}`);
     }
   }
+  lineRefs(extra, 'реплика главы');
   const endingIds = new Set<string>();
   for (const [i, e] of endings.entries()) {
     if (endingIds.has(e.id)) errors.push(`концовка ${e.id} повторяется`);

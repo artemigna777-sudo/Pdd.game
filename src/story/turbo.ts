@@ -6,16 +6,312 @@
  * Модель развилок, отношений и концовок — `plot.ts`.
  */
 import { SIDE_QUESTS } from './extras.ts';
-import type { Decision, Ending, PlotSource } from './plot.ts';
-import type { CharacterId } from './story.ts';
+import { HEROES, type Decision, type Ending, type HeroId, type PlotSource } from './plot.ts';
+import type { CharacterId, Line } from './story.ts';
+
+const say = (who: CharacterId) => (text: string, cond?: Line['if']): Line => ({ who, text, ...(cond ? { if: cond } : {}) });
+const n = say('narrator');
+const victor = say('victor');
+const marina = say('marina');
+const sokolov = say('sokolov');
+const galina = say('galina');
+const artem = say('artem');
+const semyon = say('semyon');
+const anya = say('anya');
+const gena = say('gena');
+const turbin = say('turbin');
 
 /** Развилки глав по порядку. */
-export const DECISIONS: Decision[] = [];
+export const DECISIONS: Decision[] = [
+  // ─── Глава 1. Первая встреча с «Турбо» ─────────────────────────────────────
+  {
+    id: 'ch1.card',
+    chapter: 'ch1',
+    scene: 'beat2',
+    title: 'Визитка Турбина',
+    lines: [
+      n('У пекарни тормозит блестящий чёрный внедорожник с оранжевой молнией на двери.'),
+      turbin('Эдуард Турбин, «Турбо-Доставка». Видел, как ты ползёшь по городку. Пятнадцать минут на заказ — вот наш стандарт.'),
+      turbin('У нас платят вдвое. За скорость. Держи визитку — и подумай.'),
+      n('Визитка «Турбо» в руке. Что с ней сделать?'),
+    ],
+    options: [
+      {
+        value: 'marina',
+        label: 'Показать Марине',
+        summary: 'визитку — Марине',
+        effect: { bonds: { marina: 1 }, traits: { honest: 1 } },
+        reply: [marina('Турбин? Слышала про него. Спасибо, что не скрываешь, — в «Стреле» так принято.')],
+      },
+      {
+        value: 'return',
+        label: 'Вернуть: «Мне и в «Стреле» хорошо»',
+        summary: 'визитку — обратно',
+        effect: { bonds: { victor: 1 }, traits: { careful: 1 } },
+        reply: [turbin('Как знаешь. Город быстро покажет, кто прав.'), victor('Чужие лёгкие деньги — всегда с подвохом. Поехали.')],
+      },
+      {
+        value: 'keep',
+        label: 'Спрятать в бардачок',
+        summary: 'визитку — в бардачок',
+        reply: [n('Визитка ложится в бардачок, поверх старой карты города.')],
+      },
+    ],
+  },
+
+  // ─── Глава 2. Артём катается с «Турбо» ─────────────────────────────────────
+  {
+    id: 'ch2.cover',
+    chapter: 'ch2',
+    scene: 'beat1',
+    title: 'Прикрыть Артёма?',
+    lines: [
+      artem('Слушай, выручи. Я полдня катался с ребятами из «Турбо» — у них мопеды как ракеты! А свой заказ привёз с опозданием.'),
+      artem('Марина спросит — скажи, что я помогал тебе разобраться с картой, ладно?'),
+    ],
+    options: [
+      {
+        value: 'cover',
+        label: 'Прикрыть Артёма',
+        summary: 'прикрыть Артёма',
+        effect: { bonds: { artem: 1 }, traits: { honest: -1 } },
+        reply: [marina('С картой помогал? Ну ладно… Артём, в следующий раз предупреждай.'), artem('Выручаешь! С меня пончик.')],
+      },
+      {
+        value: 'confess',
+        label: 'Уговорить его признаться самому',
+        summary: 'уговорить Артёма признаться',
+        effect: { bonds: { artem: 1, marina: 1 }, traits: { kind: 1 } },
+        reply: [
+          artem('Самому?.. Ладно. Только постой рядом, ага?'),
+          marina('Артём, спасибо, что рассказал сам. Опоздание — не беда. Враньё было бы хуже.'),
+        ],
+      },
+      {
+        value: 'truth',
+        label: 'Не врать Марине',
+        summary: 'сказать Марине правду',
+        effect: { bonds: { marina: 1, artem: -1 }, traits: { honest: 1 } },
+        reply: [artem('Эх… Ладно, сам виноват.'), marina('Спасибо за честность. С Артёмом поговорю по-доброму, не переживай.')],
+      },
+    ],
+  },
+  {
+    id: 'ch2.kids',
+    chapter: 'ch2',
+    scene: 'beat2',
+    title: 'Мопеды у детского сада',
+    lines: [
+      n('У детского сада «Ромашка» с визгом тормозят два мопеда «Турбо». Воспитательница качает головой.'),
+      galina('Каждое утро гоняют мимо садика. Я уже и в «Турбо» звонила — без толку.'),
+      galina('Может, хоть ты с ними поговоришь?'),
+    ],
+    options: [
+      {
+        value: 'talk',
+        label: 'Поговорить с курьерами',
+        summary: 'поговорить с курьерами «Турбо»',
+        effect: { bonds: { galina: 1 }, traits: { kind: 1 } },
+        reply: [n('Курьеры пожимают плечами, но уезжают уже медленнее.'), galina('Вот! Доброе слово и мопед замедляет.')],
+      },
+      {
+        value: 'sokolov',
+        label: 'Рассказать лейтенанту Соколову',
+        summary: 'сообщить Соколову',
+        effect: { bonds: { sokolov: 1 }, traits: { honest: 1 } },
+        reply: [sokolov('Спасибо. Поставлю у садика пост на утро — посмотрим, как они тогда погоняют.')],
+      },
+      {
+        value: 'skip',
+        label: 'Не вмешиваться: заказ ждёт',
+        summary: 'не вмешиваться',
+        effect: { traits: { careful: 1 } },
+        reply: [galina('Ну… работа есть работа. Езжай.')],
+      },
+    ],
+  },
+
+  // ─── Глава 3. Большая развилка: Артёма зовут в «Турбо» ────────────────────
+  {
+    id: 'ch3.artem',
+    chapter: 'ch3',
+    scene: 'beat2',
+    big: true,
+    title: 'Артёма зовут в «Турбо»',
+    lines: [
+      artem('Можно с тобой поговорить? Серьёзно.'),
+      artem('Турбин зовёт меня старшим курьером. Зарплата вдвое больше, новый мопед. Только там говорят: «Правила — для медленных».'),
+      artem('Я не знаю, что делать. Что посоветуешь?', { decided: 'ch2.cover', is: 'cover' }),
+      artem('Тогда, с Мариной, без вранья обошлось — значит, и сейчас скажешь честно. Что думаешь?', { decided: 'ch2.cover', is: 'truth' }),
+      artem('Тогда, с твоей помощью, признаться было не страшно. Что скажешь сейчас?', { decided: 'ch2.cover', is: 'confess' }),
+      artem('Что скажешь?', { not: { decided: 'ch2.cover' } }),
+    ],
+    options: [
+      {
+        value: 'stay',
+        label: 'Не уходи: «Стрела» — твоя команда',
+        summary: 'Артём остался в «Стреле»',
+        effect: { bonds: { artem: 1, marina: 1 }, traits: { kind: 1 } },
+        reply: [artem('Команда… Да. Без вас было бы скучно. Остаюсь!'), marina('Артём остаётся? Сегодня пицца за мой счёт!')],
+      },
+      {
+        value: 'study',
+        label: 'Давай вместе учить билеты',
+        summary: 'учить билеты вместе с Артёмом',
+        when: { bond: 'artem', min: 1 },
+        effect: { bonds: { artem: 2, victor: 1 }, traits: { careful: 1 } },
+        reply: [
+          artem('Вместе? Серьёзно? …Давай! Сдам на права — и Турбин мне вообще не нужен.'),
+          victor('Беру обоих учеников. Бесплатно.'),
+        ],
+      },
+      {
+        value: 'free',
+        label: 'Решай сам: это твоя жизнь',
+        summary: 'Артём ушёл в «Турбо»',
+        effect: { bonds: { marina: -1 }, traits: { honest: 1 } },
+        reply: [
+          artem('Сам… Ну да. Тогда я попробую. Только не обижайся, ладно?'),
+          n('Вечером в диспетчерской «Стрелы» пустует один стул.'),
+          marina('Артём ушёл в «Турбо». Жаль… Хороший был курьер.'),
+        ],
+      },
+    ],
+  },
+
+  // ─── Глава 4. Проспект: «все так делают» ───────────────────────────────────
+  {
+    id: 'ch4.block',
+    chapter: 'ch4',
+    scene: 'beat1',
+    title: 'Мопед поперёк проезда',
+    lines: [
+      n('У въезда к торговому центру «Проспект» поперёк дороги стоит мопед «Турбо». Курьер машет рукой.'),
+      n('«Объезжай по тротуару, все так делают!»'),
+      artem('Эй, это я! Давай быстрее, у «Турбо» всё по секундомеру!', { decided: 'ch3.artem', is: 'free' }),
+    ],
+    options: [
+      {
+        value: 'wait',
+        label: 'Подождать, пока он уедет',
+        summary: 'подождать',
+        effect: { bonds: { sokolov: 1 }, traits: { careful: 1 } },
+        reply: [n('Через пять минут мопед уезжает.'), sokolov('Видел, как вы ждали. Сейчас это редкость.')],
+      },
+      {
+        value: 'ask',
+        label: 'Попросить освободить проезд',
+        summary: 'попросить освободить проезд',
+        effect: { bonds: { victor: 1 }, traits: { honest: 1 } },
+        reply: [n('Курьер ворчит, но отодвигает мопед.'), victor('Вежливо и твёрдо. Так и надо.')],
+      },
+      {
+        value: 'sidewalk',
+        label: 'Объехать по тротуару',
+        summary: 'объехать по тротуару',
+        effect: { bonds: { sokolov: -1, victor: -1 }, traits: { careful: -2 } },
+        reply: [
+          n('Свисток! Лейтенант Соколов уже здесь.'),
+          sokolov('По тротуару? На учебной машине? Предупреждение — первое и последнее.'),
+          victor('Вот тебе и «все так делают»…'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'ch4.gena',
+    chapter: 'ch4',
+    scene: 'beat2',
+    title: 'Турбин покупает «Гайку»',
+    lines: [
+      gena('Турбин хочет купить мой сервис. Говорит, будет чинить только свои мопеды — а учеников пусть чинит кто хочет.'),
+      gena('Деньги хорошие. Спина болит, годы не те… Как думаешь, продавать?'),
+    ],
+    options: [
+      {
+        value: 'keep',
+        label: 'Не продавайте: городу нужна «Гайка»',
+        summary: '«Гайка» осталась у дяди Гены',
+        effect: { bonds: { gena: 2 }, traits: { kind: 1 } },
+        reply: [gena('Вот и я так думаю. Кто ещё будет чинить машины учеников? Не продам.')],
+      },
+      {
+        value: 'yours',
+        label: 'Решайте сами — это ваше дело',
+        summary: 'решать дяде Гене',
+        effect: { bonds: { gena: 1 }, traits: { honest: 1 } },
+        reply: [gena('Спасибо, что не давишь. Подумал… Не продам. Пока руки держат ключ — «Гайка» моя.')],
+      },
+    ],
+  },
+
+  // ─── Глава 5. Новый район: Семён и Аня ─────────────────────────────────────
+  {
+    id: 'ch5.semyon',
+    chapter: 'ch5',
+    scene: 'beat1',
+    title: 'Ночные рейсы для «Турбо»',
+    lines: [
+      semyon('Турбин зовёт меня возить их грузы. По ночам, без отдыха, зато втрое больше денег.'),
+      semyon('Дочке на учёбу нужно… Что скажешь?'),
+    ],
+    options: [
+      {
+        value: 'rest',
+        label: 'Усталость за рулём опасна. Не надо',
+        summary: 'отговорить Семёна',
+        effect: { bonds: { semyon: 1 }, traits: { careful: 1 } },
+        reply: [semyon('Знаю… Сам видел, как засыпают за рулём. Откажусь.')],
+      },
+      {
+        value: 'strela',
+        label: 'Спросим у Марины работу в «Стреле»',
+        summary: 'Семён — водитель «Стрелы»',
+        when: { bond: 'marina', min: 2 },
+        effect: { bonds: { semyon: 2, marina: 1 }, traits: { kind: 1 } },
+        reply: [marina('Семён? Нам как раз нужен водитель на дальние рейсы. Днём!'), semyon('Вот это дело! Спасибо за доброе слово.')],
+      },
+      {
+        value: 'money',
+        label: 'Деньги нужны — соглашайтесь',
+        summary: 'Семён возит для «Турбо»',
+        effect: { traits: { careful: -1 } },
+        reply: [semyon('Попробую. Посмотрим, что выйдет.')],
+      },
+    ],
+  },
+  {
+    id: 'ch5.anya',
+    chapter: 'ch5',
+    scene: 'beat2',
+    title: 'Плакаты Ани',
+    lines: [
+      anya('Вчера курьер «Турбо» упал с мопеда — торопился. Обошлось, но могло быть хуже.'),
+      anya('Хочу развесить по району плакаты «Лучше опоздать, чем не доехать». Поможешь развезти?'),
+    ],
+    options: [
+      {
+        value: 'help',
+        label: 'Помогу развезти',
+        summary: 'развезти плакаты',
+        effect: { bonds: { anya: 1 }, traits: { kind: 1 } },
+        reply: [anya('Спасибо! Первый повешу прямо напротив офиса «Турбо».')],
+      },
+      {
+        value: 'busy',
+        label: 'Сейчас не могу: заказ ждёт',
+        summary: 'не до плакатов',
+        reply: [anya('Понимаю. Работа есть работа. Береги себя.')],
+      },
+    ],
+  },
+];
 
 /** Концовки: первая подходящая по порядку, последняя — по умолчанию. */
 export const ENDINGS: Ending[] = [];
 
 /** Кто давал поручение в главе: за выполненное поручение — сердечко. */
-const GIVERS: Record<string, CharacterId> = Object.fromEntries(Object.entries(SIDE_QUESTS).map(([ch, q]) => [ch, q.giver]));
+const isHero = (who: string): who is HeroId => (HEROES as string[]).includes(who);
+const GIVERS: Record<string, HeroId> = Object.fromEntries(Object.entries(SIDE_QUESTS).flatMap(([ch, q]) => (isHero(q.giver) ? [[ch, q.giver] as const] : [])));
 
 export const PLOT: PlotSource = { decisions: DECISIONS, givers: GIVERS };

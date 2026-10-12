@@ -11,6 +11,7 @@ import {
   endingFor,
   lastBigDecision,
   plotContext,
+  plotLines,
   sanitizeStory,
   sceneLines,
   validatePlot,
@@ -18,6 +19,8 @@ import {
   type Ending,
   type PlotSource,
 } from '../src/story/plot.ts';
+import { RIVALS, SIDE_QUESTS } from '../src/story/extras.ts';
+import { FINALE_STORY, PROLOGUE, STORY, type Line } from '../src/story/story.ts';
 import { DECISIONS, ENDINGS, PLOT } from '../src/story/turbo.ts';
 import { CHAPTERS } from '../src/world/chapters.ts';
 
@@ -224,4 +227,57 @@ test('проверка данных сюжета находит ошибки, а
   }
   assert.deepEqual(validatePlot(PLOT, ENDINGS, chapters), []);
   assert.equal(PLOT.decisions, DECISIONS);
+});
+
+// ─── Настоящий сюжет «Турбо-Доставка» ────────────────────────────────────────────
+
+const storyLines = (): Line[] => [
+  ...PROLOGUE,
+  ...Object.values(STORY).flatMap((c) => [...c.intro, ...c.beats.flat(), ...c.ready, ...c.low, ...c.finale]),
+  ...Object.values(FINALE_STORY).flat(),
+  ...Object.values(RIVALS).flatMap((r) => r.challenge),
+  ...Object.values(SIDE_QUESTS).flatMap((q) => [...q.offer, ...q.stops.flatMap((st) => st.lines)]),
+];
+
+test('«Турбо-Доставка»: в каждой главе 1–2 развилки, большие — в главах 3, 6 и 9, реплики ссылаются на настоящие развилки', () => {
+  const chapters = CHAPTERS.map((c) => c.id);
+  assert.deepEqual(validatePlot(PLOT, ENDINGS, chapters, storyLines()), []);
+  const ready = new Set(DECISIONS.map((d) => d.chapter));
+  for (const ch of ready) {
+    const count = DECISIONS.filter((d) => d.chapter === ch).length;
+    assert.ok(count >= 1 && count <= 2, `${ch}: ${count} развилок`);
+  }
+  for (const d of DECISIONS) assert.equal(!!d.big, ['ch3', 'ch6', 'ch9'].includes(d.chapter) && DECISIONS.find((x) => x.chapter === d.chapter && x.big) === d, d.id);
+  for (const ch of ['ch3', 'ch6', 'ch9']) if (ready.has(ch)) assert.ok(DECISIONS.some((d) => d.chapter === ch && d.big), `${ch}: большая развилка`);
+  // Развилки идут по главам по порядку.
+  const order = DECISIONS.map((d) => chapters.indexOf(d.chapter));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  // Герои вспоминают решения в следующих главах: на каждую развилку есть хотя бы одна реплика с условием о ней.
+  const remembered = new Set<string>();
+  const walk = (c: unknown): void => {
+    if (!c || typeof c !== 'object') return;
+    const o = c as Record<string, unknown>;
+    if (typeof o.decided === 'string') remembered.add(o.decided);
+    for (const v of Object.values(o)) if (Array.isArray(v)) v.forEach(walk);
+    if (o.not) walk(o.not);
+  };
+  for (const l of [...storyLines(), ...plotLines(PLOT, ENDINGS)]) walk(l.if);
+  for (const d of DECISIONS) for (const o of d.options) walk(o.when);
+  for (const d of DECISIONS) walk(d.when);
+  for (const e of ENDINGS) walk(e.when);
+  for (const d of DECISIONS) assert.ok(remembered.has(d.id), `${d.id}: о решении никто не вспоминает`);
+});
+
+const GENDERED = /(?<![а-яё])ты(\s+[а-яё]+){0,2}\s+[а-яё]{2,}(л|ла)(?![а-яё])/iu;
+
+test('реплики сюжета: без обращения к игроку в мужском или женском роде, кнопки короткие', () => {
+  const all = [...storyLines(), ...plotLines(PLOT, ENDINGS)];
+  const labels = DECISIONS.flatMap((d) => d.options.map((o) => o.label));
+  for (const text of [...all.map((l) => l.text), ...labels]) {
+    // «ты сделал», «ты бы сказала» — прошедшее время о самом игроке зависит от пола.
+    assert.doesNotMatch(text, GENDERED, text);
+  }
+  assert.match('Ты бы что сказал?', GENDERED);
+  assert.match('ты тогда помогла', GENDERED);
+  for (const label of labels) assert.ok(label.length <= 40, `кнопка длинновата: ${label}`);
 });

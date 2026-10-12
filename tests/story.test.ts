@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHARACTERS, FINALE_STORY, PROLOGUE, STORY, beatThresholds, fill, type Line } from '../src/story/story.ts';
 import { CHAPTERS } from '../src/world/chapters.ts';
+import { DECISIONS } from '../src/story/turbo.ts';
 
 const allLines = (): Line[] => [
   ...PROLOGUE,
@@ -35,6 +36,8 @@ test('персонажи возвращаются из главы в главу'
       chaptersOf.set(l.who, (chaptersOf.get(l.who) ?? new Set()).add(id));
     }
   }
+  // Развилки (этап 17) — тоже часть главы.
+  for (const d of DECISIONS) for (const l of [...d.lines, ...d.options.flatMap((o) => o.reply ?? [])]) chaptersOf.set(l.who, (chaptersOf.get(l.who) ?? new Set()).add(d.chapter));
   for (const who of Object.keys(CHARACTERS)) assert.ok((chaptersOf.get(who)?.size ?? 0) >= 2, `${who} появляется хотя бы в двух главах`);
   assert.equal(chaptersOf.get('victor')?.size, CHAPTERS.length, 'инструктор — в каждой главе');
   assert.equal(chaptersOf.get('marina')?.size, CHAPTERS.length, 'диспетчер — в каждой главе');

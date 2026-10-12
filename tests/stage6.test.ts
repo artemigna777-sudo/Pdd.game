@@ -58,7 +58,7 @@ test('гараж: покупка за монеты, выбор, нехватка
   assert.equal(data.coins, 40, 'купленное второй раз не оплачивается');
   data.coins = 500;
   assert.equal(buyOrSelect(data, 'flames'), 'bought');
-  assert.deepEqual(carLook(data), { color: PAINTS.find((p) => p.id === 'red')!.color, sticker: 'flames' });
+  assert.deepEqual(carLook(data), { color: PAINTS.find((p) => p.id === 'red')!.color, sticker: 'flames', model: 'sedan' });
   assert.equal(buyOrSelect(data, 'нет-такого'), 'unknown');
   assert.equal(STICKERS[0].price, 0);
   // Сохранённые данные: выбранное должно быть куплено.

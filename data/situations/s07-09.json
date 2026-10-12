@@ -27,7 +27,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "speed"
   },
   {
     "id": "S07-02",
@@ -56,7 +57,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "distance"
   },
   {
     "id": "S07-03",
@@ -86,7 +88,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "speed"
   },
   {
     "id": "S07-04",
@@ -115,7 +118,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "distance"
   },
   {
     "id": "S07-05",
@@ -144,7 +148,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "speed"
   },
   {
     "id": "S07-06",
@@ -173,7 +178,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "speed"
   },
   {
     "id": "S07-07",
@@ -201,7 +207,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "distance"
   },
   {
     "id": "S07-08",
@@ -230,7 +237,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "weather"
   },
   {
     "id": "S08-01",
@@ -258,7 +266,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-02",
@@ -288,7 +297,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-03",
@@ -318,7 +328,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "people"
   },
   {
     "id": "S08-04",
@@ -346,7 +357,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-05",
@@ -374,7 +386,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-06",
@@ -400,7 +413,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-07",
@@ -431,7 +445,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S08-08",
@@ -460,7 +475,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S09-01",
@@ -489,7 +505,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-02",
@@ -520,7 +537,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-03",
@@ -548,7 +566,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-04",
@@ -575,7 +594,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-05",
@@ -602,7 +622,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-06",
@@ -628,7 +649,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-07",
@@ -658,7 +680,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-08",
@@ -687,7 +710,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   },
   {
     "id": "S09-09",
@@ -715,6 +739,7 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "signals"
   }
 ]

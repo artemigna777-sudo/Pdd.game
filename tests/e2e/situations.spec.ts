@@ -100,6 +100,9 @@ test('Ситуации: заезд «Спокойно», таймер, итог 
   await expect(page.locator('.sit-unlocked')).toContainText('Открыта ступень «Микс»');
   await expect(page.locator('.result__note').first()).toContainText('не успел ответить: 1');
   await expect(page.locator('.sit-review__item')).toHaveCount(10);
+  // Статистика заезда: навыки и вывод.
+  await expect(page.locator('.sit-result .skill-bar').first()).toBeVisible();
+  await expect(page.locator('.sit-result .skill-verdict')).toBeVisible();
   // Ошибки раскрыты сразу, верные — по касанию.
   await expect(page.locator('.sit-review__item').nth(1).locator('.sit-review__body')).toBeVisible();
   await expect(page.locator('.sit-review__item').nth(0).locator('.sit-review__body')).toBeHidden();
@@ -132,6 +135,21 @@ test('Ситуации: заезд «Спокойно», таймер, итог 
   await page.locator('.mode-card', { hasText: 'Ситуации на дороге' }).tap();
   await expect(page.locator('.sit-hub__stats')).toContainText('Решено ситуаций: 8');
   await expect(page.locator('[data-stage="mix"]')).toBeEnabled();
+  // Дневник водителя помнит две ошибки и предлагает повторить именно их.
+  await expect(page.locator('.sit-diary .skill-bar').first()).toBeVisible();
+  await expect(page.locator('.sit-diary [data-stage="diary"]')).toHaveText('Повторить слабое (2)');
+  await shot(page, 'sit-diary');
+  await page.locator('.sit-diary [data-stage="diary"]').tap();
+  for (let i = 0; i < 2; i++) {
+    await expect(page.locator('.exam-status')).toHaveText(`Ситуация ${i + 1} из 2`);
+    expect([seen[1], seen[2]]).toContain((await current(page)).id);
+    await reveal(page);
+    await page.locator(`.sit-card .option[data-orig="${(await current(page)).correct}"]`).tap();
+    await page.locator('.sit-card .sit-next').tap();
+  }
+  await expect(page.locator('.result__score')).toHaveText('2 из 2');
+  await page.getByRole('button', { name: 'Выбрать сложность' }).tap();
+  await expect(page.locator('.sit-diary [data-stage="diary"]')).toBeDisabled();
   await page.locator('[data-stage="mix"]').tap();
   // В «Миксе» решённые ситуации — на 3 секунды.
   let fast = 0;

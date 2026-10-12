@@ -28,7 +28,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "inspector"
   },
   {
     "id": "S10-02",
@@ -54,7 +55,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "people"
   },
   {
     "id": "S10-03",
@@ -82,7 +84,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S10-04",
@@ -111,7 +114,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "people"
   },
   {
     "id": "S10-05",
@@ -139,7 +143,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "control"
   },
   {
     "id": "S10-06",
@@ -165,7 +170,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "inspector"
   },
   {
     "id": "S10-07",
@@ -194,7 +200,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S10-08",
@@ -224,7 +231,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S10-09",
@@ -252,7 +260,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "inspector"
   },
   {
     "id": "S10-10",
@@ -279,7 +288,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S10-11",
@@ -304,7 +314,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S11-01",
@@ -332,7 +343,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "mirrors"
   },
   {
     "id": "S11-02",
@@ -362,7 +374,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "mirrors"
   },
   {
     "id": "S11-03",
@@ -388,7 +401,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "mirrors"
   },
   {
     "id": "S11-04",
@@ -415,7 +429,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "mirrors"
   },
   {
     "id": "S11-05",
@@ -441,7 +456,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "mirrors"
   },
   {
     "id": "S11-06",
@@ -469,7 +485,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "mirrors"
   },
   {
     "id": "S11-07",
@@ -500,7 +517,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "mirrors"
   },
   {
     "id": "S11-08",
@@ -528,7 +546,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "mirrors"
   },
   {
     "id": "S12-01",
@@ -555,7 +574,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "weather"
   },
   {
     "id": "S12-02",
@@ -583,7 +603,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "weather"
   },
   {
     "id": "S12-03",
@@ -611,7 +632,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "control"
   },
   {
     "id": "S12-04",
@@ -641,7 +663,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "weather"
   },
   {
     "id": "S12-05",
@@ -672,7 +695,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "weather"
   },
   {
     "id": "S12-06",
@@ -700,7 +724,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "weather"
   },
   {
     "id": "S12-07",
@@ -728,7 +753,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "people"
   },
   {
     "id": "S12-08",
@@ -757,7 +783,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "control"
   },
   {
     "id": "S12-09",
@@ -785,7 +812,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "control"
   },
   {
     "id": "S13-01",
@@ -812,7 +840,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "surprise"
   },
   {
     "id": "S13-02",
@@ -839,7 +868,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "inspector"
   },
   {
     "id": "S13-03",
@@ -866,7 +896,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "surprise"
   },
   {
     "id": "S13-04",
@@ -892,7 +923,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "priority"
   },
   {
     "id": "S13-05",
@@ -920,7 +952,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "people"
   },
   {
     "id": "S13-06",
@@ -950,7 +983,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S13-07",
@@ -977,7 +1011,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "inspector"
   },
   {
     "id": "S13-08",
@@ -1007,7 +1042,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "inspector"
   },
   {
     "id": "S13-09",
@@ -1035,7 +1071,8 @@
       ]
     },
     "level": 2,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S13-10",
@@ -1064,7 +1101,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "signals"
   },
   {
     "id": "S13-11",
@@ -1092,7 +1130,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "distance"
   },
   {
     "id": "S13-12",
@@ -1124,7 +1163,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "priority"
   },
   {
     "id": "S13-13",
@@ -1153,7 +1193,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "control"
   },
   {
     "id": "S13-14",
@@ -1182,7 +1223,8 @@
       ]
     },
     "level": 2,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "control"
   },
   {
     "id": "S13-15",
@@ -1207,7 +1249,8 @@
       ]
     },
     "level": 1,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "control"
   },
   {
     "id": "S13-16",
@@ -1235,7 +1278,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "people"
   },
   {
     "id": "S13-17",
@@ -1261,7 +1305,8 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "priority"
   },
   {
     "id": "S13-18",
@@ -1291,7 +1336,8 @@
       ]
     },
     "level": 2,
-    "penalty": 1
+    "penalty": 1,
+    "skill": "priority"
   },
   {
     "id": "S13-19",
@@ -1318,7 +1364,8 @@
       ]
     },
     "level": 1,
-    "penalty": 7
+    "penalty": 7,
+    "skill": "surprise"
   },
   {
     "id": "S13-20",
@@ -1345,6 +1392,7 @@
       ]
     },
     "level": 1,
-    "penalty": 3
+    "penalty": 3,
+    "skill": "signals"
   }
 ]

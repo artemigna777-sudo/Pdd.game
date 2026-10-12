@@ -3,9 +3,9 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { Question } from '../src/data/types.ts';
 import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
-import { SITUATIONS, provokeStats, solvedCount, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
+import { SITUATIONS, diaryPool, diarySkills, provokeStats, runSkills, solvedCount, weakestSkill, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
 import { sceneSvg } from '../src/situations/scene.ts';
-import { OBEY, REFUSE, provocationSituation, type Provocation, type Situation } from '../src/situations/types.ts';
+import { OBEY, REFUSE, SKILLS, provocationSituation, type Provocation, type Situation } from '../src/situations/types.ts';
 import { validateProvocations, validateSituations } from '../src/situations/validate.ts';
 
 const QUESTIONS: Question[] = JSON.parse(readFileSync('data/questions.json', 'utf8'));
@@ -196,4 +196,49 @@ test('провокации: оцениваются отдельно и не от
   const back = sanitizeProgress(JSON.parse(JSON.stringify({ modes: { situations: { ...s, open: ['calm', 'provoke'] } } })));
   assert.equal(Object.keys(back.modes!.situations!.seen).length, 10);
   assert.deepEqual(back.modes!.situations!.open, ['calm']);
+});
+
+// ─── Статистика и «Дневник водителя» ─────────────────────────────────────────────
+
+test('навыки: у каждого навыка несколько ситуаций', () => {
+  for (const skill of Object.keys(SKILLS)) assert.ok(LIST.filter((x) => x.skill === skill).length >= (skill === 'inspector' ? 3 : 4), skill);
+});
+
+test('статистика заезда: навыки, время, самый слабый навык', () => {
+  const byId = new Map(LIST.map((x) => [x.id, x]));
+  const people = LIST.filter((x) => x.skill === 'people').slice(0, 3);
+  const signals = LIST.filter((x) => x.skill === 'signals').slice(0, 2);
+  const run = {
+    at: NOW,
+    stage: 'calm' as const,
+    answers: [
+      ...people.map((x, i) => ({ id: x.id, choice: i ? null : x.correct, correct: !i, ms: 3000, limit: 10, penalty: i ? x.penalty : 0 })),
+      ...signals.map((x) => ({ id: x.id, choice: x.correct, correct: true, ms: 1000, limit: 10, penalty: 0 })),
+    ],
+  };
+  const stats = runSkills(run, byId);
+  assert.deepEqual(stats.find((x) => x.skill === 'people'), { skill: 'people', right: 1, total: 3, ms: 3000 });
+  assert.deepEqual(stats.find((x) => x.skill === 'signals'), { skill: 'signals', right: 2, total: 2, ms: 1000 });
+  assert.equal(weakestSkill(stats)?.skill, 'people');
+  assert.equal(weakestSkill(stats.filter((x) => x.skill === 'signals')), undefined);
+});
+
+test('дневник водителя: копит ошибки по навыкам и предлагает повторить именно их', () => {
+  const s = emptySituations();
+  const [a, b, c, d] = LIST.filter((x) => x.skill === 'mirrors');
+  recordSituation(s, a.id, false, NOW); // последний ответ неверный
+  recordSituation(s, b.id, false, NOW);
+  recordSituation(s, b.id, false, NOW + 1);
+  recordSituation(s, b.id, true, NOW + 2); // исправил, но ошибок больше
+  recordSituation(s, c.id, true, NOW); // всё верно — не повторять
+  recordSituation(s, d.id, false, NOW);
+  recordSituation(s, d.id, true, NOW + 1); // поровну — не повторять
+  assert.deepEqual(diaryPool(s, LIST).map((x) => x.id), [a.id, b.id]);
+  const diary = diarySkills(s, LIST);
+  assert.deepEqual(diary, [{ skill: 'mirrors', right: 3, total: 7 }]);
+  const run = pickRun(s, LIST, 'diary', seeded(9));
+  assert.deepEqual(run.map((x) => x.id).sort(), [a.id, b.id].sort());
+  // «Повторить слабое» ступени не открывает.
+  finishRun(s, { at: NOW, stage: 'diary', answers: run.map((x) => ({ id: x.id, choice: x.correct, correct: true, ms: 1000, limit: 10, penalty: 0 })) });
+  assert.deepEqual(s.open, ['calm']);
 });

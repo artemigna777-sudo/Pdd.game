@@ -1316,7 +1316,7 @@ export class App {
     const route = this.route;
     void Promise.all([loadSituations(), loadProvocations()]).then(([all, provoke]) => {
       if (this.route !== route) return;
-      body.replaceChildren(situationsHubView(progress().modes?.situations ?? emptySituations(), all.length, provoke.length, (stage) => this.open({ name: 'situations-run', stage })));
+      body.replaceChildren(situationsHubView(progress().modes?.situations ?? emptySituations(), all, provoke.length, (stage) => this.open({ name: 'situations-run', stage })));
     });
     return this.page('Ситуации на дороге', body, { back: 'modes' });
   }
@@ -1348,11 +1348,15 @@ export class App {
       const data = progress();
       data.modes ??= {};
       const state = (data.modes.situations ??= emptySituations());
-      if (!provoke && !state.open.includes(route.stage)) {
+      if (!provoke && route.stage !== 'diary' && !state.open.includes(route.stage)) {
         body.replaceChildren(el('p', { class: 'intro' }, 'Эта ступень ещё закрыта.'));
         return;
       }
       const list = pickRun(state, all, route.stage);
+      if (!list.length) {
+        body.replaceChildren(el('p', { class: 'intro' }, 'Повторять пока нечего: ошибок в ситуациях нет.'));
+        return;
+      }
       const run: SituationRun = { at: Date.now(), stage: route.stage, answers: [] };
       playSound('start');
 

@@ -12,10 +12,13 @@
  * Ситуации не из билетов, поэтому в прогресс вопросов, готовность и работу над ошибками билетов
  * не попадают. Их итоги хранятся отдельно — `progress.modes.situations`.
  */
-import { PENALTY_FAIL, type Situation } from './types.ts';
+import { PENALTY_FAIL, SKILLS, type Situation, type Skill } from './types.ts';
 
-/** Ступени сложности и «Провокации инспектора» — отдельный заезд, оценивается отдельно. */
-export type StageId = 'calm' | 'mix' | 'hard' | 'provoke';
+/**
+ * Ступени сложности, «Провокации инспектора» и «Повторить слабое» из «Дневника водителя» — два
+ * последних заезда отдельные: ступени не открывают.
+ */
+export type StageId = 'calm' | 'mix' | 'hard' | 'provoke' | 'diary';
 
 export interface StageInfo {
   id: StageId;
@@ -143,6 +146,7 @@ export function pickRun(s: SituationsState, pool: readonly Situation[], stage: S
     return out;
   };
   if (stage === 'provoke') return take(fresh(pool), stale(pool));
+  if (stage === 'diary') return shuffle(diaryPool(s, pool).slice(0, n), rnd);
   if (stage === 'calm') {
     const easy = pool.filter((x) => x.level === 1);
     return take(fresh(easy), stale(easy), fresh(pool), stale(pool));
@@ -159,6 +163,65 @@ export function pickRun(s: SituationsState, pool: readonly Situation[], stage: S
   const fast = stale(pool).slice(0, n - slow.length);
   const mixed = shuffle(take(slow, fast, fresh(pool), stale(pool)), rnd);
   return mixed;
+}
+
+// ─── Статистика и «Дневник водителя» ─────────────────────────────────────────────
+
+/**
+ * Что повторить: ситуации, где последний ответ неверный, потом — где ошибок больше, чем верных
+ * ответов; среди них — с большим числом ошибок первыми.
+ */
+export function diaryPool(s: SituationsState, pool: readonly Situation[]): Situation[] {
+  const weak = (x: Situation) => {
+    const v = s.seen[x.id];
+    return !!v && (!v.ok || v.wrong > v.right);
+  };
+  return pool.filter(weak).sort((a, b) => Number(s.seen[a.id].ok) - Number(s.seen[b.id].ok) || s.seen[b.id].wrong - s.seen[a.id].wrong || s.seen[a.id].at - s.seen[b.id].at);
+}
+
+export interface SkillStat {
+  skill: Skill;
+  right: number;
+  total: number;
+  /** Среднее время ответа, мс (только для заезда). */
+  ms?: number;
+}
+
+/** Навыки заезда: сколько верных из скольких и среднее время ответа. */
+export function runSkills(run: SituationRun, byId: ReadonlyMap<string, Situation>): SkillStat[] {
+  const map = new Map<Skill, { right: number; total: number; ms: number }>();
+  for (const a of run.answers) {
+    const skill = byId.get(a.id)?.skill;
+    if (!skill) continue;
+    const v = map.get(skill) ?? { right: 0, total: 0, ms: 0 };
+    v.total++;
+    if (a.correct) v.right++;
+    v.ms += a.ms;
+    map.set(skill, v);
+  }
+  return [...map].map(([skill, v]) => ({ skill, right: v.right, total: v.total, ms: Math.round(v.ms / v.total) })).sort(bySkillOrder);
+}
+
+/** Навыки за всё время (все ответы на ситуации, без провокаций — у них свой счёт). */
+export function diarySkills(s: SituationsState, pool: readonly Situation[]): SkillStat[] {
+  const map = new Map<Skill, { right: number; total: number }>();
+  for (const x of pool) {
+    const v = s.seen[x.id];
+    if (!v) continue;
+    const m = map.get(x.skill) ?? { right: 0, total: 0 };
+    m.right += v.right;
+    m.total += v.n;
+    map.set(x.skill, m);
+  }
+  return [...map].map(([skill, v]) => ({ skill, ...v })).sort(bySkillOrder);
+}
+
+const ORDER = Object.keys(SKILLS) as Skill[];
+const bySkillOrder = (a: SkillStat, b: SkillStat) => ORDER.indexOf(a.skill) - ORDER.indexOf(b.skill);
+
+/** Самый слабый навык: меньшая доля верных (не меньше двух ответов, хотя бы одна ошибка). */
+export function weakestSkill(stats: readonly SkillStat[]): SkillStat | undefined {
+  return [...stats].filter((x) => x.total >= 2 && x.right < x.total).sort((a, b) => a.right / a.total - b.right / b.total || b.total - a.total)[0];
 }
 
 /** Варианты в случайном порядке: индексы исходного массива options. */
@@ -206,7 +269,7 @@ export function runPoints(run: SituationRun): number {
 
 /** Почему ступень закрыта — подсказка на кнопке. */
 export function lockReason(s: SituationsState, stage: StageId): string | undefined {
-  if (stage === 'provoke' || s.open.includes(stage)) return undefined;
+  if (stage === 'provoke' || stage === 'diary' || s.open.includes(stage)) return undefined;
   if (stage === 'mix') return `Откроется после «Спокойно» с ${SITUATIONS.mixUnlock} верными из ${SITUATIONS.perRun}`;
   const known = solvedCount(s);
   return `Откроется после «Микса» с ${SITUATIONS.hardUnlock} верными из ${SITUATIONS.perRun}` + (known < SITUATIONS.hardKnown ? ` и когда решено ${SITUATIONS.hardKnown} ситуаций (сейчас ${known})` : '');
@@ -216,7 +279,7 @@ export function lockReason(s: SituationsState, stage: StageId): string | undefin
 
 const isInt = (v: unknown, min = 0): v is number => Number.isInteger(v) && (v as number) >= min;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard', 'provoke'];
+const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard', 'provoke', 'diary'];
 
 export function sanitizeSituations(raw: unknown): SituationsState | undefined {
   if (!isObj(raw)) return undefined;
@@ -227,7 +290,7 @@ export function sanitizeSituations(raw: unknown): SituationsState | undefined {
       s.seen[id] = { n: v.n, right: v.right, wrong: v.wrong, ok: v.ok, at: v.at };
     }
   }
-  if (Array.isArray(raw.open)) s.open = STAGE_IDS.filter((id) => id !== 'provoke' && (id === 'calm' || (raw.open as unknown[]).includes(id)));
+  if (Array.isArray(raw.open)) s.open = STAGE_IDS.filter((id) => id !== 'provoke' && id !== 'diary' && (id === 'calm' || (raw.open as unknown[]).includes(id)));
   if (Array.isArray(raw.runs)) {
     s.runs = raw.runs
       .filter((r): r is SituationRun => isObj(r) && isInt(r.at) && STAGE_IDS.includes(r.stage as StageId) && Array.isArray(r.answers))

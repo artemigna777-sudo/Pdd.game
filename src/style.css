@@ -4579,3 +4579,66 @@ a.btn {
   font-weight: 700;
   color: var(--text);
 }
+
+.skill-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name value' 'track track';
+  gap: 3px 8px;
+  font-size: 14px;
+}
+
+.skill-bar__name {
+  grid-area: name;
+  font-weight: 700;
+}
+
+.skill-bar__value {
+  grid-area: value;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-bar__track {
+  grid-area: track;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.skill-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ok);
+}
+
+.skill-bar__fill.is-weak {
+  background: var(--accent);
+}
+
+.skill-verdict {
+  margin: 10px 0 0;
+  font-size: 15px;
+}
+
+.skill-verdict.is-ok {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.sit-diary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

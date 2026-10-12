@@ -5,9 +5,9 @@
 import { answerFeedback } from '../audio/feedback.ts';
 import { speak, stopSpeaking } from '../audio/voice.ts';
 import type { Question } from '../data/types.ts';
-import { STAGES, SITUATIONS, lockReason, provokeStats, solvedCount, type RunOutcome, type SituationRun, type SituationsState, type StageId } from '../situations/run.ts';
+import { STAGES, SITUATIONS, diaryPool, diarySkills, lockReason, provokeStats, runSkills, solvedCount, weakestSkill, type RunOutcome, type SituationRun, type SituationsState, type SkillStat, type StageId } from '../situations/run.ts';
 import { sceneSvg } from '../situations/scene.ts';
-import { PENALTY_FAIL, PENALTY_LABEL, SECTIONS, type Situation } from '../situations/types.ts';
+import { PENALTY_FAIL, PENALTY_LABEL, SECTIONS, SKILLS, type Situation } from '../situations/types.ts';
 import { avatar } from './cutscene.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
@@ -24,9 +24,40 @@ export function ticketLabel(id: string): string {
 
 // ─── Главный экран режима ────────────────────────────────────────────────────────
 
-export const STAGE_TITLE: Record<StageId, string> = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор', provoke: 'Провокации инспектора' };
+export const STAGE_TITLE: Record<StageId, string> = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор', provoke: 'Провокации инспектора', diary: 'Повторить слабое' };
 
-export function situationsHubView(s: SituationsState, total: number, provocations: number, start: (stage: StageId) => void): HTMLElement {
+/** Полоски навыков: доля верных ответов и (в заезде) среднее время. */
+function skillBars(stats: readonly SkillStat[]): HTMLElement {
+  return el(
+    'ul',
+    { class: 'skill-bars' },
+    ...stats.map((x) => {
+      const share = x.total ? x.right / x.total : 0;
+      const fill = el('span', { class: `skill-bar__fill${share < 0.7 ? ' is-weak' : ''}` });
+      fill.style.width = `${Math.round(share * 100)}%`;
+      return el(
+        'li',
+        { class: 'skill-bar', 'data-skill': x.skill },
+        el('span', { class: 'skill-bar__name' }, `${SKILLS[x.skill].icon} ${SKILLS[x.skill].title}`),
+        el('span', { class: 'skill-bar__track', role: 'img', 'aria-label': `верно ${x.right} из ${x.total}` }, fill),
+        el('span', { class: 'skill-bar__value' }, `${x.right} из ${x.total}`, x.ms !== undefined ? el('small', {}, ` · ${(x.ms / 1000).toFixed(1).replace('.', ',')} с`) : null),
+      );
+    }),
+  );
+}
+
+/** Вывод по навыкам: самый слабый и совет. */
+function skillVerdict(stats: readonly SkillStat[], empty: string): HTMLElement {
+  const weak = weakestSkill(stats);
+  if (!weak) return el('p', { class: 'skill-verdict is-ok' }, empty);
+  const info = SKILLS[weak.skill];
+  return el('p', { class: 'skill-verdict' }, el('b', {}, `Слабее всего — «${info.title}» (${weak.right} из ${weak.total}). `), `Совет: ${info.advice}.`);
+}
+
+export function situationsHubView(s: SituationsState, all: readonly Situation[], provocations: number, start: (stage: StageId) => void): HTMLElement {
+  const total = all.length;
+  const diary = diarySkills(s, all);
+  const weak = diaryPool(s, all).length;
   const solved = solvedCount(s);
   const last = s.runs.filter((r) => r.stage !== 'provoke').at(-1);
   const pr = provokeStats(s);
@@ -61,6 +92,19 @@ export function situationsHubView(s: SituationsState, total: number, provocation
           el('span', { class: 'sit-stage__body' }, el('span', { class: 'sit-stage__title' }, st.title), el('span', { class: 'sit-stage__note' }, lock ?? st.note)),
         );
       }),
+    ),
+    el('h2', { class: 'section-title' }, 'Дневник водителя'),
+    el(
+      'section',
+      { class: 'panel sit-diary' },
+      el('p', { class: 'panel__note' }, diary.length ? 'Все ответы на ситуации по навыкам: где ты ошибаешься чаще всего.' : 'Пока пусто: пройди заезд — дневник запомнит, где были ошибки, и предложит повторить именно их.'),
+      diary.length ? skillBars(diary) : null,
+      diary.length ? skillVerdict(diary, 'Ошибок пока нет — так держать!') : null,
+      el(
+        'button',
+        { class: 'btn btn--secondary', type: 'button', 'data-stage': 'diary', disabled: !weak, onclick: () => start('diary') },
+        weak ? `Повторить слабое (${Math.min(weak, SITUATIONS.perRun)})` : 'Повторять пока нечего',
+      ),
     ),
     el('h2', { class: 'section-title' }, 'Провокации инспектора'),
     el(
@@ -275,6 +319,9 @@ export function situationsResultView(run: SituationRun, out: RunOutcome, byId: M
       el('p', { class: 'result__note' }, `${provoke ? 'Провокации инспектора' : `Ступень «${STAGE_TITLE[run.stage]}»`}${slow ? ` · не успел ответить: ${slow}` : ''}${out.coins ? ` · +${out.coins} ${plural(out.coins, ['монета', 'монеты', 'монет'])}` : ''}`),
       unlocked ? el('p', { class: 'result__note sit-unlocked' }, `🔓 Открыта ступень «${unlocked.title}»: ${unlocked.note}.`) : null,
     ),
+    el('h2', { class: 'section-title' }, 'Навыки в этом заезде'),
+    skillBars(runSkills(run, byId)),
+    skillVerdict(runSkills(run, byId), out.correct === out.total ? 'Ошибок нет — все навыки на высоте.' : 'Ошибки разные, явно слабого навыка нет.'),
     el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: actions.again }, 'Ещё заезд'),
     related.length ? el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => actions.related(related) }, `Похожие вопросы из билетов (${related.length})`) : null,
     el('button', { class: 'btn btn--secondary', type: 'button', onclick: actions.hub }, 'Выбрать сложность'),

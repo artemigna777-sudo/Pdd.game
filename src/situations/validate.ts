@@ -1,7 +1,7 @@
 /**
  * Проверка данных ситуаций (data/situations/*.json): `npm run situations` и tests/situations.test.ts.
  */
-import { SECTIONS, isSceneItem, provocationSituation, type Provocation, type Situation } from './types.ts';
+import { SECTIONS, SKILLS, isSceneItem, provocationSituation, type Provocation, type Situation } from './types.ts';
 
 /** «ПДД 10.1», «ПДД 13.11(1)», «КоАП 12.9», «КоАП 12.15 ч. 4», «Знак 3.24», «Разметка 1.1», «ПДД, Приложение 1 (…)». */
 const RULE = /^(ПДД \d+\.\d+(\(\d+\))?|ПДД, Приложение [12]( \(.+\))?|КоАП \d+\.\d+(\.\d+)?( ч\. \d+)?|Знак \d+\.\d+(\.\d+)?|Разметка \d+\.\d+(\.\d+)?|ОП \d+)$/;
@@ -33,6 +33,7 @@ export function validateSituations(list: Situation[], questionIds: Set<string>):
     if (!Array.isArray(s.related)) fail('нет списка похожих билетов');
     else for (const q of s.related) if (!questionIds.has(q)) fail(`похожего вопроса ${q} нет в базе`);
     if (![1, 2, 3].includes(s.level)) fail(`сложность должна быть 1–3: ${s.level}`);
+    if (!(s.skill in SKILLS)) fail(`неизвестный навык: ${s.skill}`);
     if (![1, 3, 7].includes(s.penalty)) fail(`штрафные баллы — 1, 3 или 7: ${s.penalty}`);
     const sc = s.scene;
     if (!sc || !['city', 'highway', 'country', 'yard'].includes(sc.place)) fail('сцена: неизвестное место');

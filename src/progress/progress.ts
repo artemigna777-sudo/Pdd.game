@@ -183,6 +183,8 @@ export interface ExamPlan {
 export interface GarageState {
   paint: string;
   sticker: string;
+  /** Тема города (этап 17); нет — обычный город. */
+  theme?: string;
   /** Купленные покраски и наклейки. */
   owned: string[];
 }
@@ -277,6 +279,7 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     const owned = [...new Set([DEFAULT_PAINT, DEFAULT_STICKER, ...strings(raw.garage.owned)])];
     const pick = (v: unknown, fallback: string) => (typeof v === 'string' && owned.includes(v) ? v : fallback);
     data.garage = { paint: pick(raw.garage.paint, DEFAULT_PAINT), sticker: pick(raw.garage.sticker, DEFAULT_STICKER), owned };
+    if (typeof raw.garage.theme === 'string' && owned.includes(`theme:${raw.garage.theme}`)) data.garage.theme = raw.garage.theme;
   }
   const dr = raw.drive;
   if (isObj(dr) && isNum(dr.clean) && isNum(dr.best) && isNum(dr.total) && isInt(dr.violations)) {

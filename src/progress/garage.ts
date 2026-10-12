@@ -1,6 +1,6 @@
 /**
- * Гараж: покраска и наклейки машины курьера за монеты. Только внешний вид — на вопросы,
- * ответы и награды не влияет.
+ * Гараж и магазин: покраска, наклейки и темы города за монеты. Только внешний вид — на вопросы,
+ * ответы, правила и готовность к экзамену не влияет.
  */
 import { DEFAULT_PAINT, DEFAULT_STICKER, spendCoins, type ProgressData } from './progress.ts';
 import { shopPrice } from './storyProgress.ts';
@@ -57,6 +57,44 @@ export function carLook(data: ProgressData): CarLook {
   const paint = PAINTS.find((p) => p.id === data.garage.paint) ?? PAINTS[0];
   const sticker = STICKERS.find((s) => s.id === data.garage.sticker) ?? STICKERS[0];
   return { color: paint.color, sticker: sticker.id };
+}
+
+/** Тема города (этап 17): меняет вид всего города и улицы в меню. Палитры — `game/city/themes.ts`. */
+export interface CityThemeInfo {
+  id: string;
+  name: string;
+  icon: string;
+  price: number;
+  about: string;
+  /** Цвета для картинки в магазине: газон, асфальт, разметка, крыша. */
+  preview: [string, string, string, string];
+}
+
+export const CITY_THEMES: CityThemeInfo[] = [
+  { id: 'winter', name: 'Зимний город', icon: '❄️', price: 250, about: 'Снег на газонах и крышах, снежинки в воздухе.', preview: ['#e6eff6', '#575e6c', '#eef0f2', '#d9e3ee'] },
+  { id: 'autumn', name: 'Осенний', icon: '🍂', price: 250, about: 'Жёлтые деревья и листопад.', preview: ['#a58a3d', '#40454e', '#eef0f2', '#e8a33a'] },
+  { id: 'toy', name: 'Игрушечный', icon: '🧸', price: 300, about: 'Город как из конструктора: пастельные цвета.', preview: ['#8fe08f', '#7d84b2', '#fffbe6', '#ff8fab'] },
+  { id: 'neon', name: 'Ночной неон', icon: '🌃', price: 350, about: 'Тёмный город, светящаяся разметка и неоновые крыши.', preview: ['#150d2b', '#0e0b1d', '#00f0ff', '#ff2bd6'] },
+  { id: 'retro', name: 'Ретро-пиксели', icon: '👾', price: 400, about: 'Город как в старой приставке: крупные пиксели и яркие цвета.', preview: ['#00a800', '#545454', '#fcfcfc', '#f83800'] },
+];
+
+/** Купить (если ещё нет и хватает монет) и выбрать тему города; `undefined` — обычный город. */
+export function buyOrSelectTheme(data: ProgressData, id: string | undefined): 'selected' | 'bought' | 'no-coins' | 'unknown' {
+  if (id === undefined) {
+    delete data.garage.theme;
+    return 'selected';
+  }
+  const theme = CITY_THEMES.find((t) => t.id === id);
+  if (!theme) return 'unknown';
+  let result: 'selected' | 'bought' = 'selected';
+  const key = `theme:${id}`;
+  if (!data.garage.owned.includes(key)) {
+    if (!spendCoins(data, shopPrice(data, theme.price))) return 'no-coins';
+    data.garage.owned.push(key);
+    result = 'bought';
+  }
+  data.garage.theme = id;
+  return result;
 }
 
 const item = (id: string) => PAINTS.find((p) => p.id === id) ?? STICKERS.find((s) => s.id === id);

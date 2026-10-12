@@ -76,7 +76,7 @@ test('меню: готовность, серия, цель дня и монет�
   // Есть ошибка, которую пора повторить, — цель дня: повторить её.
   const goal = page.getByRole('button', { name: 'Цель дня. Повторить ошибки: 0 из 1' });
   await expect(goal).toContainText('0/1');
-  await expect(page.getByRole('button', { name: 'Монеты: 7. Гараж' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Монеты: 7. Магазин' })).toBeVisible();
 
   // Готовность ведёт на экран прогресса с советами.
   await page.getByRole('button', { name: /^Готовность к экзамену/ }).tap();
@@ -95,7 +95,7 @@ test('меню: готовность, серия, цель дня и монет�
   await expect(page.getByRole('button', { name: 'Серия: 3 дня' })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Цель дня\. .*выполнена$/ })).toHaveClass(/is-done/);
   // +2 за первый верный ответ на этот вопрос, +20 за цель дня.
-  await expect(page.getByRole('button', { name: 'Монеты: 29. Гараж' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Монеты: 29. Магазин' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Серия: 3 дня' })).toBeVisible();
   const saved = await readProgress(page);
@@ -120,8 +120,8 @@ test('без повторов цель дня — пройти 3 точки; м�
 test('гараж: покраска и наклейка за монеты, выбор сохраняется и виден в меню', async ({ page }) => {
   await seed(page, { xp: 0, coins: 170, questions: {}, chapters: {}, finale: { control: [], seen: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Монеты: 170. Гараж' }).tap();
-  await expect(page.locator('.topbar__title')).toHaveText('Гараж');
+  await page.getByRole('button', { name: 'Монеты: 170. Магазин' }).tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Магазин');
   await expect(page.getByRole('button', { name: /^Жёлтая/ })).toHaveAttribute('aria-pressed', 'true');
 
   // Не хватает монет — ничего не покупается.
@@ -141,7 +141,7 @@ test('гараж: покраска и наклейка за монеты, выб
   await expect(page.locator('.garage__coins')).toContainText('10');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Монеты: 10. Гараж' }).tap();
+  await page.getByRole('button', { name: 'Монеты: 10. Магазин' }).tap();
   await expect(page.getByRole('button', { name: /^Красная/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: /^Гоночные полосы/ })).toHaveAttribute('aria-pressed', 'true');
   const saved = await readProgress(page);
@@ -196,7 +196,7 @@ test('резервная копия: сохранить в файл и восс�
   await other.locator('.backup input[type=file]').setInputFiles(path);
   await other.getByRole('button', { name: 'Восстановить', exact: true }).tap();
   await other.waitForLoadState('load');
-  await expect(other.getByRole('button', { name: 'Монеты: 99. Гараж' })).toBeVisible();
+  await expect(other.getByRole('button', { name: 'Монеты: 99. Магазин' })).toBeVisible();
   await expect(other.locator('html')).toHaveAttribute('data-theme', 'dark');
   const restored = await readProgress(other);
   expect(restored.xp).toBe(1234);

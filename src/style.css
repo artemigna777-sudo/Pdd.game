@@ -4830,3 +4830,19 @@ a.btn {
   color: var(--ok);
   font-weight: 700;
 }
+
+/* Темы города в магазине (этап 17) */
+.theme-swatch {
+  display: block;
+  width: 60px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.theme-swatch svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

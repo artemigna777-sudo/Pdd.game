@@ -21,7 +21,7 @@ export const SCREENS: readonly (readonly [path: string, title: string])[] = [
   ['/signs', 'Знакодекс'],
   ['/patrol', 'Пост ДПС'],
   ['/courier', 'Смена курьера'],
-  ['/garage', 'Гараж'],
+  ['/garage', 'Магазин'],
   ['/settings', 'Настройки'],
 ];
 

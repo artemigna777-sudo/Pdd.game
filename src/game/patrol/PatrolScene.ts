@@ -14,7 +14,9 @@ import { crossingCenter, noStopLane, ZEBRA_HALF_DEPTH } from '../../world/distri
 import { TrafficSim, type Light, type TrafficEnv } from '../../world/traffic.ts';
 import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
-import { VEHICLE_SIZE, drawVehicle } from '../city/art.ts';
+import { COLORS, VEHICLE_SIZE, drawVehicle } from '../city/art.ts';
+import { ThemeFx, applyCityTheme } from '../city/themes.ts';
+import { progress } from '../../progress/progress.ts';
 import { MapRenderer } from '../city/mapRenderer.ts';
 import { TrafficLightView, createSign } from '../city/signs.ts';
 import { TrafficView } from '../city/trafficView.ts';
@@ -56,6 +58,7 @@ export class PatrolScene extends Phaser.Scene {
   private maintainClock = 0;
   private radarClock = 0;
   private fx!: Phaser.GameObjects.Graphics;
+  private themeFx?: ThemeFx;
   private beacon!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -76,6 +79,7 @@ export class PatrolScene extends Phaser.Scene {
     const map = MAPS[this.mapKey];
     this.graph = new RoadGraph(map);
     this.post = patrolPost(this.graph, this.points);
+    applyCityTheme(progress().garage.theme);
     this.mapView = new MapRenderer(this, this.graph, this.points, this.post.rules);
     this.signal = patrolSignals(this.graph, this.post.rules, () => this.clock);
     this.buildLights();
@@ -84,7 +88,8 @@ export class PatrolScene extends Phaser.Scene {
     this.fx = this.add.graphics().setDepth(4.2);
 
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#5b9a4f');
+    cam.setBackgroundColor(COLORS.grass);
+    this.themeFx = new ThemeFx(this, PIXEL_RATIO);
     this.fitCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.fitCamera, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.fitCamera, this));
@@ -205,6 +210,7 @@ export class PatrolScene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     const dt = Math.min(deltaMs, 50) / 1000;
     this.clock += dt;
+    this.themeFx?.update(deltaMs);
     for (const l of this.signalViews) {
       l.view.update(dt);
       const state = lightAt(this.clock, this.graph.lane(l.lane));

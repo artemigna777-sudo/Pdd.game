@@ -3,6 +3,7 @@ import { carLook } from '../progress/garage.ts';
 import { onProgressChange, progress } from '../progress/progress.ts';
 import { bakedImage, bakedTexture } from './bake.ts';
 import { drawPlayerCar } from './city/art.ts';
+import { THEME_LOOKS, ThemeFx, applyCityTheme, cityThemeId } from './city/themes.ts';
 import { PIXEL_RATIO } from './display.ts';
 
 /**
@@ -11,7 +12,7 @@ import { PIXEL_RATIO } from './display.ts';
  * Координаты в CSS-пикселях, камера увеличена на PIXEL_RATIO.
  */
 
-const COLORS = {
+const BASE_COLORS = {
   grass: 0x4c8c4a,
   sidewalk: 0xaab2bd,
   curb: 0xd5dae1,
@@ -28,7 +29,17 @@ const COLORS = {
   shadow: 0x000000,
 };
 const CAR_COLORS = [0xe63946, 0x457b9d, 0x2a9d8f, 0xf4a261, 0x8d99ae, 0x6a4c93, 0xf1faee];
-const ROOF_COLORS = [0xc8553d, 0x588b8b, 0xe0a458, 0x8e7dbe, 0x9c6644, 0x6d7b8d];
+const BASE_ROOFS = [0xc8553d, 0x588b8b, 0xe0a458, 0x8e7dbe, 0x9c6644, 0x6d7b8d];
+
+/** Цвета улицы: свои у меню, но с темой города из магазина — как в городе (этап 17). */
+let COLORS = { ...BASE_COLORS };
+let ROOF_COLORS = BASE_ROOFS;
+function applyStreetTheme(id: string | undefined): void {
+  const look = id ? THEME_LOOKS[id] : undefined;
+  const p = look?.palette ?? {};
+  COLORS = { ...BASE_COLORS, ...Object.fromEntries(Object.entries(p).filter(([k]) => k in BASE_COLORS)) };
+  ROOF_COLORS = look?.roofs ?? BASE_ROOFS;
+}
 
 /** Скорость «камеры» вперёд, пикселей в секунду. */
 const CRUISE_SPEED = 140;
@@ -71,15 +82,23 @@ export class StreetScene extends Phaser.Scene {
     super('street');
   }
 
+  private theme: string | undefined;
+  private themeFx?: ThemeFx;
+
   create(): void {
-    this.cameras.main.setOrigin(0, 0).setZoom(PIXEL_RATIO);
+    this.theme = progress().garage.theme;
+    applyCityTheme(this.theme);
+    applyStreetTheme(this.theme);
+    this.cameras.main.setOrigin(0, 0).setZoom(PIXEL_RATIO).setBackgroundColor(COLORS.grass);
+    this.themeFx = new ThemeFx(this, PIXEL_RATIO);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) this.speed = 0;
 
     this.ground = this.add.graphics();
     this.markings = this.add.graphics();
     this.player = this.add.image(0, 0, '__DEFAULT').setDepth(3);
     this.updatePlayerLook();
-    const unsubscribe = onProgressChange(() => this.updatePlayerLook());
+    // Новая тема из магазина — перерисовать улицу целиком.
+    const unsubscribe = onProgressChange(() => (progress().garage.theme !== this.theme ? this.scene.restart() : this.updatePlayerLook()));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
 
     this.layout();
@@ -207,7 +226,7 @@ export class StreetScene extends Phaser.Scene {
     } else {
       const r = Phaser.Math.Between(11, 17);
       const cx = prop.side < 0 ? margin - 6 - r - Math.random() * Math.max(available - 2 * r, 0) : this.viewW - margin + 6 + r + Math.random() * Math.max(available - 2 * r, 0);
-      const tree = bakedImage(this, `street-tree:${r}`, r * 2 + 12, r * 2 + 12, (g) => {
+      const tree = bakedImage(this, `street-tree:${cityThemeId()}:${r}`, r * 2 + 12, r * 2 + 12, (g) => {
         g.fillStyle(COLORS.shadow, 0.2).fillCircle(4, 4, r);
         g.fillStyle(COLORS.tree).fillCircle(0, 0, r);
         g.fillStyle(COLORS.treeLight).fillCircle(-r * 0.3, -r * 0.3, r * 0.55);
@@ -247,6 +266,7 @@ export class StreetScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.themeFx?.update(delta);
     if (this.speed === 0) return;
     const dt = Math.min(delta, 50) / 1000;
     const scroll = this.speed * dt;

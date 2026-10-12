@@ -2,7 +2,7 @@
  * Этап 6 в интерфейсе: готовность к экзамену, цель дня и серия, монеты и гараж.
  */
 import { playSound } from '../audio/feedback.ts';
-import { PAINTS, STICKERS, buyOrSelect, carLook, type CarLook, type StickerId } from '../progress/garage.ts';
+import { CITY_THEMES, PAINTS, STICKERS, buyOrSelect, buyOrSelectTheme, carLook, type CarLook, type StickerId } from '../progress/garage.ts';
 import { shopDiscount, shopPrice } from '../progress/storyProgress.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
@@ -49,7 +49,7 @@ export function statusRow(data: ProgressData, daily: DailyState, readinessPercen
       daily.kind === 'plan' ? actions.plan : actions.progress,
       daily.done ? ' is-done' : '',
     ),
-    pill('🪙', String(data.coins), `Монеты: ${data.coins}. Гараж`, actions.garage),
+    pill('🪙', String(data.coins), `Монеты: ${data.coins}. Магазин`, actions.garage),
   );
 }
 
@@ -128,7 +128,7 @@ export function carSvg(look: CarLook): string {
   </svg>`;
 }
 
-/** Гараж: покраска и наклейки за монеты. `onChange` — после покупки или выбора (сохранить прогресс). */
+/** Магазин: темы города, покраска и наклейки за монеты. `onChange` — после покупки или выбора (сохранить прогресс). */
 export function garageView(data: ProgressData, onChange: () => void): HTMLElement {
   const root = el('div', { class: 'garage' });
   const render = () => {
@@ -176,10 +176,48 @@ export function garageView(data: ProgressData, onChange: () => void): HTMLElemen
       sw.innerHTML = carSvg({ color: look.color, sticker: s.id });
       return item(s.id, s.name, s.price, sw, s.signGroup);
     });
+    const themeCard = (id: string | undefined, name: string, icon: string, base: number, colors: readonly string[], about: string) => {
+      const owned = id === undefined || data.garage.owned.includes(`theme:${id}`);
+      const selected = data.garage.theme === id;
+      const price = shopPrice(data, base);
+      const sw = el('span', { class: 'theme-swatch', 'aria-hidden': 'true' });
+      // Кусочек улицы в цветах темы: газон, асфальт с разметкой, крыша дома.
+      sw.innerHTML = `<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="${colors[0]}"/><rect x="18" width="24" height="40" fill="${colors[1]}"/><rect x="29" y="3" width="2" height="10" fill="${colors[2]}"/><rect x="29" y="19" width="2" height="10" fill="${colors[2]}"/><rect x="2" y="6" width="12" height="14" fill="${colors[3]}"/><rect x="46" y="20" width="12" height="14" fill="${colors[3]}"/></svg>`;
+      return el(
+        'button',
+        {
+          class: `garage__item theme-item${selected ? ' is-selected' : ''}`,
+          type: 'button',
+          'aria-pressed': String(selected),
+          'data-theme-id': id ?? 'classic',
+          title: about,
+          onclick: () => {
+            const result = buyOrSelectTheme(data, id);
+            if (result === 'no-coins') {
+              showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
+              return;
+            }
+            if (result === 'bought') {
+              playSound('reward');
+              showToast(`${icon} Тема «${name}» — уже в городе и в меню.`);
+            }
+            onChange();
+            render();
+          },
+        },
+        sw,
+        el('span', { class: 'garage__name' }, `${icon} ${name}`),
+        el('span', { class: 'garage__price' }, selected ? 'выбрано' : id === undefined ? 'бесплатно' : owned ? 'куплено' : `🪙 ${price}`),
+      );
+    };
+    const themes = [themeCard(undefined, 'Обычный', '🏙', 0, ['#5b9a4f', '#40454e', '#eef0f2', '#c8553d'], 'Светофорск как есть.'), ...CITY_THEMES.map((t) => themeCard(t.id, t.name, t.icon, t.price, t.preview, t.about))];
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
-      el('p', { class: 'panel__note' }, 'Монеты — за верные ответы, цель дня, пройденные главы и экзамены. Покраска и наклейки меняют только внешний вид машины.'),
+      el('p', { class: 'panel__note' }, 'Монеты — за верные ответы, цель дня, пройденные главы и экзамены. Всё в магазине меняет только внешний вид: на вопросы и ответы не влияет.'),
       shopDiscount(data) ? el('p', { class: 'panel__note garage__discount' }, `🔧 Скидка дяди Гены: −${Math.round(shopDiscount(data) * 100)}% — за дружбу.`) : '',
+      el('h2', { class: 'section-title' }, 'Темы города'),
+      el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню.'),
+      el('div', { class: 'garage__grid' }, ...themes),
       el('h2', { class: 'section-title' }, 'Покраска'),
       el('div', { class: 'garage__grid' }, ...paints),
       el('h2', { class: 'section-title' }, 'Наклейки'),

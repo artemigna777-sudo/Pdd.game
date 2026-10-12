@@ -143,8 +143,8 @@ test('«Моя история»: характер, команда, решени�
 
   // Скидка дяди Гены в гараже: красная покраска за 48 вместо 60.
   await page.goto('/');
-  await page.getByRole('button', { name: 'Монеты: 60. Гараж' }).tap();
-  await expect(page.locator('.topbar__title')).toHaveText('Гараж');
+  await page.getByRole('button', { name: 'Монеты: 60. Магазин' }).tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Магазин');
   await expect(page.locator('.garage__discount')).toContainText('−20%');
   await expect(page.locator('.garage__item', { hasText: 'Красная' }).locator('.garage__price')).toHaveText('🪙 48');
   await page.locator('.garage__item', { hasText: 'Красная' }).tap();

@@ -99,7 +99,7 @@ type Route =
   | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; sign?: string; ids?: string[]; via: 'review' | 'progress' | 'finale' | 'plan' | 'signs' | 'situations' }
   /** «Мой экзамен»: дата экзамена в ГИБДД и план к ней. */
   | { name: 'plan' }
-  /** Гараж: покраска и наклейки машины за монеты. */
+  /** Магазин: темы города, покраска и наклейки машины за монеты. */
   | { name: 'garage' }
   | { name: 'finale' }
   /** «Моя история» (этап 17): характер, команда, решения, «Вернуть решение», галерея концовок. */
@@ -243,7 +243,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         review: 'Разбор ошибок',
         progress: 'Прогресс',
         plan: 'Мой экзамен',
-        garage: 'Гараж',
+        garage: 'Магазин',
         finale: 'Финал',
         story: 'Моя история',
         control: 'Контрольный билет',
@@ -441,7 +441,7 @@ export class App {
         screen = this.page('Моя история', storyView(progress(), () => saveProgress()), { back: 'chapters' });
         break;
       case 'garage':
-        screen = this.page('Гараж', garageView(progress(), () => saveProgress()), { back: 'menu' });
+        screen = this.page('Магазин', garageView(progress(), () => saveProgress()), { back: 'menu' });
         break;
       case 'plan':
         screen = this.planScreen();
@@ -860,7 +860,7 @@ export class App {
         readinessCard(r, { tip }),
         planLink(data, now, () => this.open({ name: 'plan' })),
         dailyCard(data, daily, now),
-        el('div', { class: 'menu__row progress-actions' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'garage' }) }, `Гараж · 🪙 ${data.coins}`), share),
+        el('div', { class: 'menu__row progress-actions' }, el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'garage' }) }, `Магазин · 🪙 ${data.coins}`), share),
         el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'story' }) }, '📖 Моя история: команда и концовки'),
         progressView(progress(), questions, mapping, {
           train: (topic) => this.open({ name: 'drill', mode: 'topic', topic, via: 'progress' }),

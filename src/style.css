@@ -4559,3 +4559,23 @@ a.btn {
 .sit-review__pen {
   color: var(--bad);
 }
+
+.sit-stage--provoke {
+  grid-template-columns: 48px 1fr;
+}
+
+.sit-stage__avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.sit-stage__score {
+  margin-top: 2px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sit-provoke-score {
+  font-weight: 700;
+  color: var(--text);
+}

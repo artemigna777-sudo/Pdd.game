@@ -25,6 +25,8 @@ export interface Situation {
   level: 1 | 2 | 3;
   /** Штрафные баллы за неверный ответ, как на практическом экзамене: 7 — грубая ошибка, 3 — средняя, 1 — мелкая. */
   penalty: Penalty;
+  /** Что сказать голосом инспектора (у провокаций — его команда). */
+  speech?: string;
 }
 
 export type Penalty = 1 | 3 | 7;
@@ -71,10 +73,10 @@ export const SCENE_ITEMS = new Set([
   'one-way-oncoming', 'overtaking-car', 'accident-ahead', 'skid', 'reverse-parking', 'inspector-in-car',
   // места и дорога
   'equal-crossroad', 'roundabout', 'yard-exit', 'bus-stop', 'narrow-road', 'gas-station-exit', 'speed-bump', 'roadworks',
-  'hill', 'curb', 'solid-center', 'player-blinker', 'curve', 'bridge', 'pothole', 'puddle', 'dirt-road', 'no-markings', 'heavy-rain', 'fog-wall',
+  'hill', 'curb', 'solid-center', 'player-blinker', 'crosswalk', 'median-gap', 'wide-road', 'curve', 'bridge', 'pothole', 'puddle', 'dirt-road', 'no-markings', 'heavy-rain', 'fog-wall',
   // люди, велосипеды, животные
   'pedestrian-sidewalk', 'pedestrian-shoulder', 'pedestrian-dark', 'people-on-road', 'child-runout', 'child-behind-car',
-  'door-opening', 'cyclist-right', 'cyclist-lane', 'animal',
+  'door-opening', 'cyclist-right', 'cyclist-lane', 'animal', 'pedestrian-crossing', 'pedestrian-right-crossing',
 ]);
 
 export const SIGN_ITEM = /^sign(-temp)?:\d+(\.\d+){1,2}(-\d+)?$/;
@@ -83,3 +85,45 @@ export const REGULATOR_ITEM = /^regulator:(up|side|wave|chest)$/;
 
 export const isSceneItem = (item: string) =>
   SCENE_ITEMS.has(item) || SIGN_ITEM.test(item) || LIGHT_ITEM.test(item) || REGULATOR_ITEM.test(item);
+
+/**
+ * «Провокация инспектора» (этап 15): в машине на экзамене инспектор даёт команду, а игрок решает —
+ * выполнять или сказать «нельзя». Формат data/situations/provoke/provocations.json.
+ */
+export interface Provocation {
+  /** Например "P-01". */
+  id: string;
+  /** Где ты сейчас. */
+  context: string;
+  /** Что говорит инспектор (читается вслух). */
+  command: string;
+  /** true — команда законная, её нужно выполнять; false — правильно сказать «нельзя». */
+  obey: boolean;
+  explanation: string;
+  rules: string[];
+  related: string[];
+  scene: SituationScene;
+  penalty: Penalty;
+}
+
+export const OBEY = 'Выполняю';
+export const REFUSE = 'Нельзя, так не поеду';
+
+/** Провокация в виде ситуации для карточки: варианты «Выполняю» и «Нельзя». */
+export function provocationSituation(p: Provocation): Situation {
+  return {
+    id: p.id,
+    section: 10,
+    text: `${p.context} Инспектор: «${p.command}»`,
+    options: [OBEY, REFUSE],
+    correct: p.obey ? 0 : 1,
+    explanation: p.explanation,
+    rules: p.rules,
+    related: p.related,
+    scene: p.scene,
+    level: 1,
+    // Отказ от законной команды — мелкая ошибка, выполнение незаконной — по тяжести нарушения.
+    penalty: p.obey ? 1 : p.penalty,
+    speech: p.command,
+  };
+}

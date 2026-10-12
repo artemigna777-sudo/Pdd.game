@@ -1,7 +1,7 @@
 /**
  * Проверка данных ситуаций (data/situations/*.json): `npm run situations` и tests/situations.test.ts.
  */
-import { SECTIONS, isSceneItem, type Situation } from './types.ts';
+import { SECTIONS, isSceneItem, provocationSituation, type Provocation, type Situation } from './types.ts';
 
 /** «ПДД 10.1», «ПДД 13.11(1)», «КоАП 12.9», «КоАП 12.15 ч. 4», «Знак 3.24», «Разметка 1.1», «ПДД, Приложение 1 (…)». */
 const RULE = /^(ПДД \d+\.\d+(\(\d+\))?|ПДД, Приложение [12]( \(.+\))?|КоАП \d+\.\d+(\.\d+)?( ч\. \d+)?|Знак \d+\.\d+(\.\d+)?|Разметка \d+\.\d+(\.\d+)?|ОП \d+)$/;
@@ -14,11 +14,12 @@ export function validateSituations(list: Situation[], questionIds: Set<string>):
   list.forEach((s, i) => {
     const where = text(s.id) ? s.id : `#${i}`;
     const fail = (msg: string) => errors.push(`${where}: ${msg}`);
-    if (!/^S\d{2}-\d{2}$/.test(s.id ?? '')) fail('id должен быть вида S07-01');
+    const provoke = /^P-\d{2}$/.test(s.id ?? '');
+    if (!/^S\d{2}-\d{2}$/.test(s.id ?? '') && !provoke) fail('id должен быть вида S07-01');
     else if (ids.has(s.id)) fail('повторяющийся id');
     ids.add(s.id);
     if (!(s.section in SECTIONS)) fail(`неизвестный раздел ${s.section}`);
-    else if (Number(s.id?.slice(1, 3)) !== s.section) fail('номер раздела в id не совпадает с section');
+    else if (!provoke && Number(s.id?.slice(1, 3)) !== s.section) fail('номер раздела в id не совпадает с section');
     if (!text(s.text)) fail('нет текста');
     if (!Array.isArray(s.options) || s.options.length < 2 || s.options.length > 4) fail('нужно 2–4 варианта');
     else {
@@ -43,4 +44,15 @@ export function validateSituations(list: Situation[], questionIds: Set<string>):
     }
   });
   return errors;
+}
+
+/** Проверка провокаций инспектора: те же правила, что у ситуаций, плюс команда и сцена в машине с инспектором. */
+export function validateProvocations(list: Provocation[], questionIds: Set<string>): string[] {
+  const errors: string[] = [];
+  for (const p of list) {
+    if (!text(p.context) || !text(p.command)) errors.push(`${p.id}: нет обстановки или команды`);
+    if (typeof p.obey !== 'boolean') errors.push(`${p.id}: obey — true или false`);
+    if (!p.scene?.items?.includes('inspector-in-car')) errors.push(`${p.id}: в сцене нет инспектора`);
+  }
+  return [...errors, ...validateSituations(list.map(provocationSituation), questionIds)];
 }

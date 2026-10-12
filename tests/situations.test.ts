@@ -3,10 +3,10 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { Question } from '../src/data/types.ts';
 import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
-import { SITUATIONS, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
+import { SITUATIONS, provokeStats, solvedCount, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
 import { sceneSvg } from '../src/situations/scene.ts';
-import type { Situation } from '../src/situations/types.ts';
-import { validateSituations } from '../src/situations/validate.ts';
+import { OBEY, REFUSE, provocationSituation, type Provocation, type Situation } from '../src/situations/types.ts';
+import { validateProvocations, validateSituations } from '../src/situations/validate.ts';
 
 const QUESTIONS: Question[] = JSON.parse(readFileSync('data/questions.json', 'utf8'));
 const IDS = new Set(QUESTIONS.map((q) => q.id));
@@ -154,4 +154,46 @@ test('штрафные баллы: грубая — 7, средняя — 3, м�
   // Баллы переживают проверку сохранённых данных; у верного ответа баллов нет.
   const back = sanitizeProgress({ modes: { situations: { seen: {}, open: ['calm'], runs: [{ at: 1, stage: 'calm', answers: [answer(by(7)[0], false), { ...answer(LIST[0], true), penalty: 5 }] }] } } });
   assert.deepEqual(back.modes?.situations?.runs[0].answers.map((a) => a.penalty), [7, 0]);
+});
+
+// ─── Провокации инспектора ───────────────────────────────────────────────────────
+
+const PROVOKE: Provocation[] = JSON.parse(readFileSync('data/situations/provoke/provocations.json', 'utf8'));
+
+test('провокации: данные без ошибок, есть и законные команды, и «нельзя»', () => {
+  assert.deepEqual(validateProvocations(PROVOKE, IDS), []);
+  const obey = PROVOKE.filter((p) => p.obey).length;
+  assert.ok(obey >= 4 && PROVOKE.length - obey >= 8, `законных ${obey} из ${PROVOKE.length}`);
+  assert.match(validateProvocations([{ ...PROVOKE[0], scene: { ...PROVOKE[0].scene, items: ['solid-center'] } }], IDS).join(), /нет инспектора/);
+  for (const p of PROVOKE) assert.doesNotMatch(sceneSvg(p.scene), /undefined|NaN/, p.id);
+});
+
+test('провокации: в карточке «Выполняю» и «Нельзя», отказ от законной команды — мелкая ошибка', () => {
+  const legal = provocationSituation(PROVOKE.find((p) => p.obey)!);
+  const trap = PROVOKE.find((p) => !p.obey && p.penalty === 7)!;
+  assert.deepEqual(legal.options, [OBEY, REFUSE]);
+  assert.equal(legal.correct, 0);
+  assert.equal(legal.penalty, 1);
+  assert.equal(provocationSituation(trap).correct, 1);
+  assert.equal(provocationSituation(trap).penalty, 7);
+  assert.match(provocationSituation(trap).text, /Инспектор: «.+»$/);
+});
+
+test('провокации: оцениваются отдельно и не открывают ступени', () => {
+  const s = emptySituations();
+  const list = PROVOKE.map(provocationSituation);
+  const run = pickRun(s, list, 'provoke', seeded(7));
+  assert.equal(run.length, 10);
+  assert.equal(limitFor(s, 'provoke', run[0].id), SITUATIONS.slow);
+  for (const x of run) recordSituation(s, x.id, true, NOW);
+  const out = finishRun(s, { at: NOW, stage: 'provoke', answers: run.map((x) => ({ id: x.id, choice: x.correct, correct: true, ms: 1000, limit: 10, penalty: 0 })) });
+  assert.equal(out.unlocked, undefined);
+  assert.deepEqual(s.open, ['calm']);
+  assert.equal(solvedCount(s), 0, 'провокации не считаются решёнными ситуациями');
+  assert.deepEqual(provokeStats(s), { runs: 1, best: 10, last: { right: 10, total: 10 } });
+  assert.equal(lockReason(s, 'provoke'), undefined);
+  // Ответы на провокации переживают проверку сохранённых данных; «provoke» не попадает в открытые ступени.
+  const back = sanitizeProgress(JSON.parse(JSON.stringify({ modes: { situations: { ...s, open: ['calm', 'provoke'] } } })));
+  assert.equal(Object.keys(back.modes!.situations!.seen).length, 10);
+  assert.deepEqual(back.modes!.situations!.open, ['calm']);
 });

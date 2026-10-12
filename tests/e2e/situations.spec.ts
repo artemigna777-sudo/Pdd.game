@@ -164,3 +164,82 @@ test('Ситуации: выход из заезда спрашивает под
   await page.getByRole('button', { name: 'Выйти' }).tap();
   await expect(page.locator('.sit-hub')).toBeVisible();
 });
+
+const PROVOKE: { id: string; command: string; obey: boolean }[] = JSON.parse(readFileSync('data/situations/provoke/provocations.json', 'utf8'));
+
+/** Подменить синтез речи: сказанное копится в window.__spoken. */
+function fakeSpeech(page: Page) {
+  return page.addInitScript(() => {
+    const spoken: string[] = [];
+    (window as unknown as { __spoken: string[] }).__spoken = spoken;
+    class Utterance {
+      lang = '';
+      voice = null;
+      rate = 1;
+      pitch = 1;
+      constructor(public text: string) {}
+    }
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: Utterance, configurable: true });
+    Object.defineProperty(window, 'speechSynthesis', {
+      value: { speak: (u: Utterance) => spoken.push(u.text), cancel: () => {}, getVoices: () => [{ lang: 'ru-RU', name: 'Тест' }] },
+      configurable: true,
+    });
+  });
+}
+
+test('Провокации инспектора: голос, «Выполняю» и «Нельзя», отдельная оценка', async ({ page }) => {
+  await fakeSpeech(page);
+  await seed(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Режимы' }).tap();
+  await page.locator('.mode-card', { hasText: 'Ситуации на дороге' }).tap();
+  await expect(page.locator('[data-stage="provoke"]')).toContainText(`${PROVOKE.length} команд`);
+  await page.locator('[data-stage="provoke"]').tap();
+  for (let i = 0; i < 10; i++) {
+    const card = page.locator('.sit-card');
+    await expect(page.locator('.exam-status')).toHaveText(`Ситуация ${i + 1} из 10`);
+    const id = (await card.getAttribute('aria-label'))!.replace('Ситуация ', '');
+    const p = PROVOKE.find((x) => x.id === id)!;
+    // Команду инспектор говорит вслух.
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.at(-1))).toBe(p.command);
+    await expect(card.locator('.sit-scene svg')).toBeVisible();
+    await reveal(page);
+    await expect(card.locator('.option')).toHaveText([/Выполняю/, /Нельзя/]);
+    // Первую провокацию — неверно, остальные — верно.
+    const right = p.obey ? 0 : 1;
+    await card.locator(`.option[data-orig="${i === 0 ? 1 - right : right}"]`).tap();
+    await expect(card.locator('.feedback')).toContainText(i === 0 ? 'Неверно' : 'Верно!');
+    await card.locator('.sit-next').tap();
+  }
+  await expect(page.locator('.result__score')).toHaveText('9 из 10');
+  await expect(page.locator('.sit-provoke-score')).toContainText('Провокаций распознано');
+  // Оценка отдельно: «Микс» не открылся, решённых ситуаций — ноль.
+  await page.getByRole('button', { name: 'Выбрать сложность' }).tap();
+  await expect(page.locator('[data-stage="provoke"]')).toContainText('Последний раз: 9 из 10 · лучший: 9');
+  await expect(page.locator('.sit-hub__stats')).toHaveText(/Решено ситуаций: 0 из/);
+  await expect(page.locator('[data-stage="mix"]')).toBeDisabled();
+
+  // «Голос инспектора» выключен — инспектор молчит.
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('pdd-game:settings')!);
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ ...s, voice: false }));
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Режимы' }).tap();
+  await page.locator('.mode-card', { hasText: 'Ситуации на дороге' }).tap();
+  await page.locator('[data-stage="provoke"]').tap();
+  await expect(page.locator('.sit-card')).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.length)).toBe(0);
+});
+
+test('настройки: выключатель «Голос инспектора»', async ({ page }) => {
+  await seed(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Настройки' }).tap();
+  const voice = page.getByRole('button', { name: /^Голос инспектора/ });
+  await expect(voice).toHaveAttribute('aria-pressed', 'true');
+  await voice.tap();
+  await expect(voice).toHaveAttribute('aria-pressed', 'false');
+  expect(JSON.parse((await page.evaluate(() => localStorage.getItem('pdd-game:settings')))!).voice).toBe(false);
+});

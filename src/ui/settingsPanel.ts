@@ -34,7 +34,7 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
     updateSettings({ control: mode });
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(OPTIONS[i].mode === mode)));
   }
-  const toggle = (key: 'sound' | 'vibration' | 'bigText' | 'events' | 'stats', title: string, hint: string) => {
+  const toggle = (key: 'sound' | 'vibration' | 'voice' | 'bigText' | 'events' | 'stats', title: string, hint: string) => {
     const button = el(
       'button',
       { class: 'choice choice--toggle', type: 'button', 'aria-pressed': String(getSettings()[key]), onclick: () => flip() },
@@ -58,6 +58,7 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
       { class: 'choices' },
       toggle('sound', 'Звуки', 'Сигналы ответов, награды, экзамен, мотор и шум улицы в городе. На iPhone звука не будет, если включён беззвучный режим.'),
       toggle('vibration', 'Вибрация при ошибке', 'На Android — вибрация, на iPhone (iOS 18 и новее) — лёгкий отклик.'),
+      toggle('voice', 'Голос инспектора', 'В «Провокациях инспектора» команды звучат голосом телефона. Работает, когда включены звуки.'),
     ),
   ];
   return el(

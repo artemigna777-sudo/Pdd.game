@@ -3,8 +3,9 @@
  * Ситуации не из билетов — это написано на каждой карточке.
  */
 import { answerFeedback } from '../audio/feedback.ts';
+import { speak, stopSpeaking } from '../audio/voice.ts';
 import type { Question } from '../data/types.ts';
-import { STAGES, SITUATIONS, isKnown, lockReason, type RunOutcome, type SituationRun, type SituationsState, type StageId } from '../situations/run.ts';
+import { STAGES, SITUATIONS, lockReason, provokeStats, solvedCount, type RunOutcome, type SituationRun, type SituationsState, type StageId } from '../situations/run.ts';
 import { sceneSvg } from '../situations/scene.ts';
 import { PENALTY_FAIL, PENALTY_LABEL, SECTIONS, type Situation } from '../situations/types.ts';
 import { avatar } from './cutscene.ts';
@@ -23,9 +24,12 @@ export function ticketLabel(id: string): string {
 
 // ─── Главный экран режима ────────────────────────────────────────────────────────
 
-export function situationsHubView(s: SituationsState, total: number, start: (stage: StageId) => void): HTMLElement {
-  const solved = Object.keys(s.seen).filter((id) => isKnown(s, id)).length;
-  const last = s.runs.at(-1);
+export const STAGE_TITLE: Record<StageId, string> = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор', provoke: 'Провокации инспектора' };
+
+export function situationsHubView(s: SituationsState, total: number, provocations: number, start: (stage: StageId) => void): HTMLElement {
+  const solved = solvedCount(s);
+  const last = s.runs.filter((r) => r.stage !== 'provoke').at(-1);
+  const pr = provokeStats(s);
   return el(
     'div',
     { class: 'sit-hub' },
@@ -58,6 +62,19 @@ export function situationsHubView(s: SituationsState, total: number, start: (sta
         );
       }),
     ),
+    el('h2', { class: 'section-title' }, 'Провокации инспектора'),
+    el(
+      'button',
+      { class: 'sit-stage sit-stage--provoke', type: 'button', 'data-stage': 'provoke', onclick: () => start('provoke') },
+      avatar('sokolov', 'sit-stage__avatar'),
+      el(
+        'span',
+        { class: 'sit-stage__body' },
+        el('span', { class: 'sit-stage__title' }, 'Экзамен с подвохом'),
+        el('span', { class: 'sit-stage__note' }, `Инспектор в машине даёт команды: одни можно выполнять, другие — нет. Решай: «Выполняю» или «Нельзя». ${provocations} ${plural(provocations, ['команда', 'команды', 'команд'])}, оценка отдельно.`),
+        pr.last ? el('span', { class: 'sit-stage__note sit-stage__score' }, `Последний раз: ${pr.last.right} из ${pr.last.total} · лучший: ${pr.best}`) : null,
+      ),
+    ),
   );
 }
 
@@ -75,6 +92,8 @@ export interface SituationCardOpts {
   /** «Дальше» после разбора. */
   onNext: () => void;
   last: boolean;
+  /** Что сказать голосом инспектора, когда карточка появилась. */
+  speak?: string;
 }
 
 export interface SituationCard {
@@ -117,6 +136,7 @@ export function situationCard(sit: Situation, base: string, opts: SituationCardO
     next,
   );
 
+  if (opts.speak) speak(opts.speak);
   let shownAt = 0;
   let readTimer: number | undefined = window.setTimeout(showOptions, opts.readMs);
   let raf = 0;
@@ -202,6 +222,7 @@ export function situationCard(sit: Situation, base: string, opts: SituationCardO
     element,
     stop: () => {
       answered = true;
+      stopSpeaking();
       window.clearTimeout(readTimer);
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibility);
@@ -231,7 +252,7 @@ export interface ResultActions {
 }
 
 export function situationsResultView(run: SituationRun, out: RunOutcome, byId: Map<string, Situation>, questions: Map<string, Question>, actions: ResultActions): HTMLElement {
-  const stage = STAGES.find((s) => s.id === run.stage)!;
+  const provoke = run.stage === 'provoke';
   const wrong = run.answers.filter((a) => !a.correct);
   const slow = run.answers.filter((a) => a.choice === null).length;
   const related = [...new Set(wrong.flatMap((a) => byId.get(a.id)?.related ?? []))].filter((id) => questions.has(id));
@@ -250,7 +271,8 @@ export function situationsResultView(run: SituationRun, out: RunOutcome, byId: M
         `Штрафные баллы: ${out.points}. `,
         out.passed ? 'На экзамене в ГИБДД такой заезд был бы сдан.' : `На экзамене в ГИБДД — «не сдал»: набрано ${PENALTY_FAIL} и больше.`,
       ),
-      el('p', { class: 'result__note' }, `Ступень «${stage.title}»${slow ? ` · не успел ответить: ${slow}` : ''}${out.coins ? ` · +${out.coins} ${plural(out.coins, ['монета', 'монеты', 'монет'])}` : ''}`),
+      provoke ? el('p', { class: 'result__note sit-provoke-score' }, `Провокаций распознано: ${run.answers.filter((a) => a.correct && a.choice === 1).length} из ${run.answers.filter((a) => byId.get(a.id)?.correct === 1).length} · законных команд выполнено: ${run.answers.filter((a) => a.correct && a.choice === 0).length} из ${run.answers.filter((a) => byId.get(a.id)?.correct === 0).length}`) : null,
+      el('p', { class: 'result__note' }, `${provoke ? 'Провокации инспектора' : `Ступень «${STAGE_TITLE[run.stage]}»`}${slow ? ` · не успел ответить: ${slow}` : ''}${out.coins ? ` · +${out.coins} ${plural(out.coins, ['монета', 'монеты', 'монет'])}` : ''}`),
       unlocked ? el('p', { class: 'result__note sit-unlocked' }, `🔓 Открыта ступень «${unlocked.title}»: ${unlocked.note}.`) : null,
     ),
     el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: actions.again }, 'Ещё заезд'),

@@ -146,7 +146,7 @@ function roadFor(scene: SituationScene, has: (i: string) => boolean): Road {
   if (scene.place === 'highway' && !has('bridge')) return { left: 50, right: 310, center: 180, our: [271, 213], onc: [147, 89], median: true };
   if (has('bridge')) return { left: 80, right: 280, center: 180, our: [255, 205], onc: [155, 105] };
   if (has('narrow-road')) return { left: 140, right: 220, center: 180, our: [200], onc: [160] };
-  if (has('car-blindspot-left') || has('dense-traffic') || has('loud-car')) return { left: 60, right: 300, center: 180, our: [270, 210], onc: [150, 90] };
+  if (has('car-blindspot-left') || has('dense-traffic') || has('loud-car') || has('wide-road')) return { left: 60, right: 300, center: 180, our: [270, 210], onc: [150, 90] };
   return { left: 120, right: 240, center: 180, our: [210], onc: [150] };
 }
 
@@ -441,6 +441,17 @@ function items(ctx: Ctx): { under: string; over: string } {
     s += person(r.right - 34, 130, -90, { color: '#ff006e' });
     over += `<path d="M${r.right - 20} 122 h12 M${r.right - 20} 130 h16 M${r.right - 20} 138 h12" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>`;
   }
+  if (has('crosswalk')) {
+    const y = 120;
+    for (let x = r.left + 4; x < r.right - 6; x += 14) s += `<rect x="${x}" y="${y - 12}" width="8" height="24" fill="${C.marking}"/>`;
+    s += signPost('sign:5.19.1', r.right + 14, y + 10, ctx.base);
+  }
+  if (has('pedestrian-crossing')) s += person(our - 4, 120, 180, { color: '#2a9d8f' });
+  if (has('pedestrian-right-crossing')) {
+    for (let y = 66; y < 176; y += 14) s += `<rect x="${r.right + 22}" y="${y}" width="24" height="8" fill="${C.marking}"/>`;
+    s += person(r.right + 34, 128, 180, { color: '#e76f51' });
+  }
+  if (has('median-gap')) s += `<rect x="${r.center - 10}" y="90" width="20" height="44" fill="${C.asphalt}"/>`;
   if (has('cyclist-right')) s += vehicle(r.right - 10, py + 6, 0, { kind: 'bike' });
   if (has('cyclist-lane')) s += vehicle(our, 120, 0, { kind: 'bike' });
   if (has('animal')) s += dog(our - 10, 116);

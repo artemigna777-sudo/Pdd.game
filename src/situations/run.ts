@@ -14,7 +14,8 @@
  */
 import { PENALTY_FAIL, type Situation } from './types.ts';
 
-export type StageId = 'calm' | 'mix' | 'hard';
+/** Ступени сложности и «Провокации инспектора» — отдельный заезд, оценивается отдельно. */
+export type StageId = 'calm' | 'mix' | 'hard' | 'provoke';
 
 export interface StageInfo {
   id: StageId;
@@ -92,6 +93,17 @@ export function emptySituations(): SituationsState {
 /** Решена ли ситуация верно хотя бы раз. */
 export const isKnown = (s: SituationsState, id: string) => (s.seen[id]?.right ?? 0) > 0;
 
+/** Сколько разных ситуаций (без провокаций) решено верно. */
+export const solvedCount = (s: SituationsState) => Object.keys(s.seen).filter((id) => id.startsWith('S') && isKnown(s, id)).length;
+
+/** Провокации инспектора: последний заезд и лучший результат (верных из заезда). */
+export function provokeStats(s: SituationsState): { runs: number; best?: number; last?: { right: number; total: number } } {
+  const runs = s.runs.filter((r) => r.stage === 'provoke');
+  const right = (r: SituationRun) => r.answers.filter((a) => a.correct).length;
+  const last = runs.at(-1);
+  return { runs: runs.length, best: runs.length ? Math.max(...runs.map(right)) : undefined, last: last && { right: right(last), total: last.answers.length } };
+}
+
 /** Секунд на ответ в этой ступени. */
 export function limitFor(s: SituationsState, stage: StageId, id: string): number {
   if (stage === 'hard') return SITUATIONS.fast;
@@ -130,6 +142,7 @@ export function pickRun(s: SituationsState, pool: readonly Situation[], stage: S
     for (const x of [first, ...rest].flat()) if (out.length < n && !out.includes(x)) out.push(x);
     return out;
   };
+  if (stage === 'provoke') return take(fresh(pool), stale(pool));
   if (stage === 'calm') {
     const easy = pool.filter((x) => x.level === 1);
     return take(fresh(easy), stale(easy), fresh(pool), stale(pool));
@@ -177,7 +190,7 @@ export interface RunOutcome {
 export function finishRun(s: SituationsState, run: SituationRun): RunOutcome {
   s.runs = [...s.runs, run].slice(-SITUATIONS.keepRuns);
   const correct = run.answers.filter((a) => a.correct).length;
-  const known = Object.keys(s.seen).filter((id) => isKnown(s, id)).length;
+  const known = solvedCount(s);
   let unlocked: StageId | undefined;
   if (run.stage === 'calm' && correct >= SITUATIONS.mixUnlock && !s.open.includes('mix')) unlocked = 'mix';
   if (run.stage === 'mix' && correct >= SITUATIONS.hardUnlock && known >= SITUATIONS.hardKnown && !s.open.includes('hard')) unlocked = 'hard';
@@ -193,9 +206,9 @@ export function runPoints(run: SituationRun): number {
 
 /** Почему ступень закрыта — подсказка на кнопке. */
 export function lockReason(s: SituationsState, stage: StageId): string | undefined {
-  if (s.open.includes(stage)) return undefined;
+  if (stage === 'provoke' || s.open.includes(stage)) return undefined;
   if (stage === 'mix') return `Откроется после «Спокойно» с ${SITUATIONS.mixUnlock} верными из ${SITUATIONS.perRun}`;
-  const known = Object.keys(s.seen).filter((id) => isKnown(s, id)).length;
+  const known = solvedCount(s);
   return `Откроется после «Микса» с ${SITUATIONS.hardUnlock} верными из ${SITUATIONS.perRun}` + (known < SITUATIONS.hardKnown ? ` и когда решено ${SITUATIONS.hardKnown} ситуаций (сейчас ${known})` : '');
 }
 
@@ -203,18 +216,18 @@ export function lockReason(s: SituationsState, stage: StageId): string | undefin
 
 const isInt = (v: unknown, min = 0): v is number => Number.isInteger(v) && (v as number) >= min;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard'];
+const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard', 'provoke'];
 
 export function sanitizeSituations(raw: unknown): SituationsState | undefined {
   if (!isObj(raw)) return undefined;
   const s = emptySituations();
   if (isObj(raw.seen)) {
     for (const [id, v] of Object.entries(raw.seen)) {
-      if (!/^S\d{2}-\d{2}$/.test(id) || !isObj(v) || !isInt(v.n, 1) || !isInt(v.right) || !isInt(v.wrong) || v.right + v.wrong !== v.n || typeof v.ok !== 'boolean' || !isInt(v.at)) continue;
+      if (!/^(S\d{2}-\d{2}|P-\d{2})$/.test(id) || !isObj(v) || !isInt(v.n, 1) || !isInt(v.right) || !isInt(v.wrong) || v.right + v.wrong !== v.n || typeof v.ok !== 'boolean' || !isInt(v.at)) continue;
       s.seen[id] = { n: v.n, right: v.right, wrong: v.wrong, ok: v.ok, at: v.at };
     }
   }
-  if (Array.isArray(raw.open)) s.open = STAGE_IDS.filter((id) => id === 'calm' || (raw.open as unknown[]).includes(id));
+  if (Array.isArray(raw.open)) s.open = STAGE_IDS.filter((id) => id !== 'provoke' && (id === 'calm' || (raw.open as unknown[]).includes(id)));
   if (Array.isArray(raw.runs)) {
     s.runs = raw.runs
       .filter((r): r is SituationRun => isObj(r) && isInt(r.at) && STAGE_IDS.includes(r.stage as StageId) && Array.isArray(r.answers))

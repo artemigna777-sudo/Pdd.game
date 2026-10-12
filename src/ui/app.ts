@@ -41,6 +41,7 @@ import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuest
 import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
 import { sendDuelReply, syncDuels } from '../duel/sync.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
+import { endingScene, finishStory, latestEnding } from '../progress/storyProgress.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
@@ -778,7 +779,7 @@ export class App {
               `Уровень ${levelOf(data.xp).number} «${levelOf(data.xp).title}» · звёзд: ${order.reduce((sum, id) => sum + (data.chapters[id]?.stars ?? 0), 0)} из ${order.length * 3} · экзаменов сдано: ${allExams().filter((e) => e.passed).length}`,
             ),
           ),
-          el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => void playCutscene(FINALE_STORY.passed, { last: 'Конец' }) }, 'Концовка ещё раз'),
+          el('button', { class: 'btn btn--primary btn--lg', type: 'button', onclick: () => void playCutscene(endingScene(latestEnding(data)), { last: 'Конец' }) }, 'Концовка ещё раз'),
           el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => this.open({ name: 'exam' }) }, 'Тренировочный экзамен'),
         );
         return;
@@ -1141,6 +1142,8 @@ export class App {
         // Ответы идут в прогресс только теперь: во время экзамена ничто не подсказывает, верен ли ответ.
         const outcomes = s.chosen.flatMap((chosen, i) => (chosen === undefined ? [] : [recordAnswer(data, s.items[i].id, chosen === byId.get(s.items[i].id)!.correct, now)]));
         const reward = outcome.passed ? recordExamPass(data, route.boss, now) : undefined;
+        // Экзамен-босс сдан — концовка по решениям в сюжете попадает в галерею.
+        const ending = outcome.passed && route.boss ? finishStory(data, now) : undefined;
         // Пробный экзамен засчитывается в план к экзамену в ГИБДД (сдан или нет).
         outcomes.push(recordPlanExam(data, now));
         saveProgress();
@@ -1166,8 +1169,12 @@ export class App {
           // Результат занимает место экзамена в истории браузера: «Назад» не начнёт экзамен заново.
           this.replace(result);
         };
-        if (route.boss) void playCutscene(outcome.passed ? FINALE_STORY.passed : FINALE_STORY.failed, { last: outcome.passed ? 'Конец' : 'Понятно' }).then(go);
-        else go();
+        if (route.boss) {
+          void playCutscene(outcome.passed ? endingScene(ending?.ending ?? latestEnding(data)) : FINALE_STORY.failed, { last: outcome.passed ? 'Конец' : 'Понятно' }).then(() => {
+            if (ending?.fresh) showToast(`${ending.ending.icon} Открыта концовка «${ending.ending.title}»`);
+            go();
+          });
+        } else go();
       };
 
       answer.onclick = () => {

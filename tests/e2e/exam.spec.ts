@@ -189,6 +189,8 @@ test('экзамен-босс в финале: сдан — концовка, п
 
   await expect(page.locator('.cutscene')).toContainText('Экзамен сдан');
   await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
+  // Решений в сюжете не было — концовка по умолчанию, она попадает в галерею.
+  await expect(page.locator('#toast')).toContainText('Открыта концовка «Лучшая служба города»');
   await expect(page.locator('.banner')).toContainText('История пройдена!');
   await page.getByRole('button', { name: 'К финалу' }).tap();
   await expect(page.locator('.exam-result__verdict')).toHaveText('Права получены!');
@@ -196,6 +198,7 @@ test('экзамен-босс в финале: сдан — концовка, п
   await expect(page.getByRole('button', { name: 'История пройдена ★' })).toBeVisible();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:progress')!));
   expect(saved.finale.exam).toBeGreaterThan(0);
+  expect(Object.keys(saved.story.endings)).toEqual(['best']);
   // +2 за каждый верный ответ на знакомый вопрос и +500 за экзамен-босса.
   expect(saved.xp).toBe(11000 + 20 * 2 + 500);
 });

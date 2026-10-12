@@ -12,6 +12,7 @@ import {
   lastBigDecision,
   plotContext,
   plotLines,
+  resolveLines,
   sanitizeStory,
   sceneLines,
   validatePlot,
@@ -265,6 +266,7 @@ test('«Турбо-Доставка»: в каждой главе 1–2 разв
   for (const d of DECISIONS) for (const o of d.options) walk(o.when);
   for (const d of DECISIONS) walk(d.when);
   for (const e of ENDINGS) walk(e.when);
+  for (const l of FINALE_STORY.passed) walk(l.if);
   for (const d of DECISIONS) assert.ok(remembered.has(d.id), `${d.id}: о решении никто не вспоминает`);
 });
 
@@ -280,4 +282,81 @@ test('реплики сюжета: без обращения к игроку в 
   assert.match('Ты бы что сказал?', GENDERED);
   assert.match('ты тогда помогла', GENDERED);
   for (const label of labels) assert.ok(label.length <= 40, `кнопка длинновата: ${label}`);
+});
+
+/** Пройти сюжет с такими решениями (и поручениями) и узнать концовку. */
+function playThrough(picks: Record<string, string>, helped: string[] = []) {
+  const data = emptyProgress();
+  let t = 0;
+  for (const d of DECISIONS) {
+    const ctx = storyContext(data);
+    if (!check(d.when, ctx)) continue;
+    const options = d.options.filter((o) => check(o.when, ctx));
+    const value = picks[d.id] && options.some((o) => o.value === picks[d.id]) ? picks[d.id] : options[0].value;
+    assert.ok(recordDecision(data, d.id, value, ++t), d.id);
+  }
+  for (const ch of helped) data.chapters[ch] = { points: [], seen: [], stars: 0, side: { step: 2, done: 1 } };
+  const ctx = storyContext(data);
+  return { data, ctx, ending: endingFor(ctx, ENDINGS).id };
+}
+
+const ALL_SIDES = Object.keys(SIDE_QUESTS);
+/** Путь «всё на максимуме». */
+const PERFECT: Record<string, string> = {
+  'ch1.card': 'return',
+  'ch2.cover': 'confess',
+  'ch2.kids': 'sokolov',
+  'ch3.artem': 'study',
+  'ch4.block': 'ask',
+  'ch4.gena': 'keep',
+  'ch5.semyon': 'strela',
+  'ch5.anya': 'help',
+  'ch6.aid': 'help',
+  'ch6.bakery': 'save',
+  'ch7.witness': 'tell',
+  'ch8.semyon': 'gena',
+  'ch8.race': 'no',
+  'ch9.video': 'give',
+  'ch10.offer': 'strela',
+  'ch10.call': 'galina',
+};
+
+test('концовки: шесть, каждая достижима, секретная — только когда всё на максимуме', () => {
+  assert.deepEqual(
+    ENDINGS.map((e) => e.id),
+    ['secret', 'own', 'school', 'artem', 'turbo', 'best'],
+  );
+  // Секретная: все поручения и лучшие решения.
+  const perfect = playThrough(PERFECT, ALL_SIDES);
+  assert.equal(perfect.ending, 'secret', JSON.stringify(perfect.ctx));
+  // Хоть одно поручение не выполнено — у кого-то не хватит сердечек, и секретной не будет.
+  assert.notEqual(playThrough(PERFECT, ALL_SIDES.slice(1)).ending, 'secret');
+  // Без поручений и с другим финалом в главе 9 — тоже нет.
+  assert.notEqual(playThrough({ ...PERFECT, 'ch9.video': 'erase' }, ALL_SIDES).ending, 'secret');
+
+  assert.equal(playThrough({ ...PERFECT, 'ch6.bakery': 'own' }, ALL_SIDES).ending, 'own');
+  assert.equal(playThrough({ ...PERFECT, 'ch6.bakery': 'sell' }, ALL_SIDES).ending, 'school');
+  assert.equal(playThrough({ ...PERFECT, 'ch6.bakery': 'sell', 'ch9.video': 'talk' }, ALL_SIDES).ending, 'artem');
+  assert.equal(playThrough({ 'ch3.artem': 'free', 'ch7.artem': 'debt', 'ch6.bakery': 'sell', 'ch9.video': 'talk' }).ending, 'turbo');
+  // Артём вернулся в главе 7 — уже не «Турбо».
+  assert.notEqual(playThrough({ 'ch3.artem': 'free', 'ch7.artem': 'back', 'ch6.bakery': 'sell', 'ch9.video': 'talk' }).ending, 'turbo');
+  assert.equal(playThrough({ 'ch3.artem': 'stay', 'ch6.bakery': 'sell', 'ch9.video': 'erase' }).ending, 'best');
+  // Старое сохранение без решений — концовка по умолчанию.
+  assert.equal(endingFor(storyContext(emptyProgress()), ENDINGS).id, 'best');
+});
+
+test('в каждой концовке реплики разрешаются без противоречий при любом пути', () => {
+  const paths: Record<string, string>[] = [PERFECT, { 'ch3.artem': 'free', 'ch7.artem': 'debt', 'ch6.bakery': 'own' }, { 'ch6.bakery': 'sell' }, {}];
+  for (const picks of paths) {
+    const { ctx } = playThrough(picks);
+    for (const e of ENDINGS) {
+      const lines = resolveLines(e.lines, ctx);
+      assert.ok(lines.length >= 4, e.id);
+      // Одна и та же мысль не звучит дважды: альтернативные реплики взаимоисключающие.
+      const byWho = lines.map((l) => l.who + l.text.slice(0, 12));
+      assert.equal(new Set(byWho).size, byWho.length, e.id);
+    }
+    // Эпилог перед экзаменом: Артём говорит ровно одну реплику.
+    assert.equal(resolveLines(FINALE_STORY.epilogue, ctx).filter((l) => l.who === 'artem').length, 1, JSON.stringify(picks));
+  }
 });

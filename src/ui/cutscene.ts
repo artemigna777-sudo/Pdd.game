@@ -4,6 +4,9 @@
  */
 import { portraitSvg, type PortraitId } from '../story/portraits.ts';
 import { CHARACTERS, type Line } from '../story/story.ts';
+import { resolveLines } from '../story/plot.ts';
+import { storyContext } from '../progress/storyProgress.ts';
+import { progress } from '../progress/progress.ts';
 import { el } from './dom.ts';
 
 /** Круглый портрет персонажа. */
@@ -47,9 +50,10 @@ export function showOverlay(root: HTMLElement): () => void {
  * возвращает выбор игрока, если в сцене был выбор (реплика с вариантами ответа).
  */
 export function playCutscene(source: readonly Line[], opts: { last?: string; /** Выбор сделан: так записываются развилки сюжета (`line.decision`). */ onChoice?: (line: Line, value: string) => void } = {}): Promise<string | undefined> {
-  if (!source.length) return Promise.resolve(undefined);
+  // Реплики с условиями — по решениям игрока: герои помнят выбор (этап 17).
+  const lines = resolveLines(source, storyContext(progress()));
+  if (!lines.length) return Promise.resolve(undefined);
   return new Promise((resolve) => {
-    const lines = [...source];
     let index = 0;
     let chosen: string | undefined;
     const face = el('span', { class: 'avatar', 'aria-hidden': 'true' });

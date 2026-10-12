@@ -34,7 +34,7 @@ import {
 } from '../progress/progress.ts';
 import { getSettings, onSettingsChange } from '../settings.ts';
 import { PROLOGUE, STORY, beatThresholds, fill, type Line } from '../story/story.ts';
-import { resolveLines, sceneLines, type StoryScene } from '../story/plot.ts';
+import { sceneLines, type StoryScene } from '../story/plot.ts';
 import { PLOT } from '../story/turbo.ts';
 import { recordDecision, storyContext } from '../progress/storyProgress.ts';
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
@@ -238,7 +238,6 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
 
   /** Реплики по решениям игрока (герои помнят выбор) и развилки этой сцены. */
   const plotScene = (key: StoryScene, base: readonly Line[]) => sceneLines(chapterId, key, base, storyContext(progress()), PLOT);
-  const remembered = (base: readonly Line[]) => resolveLines(base, storyContext(progress()));
 
   const seen = (id: string) => chapterState(progress(), chapterId).seen.includes(id);
   const see = (id: string) => {
@@ -274,7 +273,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       hint.textContent = baseHint();
       updateTask();
     } else if (r.pointsDone === r.points && !seen('low')) {
-      if (!(await cutscene(remembered(fill(story.low, { percent: percent(r.share) })), 'Понятно'))) return;
+      if (!(await cutscene(fill(story.low, { percent: percent(r.share) }), 'Понятно'))) return;
       see('low');
     }
   };
@@ -286,7 +285,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (!rival || !info || seen('race') || !raceActive(progress(), chapterId)) return true;
     const r = chapterResult(progress(), info);
     if (r.pointsDone >= r.points) return true;
-    const value = await choose(remembered(rival.challenge), 'Поехали');
+    const value = await choose(rival.challenge, 'Поехали');
     if (value === undefined) return false;
     startRace(progress(), chapterId, r.points ? r.pointsDone / r.points : 0);
     see('race');
@@ -336,7 +335,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   /** Предложить поручение. false — экран закрыт. */
   const offerSide = async (): Promise<boolean> => {
     if (!quest) return true;
-    const value = await choose(remembered(quest.offer), 'Поехали');
+    const value = await choose(quest.offer, 'Поехали');
     if (value === undefined) return false;
     if (value === 'accept') {
       acceptSide(progress(), chapterId);
@@ -355,7 +354,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   const onSide = async () => {
     if (!quest || sideStatus(progress(), chapterId) !== 'taken') return;
     const step = sideStep(progress(), chapterId);
-    if (!(await cutscene(remembered(step === 0 ? quest.stops[0].lines : sideDone(quest)), step === 0 ? 'Везу!' : 'Поехали'))) return;
+    if (!(await cutscene(step === 0 ? quest.stops[0].lines : sideDone(quest), step === 0 ? 'Везу!' : 'Поехали'))) return;
     const out = advanceSide(progress(), chapterId, Date.now());
     saveProgress();
     scene?.removeSide();
@@ -562,7 +561,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       sideDeclined = false;
       await offerSide();
     }
-    if (again) await cutscene(remembered(story.intro));
+    if (again) await cutscene(story.intro);
   };
 
   const host: CityData['host'] = {

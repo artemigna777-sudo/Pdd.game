@@ -2,7 +2,8 @@
  * Сюжет в прогрессе игрока (этап 17): решения, отношения, характер, концовки и «Вернуть решение».
  * Сама модель — `story/plot.ts`, развилки и концовки — `story/turbo.ts`.
  */
-import { REWIND_PRICE, decide, emptyStory, lastBigDecision, plotContext, rewindDecision, unlockEnding, type Ending, type PlotContext, type PlotSource, type StoryState } from '../story/plot.ts';
+import { REWIND_PRICE, decide, emptyStory, endingFor, lastBigDecision, plotContext, rewindDecision, unlockEnding, type Ending, type PlotContext, type PlotSource, type StoryState } from '../story/plot.ts';
+import { FINALE_STORY, type Line } from '../story/story.ts';
 import { ENDINGS, PLOT } from '../story/turbo.ts';
 import { spendCoins, type ProgressData } from './progress.ts';
 
@@ -51,4 +52,15 @@ export function rewind(data: ProgressData, value: string, now: number, source: P
   rewindDecision(storyOf(data), value, now, source);
   const ending = data.finale.exam !== undefined ? finishStory(data, now, source, endings) : undefined;
   return { ok: true, ...(ending ? { ending } : {}) };
+}
+
+/** Концовка, которую игрок открыл последней (или по нынешним решениям, если ещё ни одной). */
+export function latestEnding(data: ProgressData, source: PlotSource = PLOT, endings: readonly Ending[] = ENDINGS): Ending | undefined {
+  const open = Object.entries(data.story?.endings ?? {}).sort((a, b) => b[1] - a[1]);
+  return endings.find((e) => e.id === open[0]?.[0]) ?? (endings.length ? endingFor(storyContext(data, source), endings) : undefined);
+}
+
+/** Сцена после экзамена-босса: «Экзамен сдан», концовка и последняя реплика истории. */
+export function endingScene(ending: Ending | undefined): Line[] {
+  return [...FINALE_STORY.passed, ...(ending?.lines ?? []), ...FINALE_STORY.end];
 }

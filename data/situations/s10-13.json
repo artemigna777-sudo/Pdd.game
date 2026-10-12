@@ -27,7 +27,8 @@
         "equal-crossroad"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S10-02",
@@ -52,7 +53,8 @@
         "child-runout"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S10-03",
@@ -79,7 +81,8 @@
         "oncoming-car"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S10-04",
@@ -107,7 +110,8 @@
         "bus-hazard"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S10-05",
@@ -134,7 +138,8 @@
         "car-behind"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S10-06",
@@ -159,7 +164,8 @@
         "equal-crossroad"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S10-07",
@@ -187,7 +193,8 @@
         "oncoming-car"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S10-08",
@@ -216,7 +223,8 @@
         "oncoming-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S10-09",
@@ -243,7 +251,8 @@
         "sign:3.24-60"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S10-10",
@@ -269,7 +278,8 @@
         "ambulance-behind"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S10-11",
@@ -293,7 +303,8 @@
         "animal"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S11-01",
@@ -320,7 +331,8 @@
         "car-blindspot-left"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S11-02",
@@ -349,7 +361,8 @@
         "player-blinker"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S11-03",
@@ -374,7 +387,8 @@
         "motorcycle-blindspot"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S11-04",
@@ -400,7 +414,8 @@
         "reverse-parking"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S11-05",
@@ -425,7 +440,8 @@
         "child-behind-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S11-06",
@@ -452,7 +468,8 @@
         "dense-traffic"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S11-07",
@@ -482,7 +499,8 @@
         "player-blinker"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S11-08",
@@ -509,7 +527,8 @@
         "car-blindspot-left"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S12-01",
@@ -535,7 +554,8 @@
         "oncoming-highbeam"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S12-02",
@@ -562,7 +582,8 @@
         "heavy-rain"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S12-03",
@@ -589,7 +610,8 @@
         "curve"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S12-04",
@@ -618,7 +640,8 @@
         "no-markings"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S12-05",
@@ -648,7 +671,8 @@
         "fog-wall"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S12-06",
@@ -675,7 +699,8 @@
         "puddle"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S12-07",
@@ -702,7 +727,8 @@
         "pedestrian-dark"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S12-08",
@@ -730,7 +756,8 @@
         "skid"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S12-09",
@@ -757,7 +784,8 @@
         "dirt-road"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-01",
@@ -783,7 +811,8 @@
         "loud-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-02",
@@ -809,7 +838,8 @@
         "dense-traffic"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-03",
@@ -835,7 +865,8 @@
         "oncoming-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S13-04",
@@ -860,7 +891,8 @@
         "oncoming-car"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S13-05",
@@ -887,7 +919,8 @@
         "pedestrian-shoulder"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S13-06",
@@ -916,7 +949,8 @@
         "door-opening"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S13-07",
@@ -942,7 +976,8 @@
         "equal-crossroad"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-08",
@@ -971,7 +1006,8 @@
         "car-behind"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S13-09",
@@ -998,7 +1034,8 @@
         "one-way-oncoming"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S13-10",
@@ -1026,7 +1063,8 @@
         "regulator:wave"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S13-11",
@@ -1053,7 +1091,8 @@
         "car-ahead-brake"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S13-12",
@@ -1084,7 +1123,8 @@
         "car-on-ring"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S13-13",
@@ -1112,7 +1152,8 @@
         "sign:1.29"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-14",
@@ -1140,7 +1181,8 @@
         "curb"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S13-15",
@@ -1164,7 +1206,8 @@
         "pothole"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S13-16",
@@ -1191,7 +1234,8 @@
         "cyclist-lane"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S13-17",
@@ -1216,7 +1260,8 @@
         "solid-center"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S13-18",
@@ -1245,7 +1290,8 @@
         "car-right-waiting"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 1
   },
   {
     "id": "S13-19",
@@ -1271,7 +1317,8 @@
         "people-on-road"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S13-20",
@@ -1297,6 +1344,7 @@
         "roadworks"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   }
 ]

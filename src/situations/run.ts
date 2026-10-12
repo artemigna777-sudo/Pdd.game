@@ -12,7 +12,7 @@
  * Ситуации не из билетов, поэтому в прогресс вопросов, готовность и работу над ошибками билетов
  * не попадают. Их итоги хранятся отдельно — `progress.modes.situations`.
  */
-import type { Situation } from './types.ts';
+import { PENALTY_FAIL, type Situation } from './types.ts';
 
 export type StageId = 'calm' | 'mix' | 'hard';
 
@@ -67,6 +67,8 @@ export interface SituationAnswer {
   ms: number;
   /** Сколько было секунд на ответ. */
   limit: number;
+  /** Штрафные баллы за ответ (0 — верно). */
+  penalty: number;
 }
 
 export interface SituationRun {
@@ -163,6 +165,9 @@ export function recordSituation(s: SituationsState, id: string, correct: boolean
 export interface RunOutcome {
   correct: number;
   total: number;
+  /** Штрафные баллы заезда и «сдал бы» ли практический экзамен (меньше 7 баллов). */
+  points: number;
+  passed: boolean;
   /** Ступень, открытая этим заездом. */
   unlocked?: StageId;
   coins: number;
@@ -177,7 +182,13 @@ export function finishRun(s: SituationsState, run: SituationRun): RunOutcome {
   if (run.stage === 'calm' && correct >= SITUATIONS.mixUnlock && !s.open.includes('mix')) unlocked = 'mix';
   if (run.stage === 'mix' && correct >= SITUATIONS.hardUnlock && known >= SITUATIONS.hardKnown && !s.open.includes('hard')) unlocked = 'hard';
   if (unlocked) s.open = [...s.open, unlocked];
-  return { correct, total: run.answers.length, unlocked, coins: correct * SITUATIONS.coin };
+  const points = runPoints(run);
+  return { correct, total: run.answers.length, points, passed: points < PENALTY_FAIL, unlocked, coins: correct * SITUATIONS.coin };
+}
+
+/** Штрафные баллы заезда. */
+export function runPoints(run: SituationRun): number {
+  return run.answers.reduce((sum, a) => sum + a.penalty, 0);
 }
 
 /** Почему ступень закрыта — подсказка на кнопке. */
@@ -212,7 +223,7 @@ export function sanitizeSituations(raw: unknown): SituationsState | undefined {
         stage: r.stage,
         answers: (r.answers as unknown[])
           .filter((a): a is SituationAnswer => isObj(a) && typeof a.id === 'string' && (a.choice === null || isInt(a.choice)) && typeof a.correct === 'boolean' && isInt(a.ms) && isInt(a.limit, 1))
-          .map((a) => ({ id: a.id, choice: a.choice, correct: a.correct, ms: a.ms, limit: a.limit })),
+          .map((a) => ({ id: a.id, choice: a.choice, correct: a.correct, ms: a.ms, limit: a.limit, penalty: a.correct ? 0 : isInt(a.penalty) ? Math.min(a.penalty, PENALTY_FAIL) : 0 })),
       }))
       .slice(-SITUATIONS.keepRuns);
   }

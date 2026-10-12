@@ -6,7 +6,7 @@ import { answerFeedback } from '../audio/feedback.ts';
 import type { Question } from '../data/types.ts';
 import { STAGES, SITUATIONS, isKnown, lockReason, type RunOutcome, type SituationRun, type SituationsState, type StageId } from '../situations/run.ts';
 import { sceneSvg } from '../situations/scene.ts';
-import { SECTIONS, type Situation } from '../situations/types.ts';
+import { PENALTY_FAIL, PENALTY_LABEL, SECTIONS, type Situation } from '../situations/types.ts';
 import { avatar } from './cutscene.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
@@ -38,6 +38,7 @@ export function situationsHubView(s: SituationsState, total: number, start: (sta
         { class: 'mode-rules' },
         el('li', {}, `🚦 заезд — ${SITUATIONS.perRun} ситуаций, на каждую — таймер;`),
         el('li', {}, '⏱ не успел — считается ошибкой;'),
+        el('li', {}, `⚖️ ошибки — штрафные баллы, как на экзамене в ГИБДД: грубая — 7, средняя — 3, мелкая — 1. Набрал ${PENALTY_FAIL} — экзамен был бы не сдан;`),
         el('li', {}, '📖 у каждого ответа — пункт ПДД или КоАП и похожий вопрос из билетов, если он есть.'),
       ),
       el('p', { class: 'panel__note' }, notTickets(), ' Этих ситуаций нет в экзаменационных билетах: ответы составлены по ПДД. Они не влияют на готовность к экзамену и работу над ошибками.'),
@@ -188,6 +189,7 @@ export function situationCard(sit: Situation, base: string, opts: SituationCardO
     const shown = opts.order.indexOf(sit.correct) + 1;
     feedback.className = `feedback ${ok ? 'feedback--ok' : 'feedback--bad'}`;
     feedback.replaceChildren(el('strong', {}, ok ? 'Верно!' : choice === null ? `Время вышло. Правильный ответ — ${shown}.` : `Неверно. Правильный ответ — ${shown}.`));
+    if (!ok) feedback.append(el('span', { class: 'sit-penalty' }, `+${sit.penalty} ${plural(sit.penalty, ['штрафной балл', 'штрафных балла', 'штрафных баллов'])} — ${PENALTY_LABEL[sit.penalty]}`));
     explanation.replaceChildren(...explanationNodes(sit));
     explanation.hidden = false;
     next.hidden = false;
@@ -241,7 +243,13 @@ export function situationsResultView(run: SituationRun, out: RunOutcome, byId: M
       'section',
       { class: 'result' },
       el('p', { class: 'result__score' }, `${out.correct} из ${out.total}`),
-      el('p', { class: 'result__label' }, out.correct === out.total ? 'Чистый заезд!' : out.correct >= out.total * 0.7 ? 'Хороший заезд.' : 'Есть над чем поработать.'),
+      el('p', { class: 'result__label' }, out.correct === out.total ? 'Чистый заезд!' : out.passed ? 'Хороший заезд.' : 'Есть над чем поработать.'),
+      el(
+        'p',
+        { class: `sit-verdict ${out.passed ? 'is-ok' : 'is-bad'}` },
+        `Штрафные баллы: ${out.points}. `,
+        out.passed ? 'На экзамене в ГИБДД такой заезд был бы сдан.' : `На экзамене в ГИБДД — «не сдал»: набрано ${PENALTY_FAIL} и больше.`,
+      ),
       el('p', { class: 'result__note' }, `Ступень «${stage.title}»${slow ? ` · не успел ответить: ${slow}` : ''}${out.coins ? ` · +${out.coins} ${plural(out.coins, ['монета', 'монеты', 'монет'])}` : ''}`),
       unlocked ? el('p', { class: 'result__note sit-unlocked' }, `🔓 Открыта ступень «${unlocked.title}»: ${unlocked.note}.`) : null,
     ),
@@ -267,7 +275,7 @@ export function situationsResultView(run: SituationRun, out: RunOutcome, byId: M
           { class: 'sit-review__head', type: 'button', 'aria-expanded': String(!a.correct), onclick: () => ((body.hidden = !body.hidden), head.setAttribute('aria-expanded', String(!body.hidden))) },
           el('span', { class: `sit-review__mark ${a.correct ? 'is-ok' : 'is-bad'}`, 'aria-label': a.correct ? 'верно' : 'ошибка' }, a.correct ? '✓' : '✕'),
           el('span', { class: 'sit-review__text' }, sit.text),
-          el('span', { class: 'sit-review__time' }, `${(a.ms / 1000).toFixed(1)} из ${a.limit} с`),
+          el('span', { class: 'sit-review__time' }, `${(a.ms / 1000).toFixed(1)} из ${a.limit} с`, a.penalty ? el('b', { class: 'sit-review__pen' }, ` +${a.penalty}`) : null),
         );
         return el('li', { class: 'sit-review__item' }, head, body);
       }),

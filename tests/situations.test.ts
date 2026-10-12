@@ -88,7 +88,7 @@ test('ступени открываются по очереди', () => {
   const run = (stage: SituationRun['stage'], right: number): SituationRun => ({
     at: NOW,
     stage,
-    answers: LIST.slice(0, 10).map((x, i) => ({ id: x.id, choice: i < right ? x.correct : null, correct: i < right, ms: 1000, limit: 10 })),
+    answers: LIST.slice(0, 10).map((x, i) => ({ id: x.id, choice: i < right ? x.correct : null, correct: i < right, ms: 1000, limit: 10, penalty: i < right ? 0 : x.penalty })),
   });
   assert.equal(finishRun(s, run('calm', 6)).unlocked, undefined);
   const out = finishRun(s, run('calm', 7));
@@ -111,7 +111,7 @@ test('варианты перемешиваются, ситуации храня
   data.modes = { situations: emptySituations() };
   recordSituation(data.modes.situations!, 'S07-01', false, NOW);
   recordSituation(data.modes.situations!, 'S07-01', true, NOW + 1);
-  finishRun(data.modes.situations!, { at: NOW, stage: 'calm', answers: [{ id: 'S07-01', choice: null, correct: false, ms: 10000, limit: 10 }] });
+  finishRun(data.modes.situations!, { at: NOW, stage: 'calm', answers: [{ id: 'S07-01', choice: null, correct: false, ms: 10000, limit: 10, penalty: 3 }] });
   const back = sanitizeProgress(JSON.parse(JSON.stringify(data)));
   assert.deepEqual(back.modes?.situations, data.modes.situations);
   // Испорченные записи отбрасываются, ступень «Спокойно» открыта всегда.
@@ -132,4 +132,26 @@ test('сцены: каждая ситуация рисуется, знаки б�
   const a = sceneSvg(LIST[0].scene);
   const b = sceneSvg(LIST[0].scene);
   assert.notEqual(a.match(/id="glare-[^"]+"/)![0], b.match(/id="glare-[^"]+"/)![0]);
+});
+
+test('штрафные баллы: грубая — 7, средняя — 3, мелкая — 1; от 7 — «не сдал»', () => {
+  const by = (p: number) => LIST.filter((x) => x.penalty === p);
+  for (const p of [1, 3, 7]) assert.ok(by(p).length >= 5, `ошибок на ${p} балл(а) мало`);
+  // Грубые: светофоры, регулировщики и «уступи дорогу» — все.
+  assert.ok(LIST.filter((x) => x.section === 9).every((x) => x.penalty === 7));
+  const s = emptySituations();
+  const answer = (x: Situation, ok: boolean) => ({ id: x.id, choice: ok ? x.correct : null, correct: ok, ms: 1000, limit: 10, penalty: ok ? 0 : x.penalty });
+  const two3 = by(3).slice(0, 2);
+  const one1 = by(1)[0];
+  // 3 + 3 = 6 — сдал бы; ещё мелкая — 7, не сдал.
+  let out = finishRun(s, { at: NOW, stage: 'calm', answers: [...two3.map((x) => answer(x, false)), answer(LIST[0], true)] });
+  assert.equal(out.points, 6);
+  assert.equal(out.passed, true);
+  out = finishRun(s, { at: NOW, stage: 'calm', answers: [...two3.map((x) => answer(x, false)), answer(one1, false)] });
+  assert.equal(out.points, 7);
+  assert.equal(out.passed, false);
+  assert.equal(finishRun(s, { at: NOW, stage: 'calm', answers: [answer(by(7)[0], false)] }).passed, false);
+  // Баллы переживают проверку сохранённых данных; у верного ответа баллов нет.
+  const back = sanitizeProgress({ modes: { situations: { seen: {}, open: ['calm'], runs: [{ at: 1, stage: 'calm', answers: [answer(by(7)[0], false), { ...answer(LIST[0], true), penalty: 5 }] }] } } });
+  assert.deepEqual(back.modes?.situations?.runs[0].answers.map((a) => a.penalty), [7, 0]);
 });

@@ -68,8 +68,8 @@ import { adminState } from '../stats/admin.ts';
 import { startStats, trackEvent, trackOnce, trackOncePerDay, trackView } from '../stats/track.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 import { loadSituations } from '../situations/data.ts';
-import { emptySituations, finishRun, isKnown, limitFor, optionOrder, pickRun, readMs, recordSituation, type SituationRun, type StageId } from '../situations/run.ts';
-import type { Situation } from '../situations/types.ts';
+import { emptySituations, finishRun, isKnown, limitFor, optionOrder, pickRun, readMs, recordSituation, runPoints, type SituationRun, type StageId } from '../situations/run.ts';
+import { PENALTY_FAIL, type Situation } from '../situations/types.ts';
 import { situationCard, situationsHubView, situationsResultView, type SituationCard } from './situationsView.ts';
 
 /**
@@ -1337,7 +1337,9 @@ export class App {
             { label: 'Выйти', onClick: () => this.back('situations') },
           ]);
     const stageTitle = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор' }[route.stage];
-    const screen = this.page(`Ситуации: ${stageTitle}`, el('div', {}, status, body), { back: 'situations', progress: progressEl, onBack: leave });
+    // Штрафные баллы заезда, как на практическом экзамене: от 7 — «не сдал».
+    const points = el('span', { class: 'topbar__score sit-points', 'aria-label': 'Штрафные баллы', title: 'Штрафные баллы: от 7 — экзамен не сдан' }, `0 / ${PENALTY_FAIL}`);
+    const screen = this.page(`Ситуации: ${stageTitle}`, el('div', {}, status, body), { back: 'situations', aside: points, progress: progressEl, onBack: leave });
     const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
 
     void Promise.all([loadSituations(), loadQuestions()]).then(([all, questions]) => {
@@ -1370,8 +1372,10 @@ export class App {
           onAnswer: (choice, ms) => {
             const correct = choice === sit.correct;
             recordSituation(state, sit.id, correct, Date.now());
-            run.answers.push({ id: sit.id, choice, correct, ms, limit });
+            run.answers.push({ id: sit.id, choice, correct, ms, limit, penalty: correct ? 0 : sit.penalty });
             saveProgress();
+            points.textContent = `${runPoints(run)} / ${PENALTY_FAIL}`;
+            points.classList.toggle('is-over', runPoints(run) >= PENALTY_FAIL);
           },
           onNext: () => (i + 1 < list.length ? show(i + 1) : results()),
         });
@@ -1385,7 +1389,7 @@ export class App {
         const out = finishRun(state, run);
         data.coins += out.coins;
         saveProgress();
-        playSound(out.correct >= out.total * 0.7 ? 'pass' : 'fail');
+        playSound(out.passed ? 'pass' : 'fail');
         bar.style.width = '100%';
         status.textContent = '';
         const byId = new Map<string, Situation>(all.map((x) => [x.id, x]));

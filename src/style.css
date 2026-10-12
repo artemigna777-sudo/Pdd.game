@@ -4527,3 +4527,35 @@ a.btn {
 :root[data-text='big'] .sit-review__body {
   font-size: 18px;
 }
+
+.sit-points {
+  font-variant-numeric: tabular-nums;
+}
+
+.sit-points.is-over {
+  color: var(--bad);
+}
+
+.sit-penalty {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sit-verdict {
+  margin: 4px 0 0;
+  font-weight: 800;
+}
+
+.sit-verdict.is-ok {
+  color: var(--ok);
+}
+
+.sit-verdict.is-bad {
+  color: var(--bad);
+}
+
+.sit-review__pen {
+  color: var(--bad);
+}

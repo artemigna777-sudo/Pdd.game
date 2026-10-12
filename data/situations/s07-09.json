@@ -26,7 +26,8 @@
         "car-behind"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S07-02",
@@ -54,7 +55,8 @@
         "car-ahead-brake"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S07-03",
@@ -83,7 +85,8 @@
         "car-behind"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 1
   },
   {
     "id": "S07-04",
@@ -111,7 +114,8 @@
         "spray-ahead"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S07-05",
@@ -139,7 +143,8 @@
         "sign:3.24-60"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S07-06",
@@ -167,7 +172,8 @@
         "sign:3.24-60"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 3
   },
   {
     "id": "S07-07",
@@ -194,7 +200,8 @@
         "car-ahead-close"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S07-08",
@@ -222,7 +229,8 @@
         "oncoming-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 3
   },
   {
     "id": "S08-01",
@@ -249,7 +257,8 @@
         "car-left-close"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S08-02",
@@ -278,7 +287,8 @@
         "car-on-ring"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S08-03",
@@ -307,7 +317,8 @@
         "car-on-road"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S08-04",
@@ -334,7 +345,8 @@
         "yard-exit-right-car"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S08-05",
@@ -361,7 +373,8 @@
         "bus-leaving"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S08-06",
@@ -386,7 +399,8 @@
         "car-right-turning-right"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S08-07",
@@ -416,7 +430,8 @@
         "oncoming-car"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S08-08",
@@ -444,7 +459,8 @@
         "dense-traffic"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-01",
@@ -472,7 +488,8 @@
         "light:yellow"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-02",
@@ -502,7 +519,8 @@
         "light:flash-yellow"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-03",
@@ -529,7 +547,8 @@
         "regulator:up"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-04",
@@ -555,7 +574,8 @@
         "regulator:side"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-05",
@@ -581,7 +601,8 @@
         "equal-crossroad"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-06",
@@ -606,7 +627,8 @@
         "regulator:wave"
       ]
     },
-    "level": 1
+    "level": 1,
+    "penalty": 7
   },
   {
     "id": "S09-07",
@@ -635,7 +657,8 @@
         "car-stuck-in-crossroad"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S09-08",
@@ -663,7 +686,8 @@
         "light:red+arrow-right"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   },
   {
     "id": "S09-09",
@@ -690,6 +714,7 @@
         "light:flash-red"
       ]
     },
-    "level": 2
+    "level": 2,
+    "penalty": 7
   }
 ]

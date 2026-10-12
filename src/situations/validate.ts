@@ -32,6 +32,7 @@ export function validateSituations(list: Situation[], questionIds: Set<string>):
     if (!Array.isArray(s.related)) fail('нет списка похожих билетов');
     else for (const q of s.related) if (!questionIds.has(q)) fail(`похожего вопроса ${q} нет в базе`);
     if (![1, 2, 3].includes(s.level)) fail(`сложность должна быть 1–3: ${s.level}`);
+    if (![1, 3, 7].includes(s.penalty)) fail(`штрафные баллы — 1, 3 или 7: ${s.penalty}`);
     const sc = s.scene;
     if (!sc || !['city', 'highway', 'country', 'yard'].includes(sc.place)) fail('сцена: неизвестное место');
     else {

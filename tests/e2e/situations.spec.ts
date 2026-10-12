@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
-const SITUATIONS: { id: string; correct: number; options: string[]; related: string[] }[] = readdirSync('data/situations')
+const SITUATIONS: { id: string; correct: number; options: string[]; related: string[]; penalty: number }[] = readdirSync('data/situations')
   .filter((f) => f.endsWith('.json'))
   .flatMap((f) => JSON.parse(readFileSync(`data/situations/${f}`, 'utf8')));
 const SHOTS = process.env.SHOTS;
@@ -84,6 +84,7 @@ test('Ситуации: заезд «Спокойно», таймер, итог 
       const pick = i === 2 ? (sit.correct + 1) % sit.options.length : sit.correct;
       await card.locator(`.option[data-orig="${pick}"]`).tap();
       await expect(card.locator('.feedback')).toContainText(i === 2 ? 'Неверно' : 'Верно!');
+      if (i === 2) await expect(card.locator('.sit-penalty')).toContainText(`+${sit.penalty} штрафн`);
     }
     await expect(card.locator('.sit-rules .chip').first()).toBeVisible();
     if (i === 2) await shot(page, 'sit-answered');
@@ -91,8 +92,11 @@ test('Ситуации: заезд «Спокойно», таймер, итог 
   }
   expect(new Set(seen).size).toBe(10);
 
-  // Итог: 8 из 10, открыт «Микс», монеты.
+  // Итог: 8 из 10, штрафные баллы, открыт «Микс», монеты.
   await expect(page.locator('.result__score')).toHaveText('8 из 10');
+  const points = [seen[1], seen[2]].reduce((sum, id) => sum + SITUATIONS.find((s) => s.id === id)!.penalty, 0);
+  await expect(page.locator('.sit-points')).toHaveText(`${points} / 7`);
+  await expect(page.locator('.sit-verdict')).toContainText(`Штрафные баллы: ${points}. ` + (points < 7 ? 'На экзамене в ГИБДД такой заезд был бы сдан.' : 'На экзамене в ГИБДД — «не сдал»'));
   await expect(page.locator('.sit-unlocked')).toContainText('Открыта ступень «Микс»');
   await expect(page.locator('.result__note').first()).toContainText('не успел ответить: 1');
   await expect(page.locator('.sit-review__item')).toHaveCount(10);

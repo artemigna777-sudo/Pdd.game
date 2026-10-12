@@ -59,7 +59,7 @@ export const SCENE_ITEMS = new Set([
   'one-way-oncoming', 'overtaking-car', 'accident-ahead', 'skid', 'reverse-parking', 'inspector-in-car',
   // места и дорога
   'equal-crossroad', 'roundabout', 'yard-exit', 'bus-stop', 'narrow-road', 'gas-station-exit', 'speed-bump', 'roadworks',
-  'hill', 'curb', 'curve', 'bridge', 'pothole', 'puddle', 'dirt-road', 'no-markings', 'heavy-rain', 'fog-wall',
+  'hill', 'curb', 'solid-center', 'player-blinker', 'curve', 'bridge', 'pothole', 'puddle', 'dirt-road', 'no-markings', 'heavy-rain', 'fog-wall',
   // люди, велосипеды, животные
   'pedestrian-sidewalk', 'pedestrian-shoulder', 'pedestrian-dark', 'people-on-road', 'child-runout', 'child-behind-car',
   'door-opening', 'cyclist-right', 'cyclist-lane', 'animal',

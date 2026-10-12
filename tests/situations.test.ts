@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { Question } from '../src/data/types.ts';
+import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
+import { SITUATIONS, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
+import { sceneSvg } from '../src/situations/scene.ts';
 import type { Situation } from '../src/situations/types.ts';
 import { validateSituations } from '../src/situations/validate.ts';
 
@@ -44,4 +47,89 @@ test('ситуации: правильный ответ не угадать по
 
 test('ситуации: все семь разделов запроса', () => {
   assert.deepEqual([...new Set(LIST.map((s) => s.section))].sort((a, b) => a - b), [7, 8, 9, 10, 11, 12, 13]);
+});
+
+// ─── Заезд ───────────────────────────────────────────────────────────────────────
+
+
+const seeded = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const NOW = new Date(2026, 9, 12, 12).getTime();
+
+test('заезд «Спокойно»: 10 разных простых ситуаций, сначала новые и с ошибками', () => {
+  const s = emptySituations();
+  const run = pickRun(s, LIST, 'calm', seeded(1));
+  assert.equal(run.length, SITUATIONS.perRun);
+  assert.equal(new Set(run).size, run.length);
+  assert.ok(run.every((x) => x.level === 1));
+  // Все простые решены верно, кроме одной — она первая в очереди.
+  const easy = LIST.filter((x) => x.level === 1);
+  for (const x of easy) recordSituation(s, x.id, x.id !== easy[5].id, NOW);
+  assert.ok(pickRun(s, LIST, 'calm', seeded(2)).includes(easy[5]));
+  assert.ok(run.every((x) => limitFor(emptySituations(), 'calm', x.id) === SITUATIONS.slow));
+});
+
+test('заезд «Микс» и «Хардкор»: решённые — на 3 секунды', () => {
+  const s = emptySituations();
+  for (const x of LIST.slice(0, 12)) recordSituation(s, x.id, true, NOW);
+  const mix = pickRun(s, LIST, 'mix', seeded(3));
+  assert.equal(mix.length, 10);
+  const fast = mix.filter((x) => limitFor(s, 'mix', x.id) === SITUATIONS.fast).length;
+  assert.ok(fast >= 3 && fast <= 7, `быстрых ${fast}`);
+  const hard = pickRun(s, LIST, 'hard', seeded(4));
+  assert.equal(hard.length, 10);
+  assert.ok(hard.every((x) => isKnown(s, x.id) && limitFor(s, 'hard', x.id) === SITUATIONS.fast));
+  assert.equal(readMs(LIST[0], true), 1000);
+  assert.ok(readMs(LIST[0], false) >= 1500 && readMs(LIST[0], false) <= 5000);
+});
+
+test('ступени открываются по очереди', () => {
+  const s = emptySituations();
+  assert.match(lockReason(s, 'mix')!, /7 верными/);
+  const run = (stage: SituationRun['stage'], right: number): SituationRun => ({
+    at: NOW,
+    stage,
+    answers: LIST.slice(0, 10).map((x, i) => ({ id: x.id, choice: i < right ? x.correct : null, correct: i < right, ms: 1000, limit: 10 })),
+  });
+  assert.equal(finishRun(s, run('calm', 6)).unlocked, undefined);
+  const out = finishRun(s, run('calm', 7));
+  assert.equal(out.unlocked, 'mix');
+  assert.equal(out.coins, 7);
+  // «Хардкор» — только когда решено 10 разных ситуаций.
+  for (const x of LIST.slice(0, 9)) recordSituation(s, x.id, true, NOW);
+  assert.equal(finishRun(s, run('mix', 9)).unlocked, undefined);
+  assert.match(lockReason(s, 'hard')!, /сейчас 9/);
+  recordSituation(s, LIST[9].id, true, NOW);
+  assert.equal(finishRun(s, run('mix', 8)).unlocked, 'hard');
+  assert.deepEqual(s.open, ['calm', 'mix', 'hard']);
+  assert.equal(lockReason(s, 'hard'), undefined);
+});
+
+test('варианты перемешиваются, ситуации хранятся в прогрессе и переживают проверку', () => {
+  const order = optionOrder(LIST[0], seeded(5));
+  assert.deepEqual([...order].sort(), [0, 1, 2]);
+  const data = emptyProgress();
+  data.modes = { situations: emptySituations() };
+  recordSituation(data.modes.situations!, 'S07-01', false, NOW);
+  recordSituation(data.modes.situations!, 'S07-01', true, NOW + 1);
+  finishRun(data.modes.situations!, { at: NOW, stage: 'calm', answers: [{ id: 'S07-01', choice: null, correct: false, ms: 10000, limit: 10 }] });
+  const back = sanitizeProgress(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(back.modes?.situations, data.modes.situations);
+  // Испорченные записи отбрасываются, ступень «Спокойно» открыта всегда.
+  const bad = sanitizeProgress({ modes: { situations: { seen: { 'S07-01': { n: 2, right: 5, wrong: 0, ok: true, at: 1 }, x: {} }, open: ['hard'], runs: [{ at: 1, stage: 'boss', answers: [] }] } } });
+  assert.deepEqual(bad.modes?.situations, { seen: {}, open: ['calm', 'hard'], runs: [] });
+  // Ответы на ситуации не трогают прогресс вопросов из билетов.
+  assert.deepEqual(back.questions, {});
+});
+
+test('сцены: каждая ситуация рисуется, знаки берутся из картинок набора', () => {
+  for (const x of LIST) {
+    const svg = sceneSvg(x.scene, '/base/');
+    assert.ok(svg.startsWith('<svg') && svg.endsWith('</svg>'), x.id);
+    assert.doesNotMatch(svg, /undefined|NaN/, x.id);
+    for (const m of svg.matchAll(/href="\/base\/signs\/([\d.]+)\.svg"/g)) assert.ok(existsSync(`public/signs/${m[1]}.svg`), `${x.id}: нет картинки знака ${m[1]}`);
+  }
+  // У двух сцен на одной странице — разные id градиентов.
+  const a = sceneSvg(LIST[0].scene);
+  const b = sceneSvg(LIST[0].scene);
+  assert.notEqual(a.match(/id="glare-[^"]+"/)![0], b.match(/id="glare-[^"]+"/)![0]);
 });

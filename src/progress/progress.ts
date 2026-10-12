@@ -13,6 +13,7 @@
  * новые вопросы, повторы ошибок и пробные экзамены.
  */
 import { load, save } from '../storage.ts';
+import { sanitizeSituations, type SituationsState } from '../situations/run.ts';
 import { KMH_PER_PX } from '../world/rules.ts';
 
 export const REVIEW_DAYS = [1, 3, 7] as const;
@@ -204,6 +205,8 @@ export interface CourierRecord {
 export interface ModesState {
   patrol?: PatrolRecord;
   courier?: CourierRecord[];
+  /** «Ситуации на дороге» (этап 15). */
+  situations?: SituationsState;
 }
 
 export interface ProgressData {
@@ -316,6 +319,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
         .sort((a, b) => b.score - a.score || a.at - b.at)
         .slice(0, COURIER_TOP);
     }
+    const situations = sanitizeSituations(m.situations);
+    if (situations) data.modes.situations = situations;
   }
   const plan = raw.plan;
   if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {

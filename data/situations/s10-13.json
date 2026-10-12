@@ -345,7 +345,8 @@
       "time": "day",
       "items": [
         "equal-crossroad",
-        "car-on-road"
+        "car-right-waiting",
+        "player-blinker"
       ]
     },
     "level": 1
@@ -477,7 +478,8 @@
       "time": "day",
       "items": [
         "cyclist-right",
-        "equal-crossroad"
+        "equal-crossroad",
+        "player-blinker"
       ]
     },
     "level": 1
@@ -1207,10 +1209,11 @@
     ],
     "related": [],
     "scene": {
-      "place": "highway",
+      "place": "country",
       "time": "day",
       "items": [
-        "overtaking-car"
+        "overtaking-car",
+        "solid-center"
       ]
     },
     "level": 1

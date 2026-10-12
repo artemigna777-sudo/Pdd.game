@@ -438,8 +438,8 @@ function items(ctx: Ctx): { under: string; over: string } {
   if (has('pedestrian-dark')) over += `<g opacity=".8">${person(r.right - 10, 110, 90, { dark: true })}</g><ellipse cx="${r.right - 10}" cy="110" rx="11" ry="7" fill="none" stroke="#fff3b0" stroke-width="1" opacity=".35"/>`;
   if (has('parked-cars')) for (const y of [40, 100, 160]) s += vehicle(r.right - 14, y, 0, { color: C.cars[(y / 60) | 0], door: has('door-opening') && y === 100 });
   if (has('child-runout')) {
-    s += person(r.right - 40, 128, -90, { child: true, color: '#ff006e' });
-    over += `<path d="M${r.right - 24} 120 h10 M${r.right - 24} 128 h14 M${r.right - 24} 136 h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`;
+    s += person(r.right - 34, 130, -90, { color: '#ff006e' });
+    over += `<path d="M${r.right - 20} 122 h12 M${r.right - 20} 130 h16 M${r.right - 20} 138 h12" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>`;
   }
   if (has('cyclist-right')) s += vehicle(r.right - 10, py + 6, 0, { kind: 'bike' });
   if (has('cyclist-lane')) s += vehicle(our, 120, 0, { kind: 'bike' });
@@ -495,7 +495,8 @@ export function sceneSvg(scene: SituationScene, base = '/'): string {
   const has = (i: string) => scene.items.includes(i);
   const layout = layoutFor(scene, has);
   const road = roadFor(scene, has);
-  const px = layout === 'exit' || layout === 'parking' ? (layout === 'parking' ? 180 : 200) : road.our[0];
+  // Вдоль припаркованных машин игрок едет левее, ближе к осевой.
+  const px = layout === 'exit' || layout === 'parking' ? (layout === 'parking' ? 180 : 200) : road.our[0] - (has('parked-cars') ? 10 : 0);
   const py = layout === 'exit' ? 225 : layout === 'parking' ? 120 : layout === 'cross' ? 248 : layout === 'ring' ? 258 : 214;
   const ctx: Ctx = { scene, has, layout, road, px, py, base, night: scene.time === 'night' };
 

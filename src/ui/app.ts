@@ -67,13 +67,17 @@ import { statsView } from './statsView.ts';
 import { adminState } from '../stats/admin.ts';
 import { startStats, trackEvent, trackOnce, trackOncePerDay, trackView } from '../stats/track.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
+import { loadSituations } from '../situations/data.ts';
+import { emptySituations, finishRun, isKnown, limitFor, optionOrder, pickRun, readMs, recordSituation, type SituationRun, type StageId } from '../situations/run.ts';
+import type { Situation } from '../situations/types.ts';
+import { situationCard, situationsHubView, situationsResultView, type SituationCard } from './situationsView.ts';
 
 /**
  * Экраны: меню поверх анимированной улицы, главы сюжета и город-район главы, финал с
  * контрольными билетами, «Разбор ошибок», «Прогресс», «Мой экзамен», билеты целиком
  * с историей попыток и настройки.
  */
-type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh' | 'sign';
+type DrillMode = 'review' | 'practice' | 'topic' | 'weak' | 'block' | 'fresh' | 'refresh' | 'sign' | 'related';
 type Route =
   | { name: 'menu' }
   | { name: 'chapters' }
@@ -87,7 +91,7 @@ type Route =
   | { name: 'review' }
   | { name: 'progress' }
   /** Серия вопросов: повтор ошибок, тренировка ошибок, темы, недоученных или новых вопросов. */
-  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; sign?: string; ids?: string[]; via: 'review' | 'progress' | 'finale' | 'plan' | 'signs' }
+  | { name: 'drill'; mode: DrillMode; topic?: string; block?: number; sign?: string; ids?: string[]; via: 'review' | 'progress' | 'finale' | 'plan' | 'signs' | 'situations' }
   /** «Мой экзамен»: дата экзамена в ГИБДД и план к ней. */
   | { name: 'plan' }
   /** Гараж: покраска и наклейки машины за монеты. */
@@ -119,6 +123,9 @@ type Route =
   | { name: 'duel-run'; invite?: DuelPayload }
   /** Итог дуэли из истории. */
   | { name: 'duel-result'; id: string; role: 'from' | 'to'; elsewhere?: string }
+  /** «Ситуации на дороге» (этап 15): ступени и заезд. */
+  | { name: 'situations' }
+  | { name: 'situations-run'; stage: StageId }
   /** Статистика игры для автора (секретный вход из настроек). */
   | { name: 'stats' };
 type RouteName = Route['name'];
@@ -132,7 +139,7 @@ type DuelInviteRoute = Extract<Route, { name: 'duel-invite' }>;
 type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier';
+type BackTarget = 'menu' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier' | 'situations';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -164,6 +171,8 @@ const DEPTH: Record<RouteName, number> = {
   'duel-invite': 3,
   'duel-run': 3,
   'duel-result': 3,
+  situations: 2,
+  'situations-run': 3,
   stats: 2,
 };
 
@@ -207,6 +216,8 @@ function screenForStats(route: Route): [string, string] | undefined {
       return ['/patrol/run', 'Пост ДПС: смена'];
     case 'courier-run':
       return ['/courier/run', 'Смена курьера: смена'];
+    case 'situations-run':
+      return ['/situations/run', 'Ситуации: заезд'];
     case 'exam-run':
       return route.boss ? ['/exam/boss', 'Экзамен-босс'] : ['/exam/run', 'Экзамен: идёт'];
     case 'drill':
@@ -237,6 +248,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         'duel-invite': 'Дуэль: вызов по ссылке',
         'duel-run': 'Дуэль: идёт',
         'duel-result': 'Дуэль: итог',
+        situations: 'Ситуации на дороге',
       };
       const title = titles[route.name];
       return title ? [`/${route.name}`, title] : undefined;
@@ -457,6 +469,12 @@ export class App {
         break;
       case 'duel-result':
         screen = this.duelResultScreen(route);
+        break;
+      case 'situations':
+        screen = this.situationsScreen();
+        break;
+      case 'situations-run':
+        screen = this.situationsRunScreen(route);
         break;
     }
     this.root.replaceChildren(screen);
@@ -941,6 +959,10 @@ export class App {
         // «Найти» в Знакодексе: вопросы со знаком — сначала с ошибками, потом новые.
         ids = trainingSet(data, route.ids ?? [], 10);
         break;
+      case 'related':
+        // Похожие на ситуации заезда вопросы из билетов.
+        ids = route.ids ?? [];
+        break;
       case 'refresh': {
         // Повторение пройденного: сначала там, где были ошибки, потом давно не встречавшееся.
         const plan = planDay(data, Date.now());
@@ -962,6 +984,7 @@ export class App {
       fresh: 'Новые вопросы',
       refresh: 'Повторение пройденного',
       sign: `Знак ${route.sign ?? ''}`,
+      related: 'Похожие вопросы из билетов',
     };
     return this.quizPage(route, titles[route.mode], route.via, (all) => this.drillQuestions(route, all), (results, _ms, list, body) => {
       const right = results.filter((r) => r.isCorrect).length;
@@ -1232,7 +1255,16 @@ export class App {
 
   private modesScreen(): HTMLElement {
     const duels = allDuels();
+    const sit = progress().modes?.situations;
+    const solved = sit ? Object.keys(sit.seen).filter((id) => isKnown(sit, id)).length : 0;
     const cards = {
+      situations: {
+        icon: '🚦',
+        title: 'Ситуации на дороге',
+        text: 'Жизненные ситуации на время: инспектор, пешеходы, гололёд. Ответы со ссылками на ПДД — не из билетов.',
+        status: solved ? `Решено ситуаций: ${solved}` : 'Новый режим',
+        open: () => this.open({ name: 'situations' }),
+      },
       duel: {
         icon: '⚔️',
         title: 'Дуэль',
@@ -1262,7 +1294,7 @@ export class App {
         open: () => this.open({ name: 'courier' }),
       },
     };
-    const list = () => modesView([cards.duel, cards.signs, cards.patrol, cards.courier]);
+    const list = () => modesView([cards.situations, cards.duel, cards.signs, cards.patrol, cards.courier]);
     const body = el('div', {}, list());
     const route = this.route;
     void Promise.all([loadQuestions(), loadSigns()]).then(([all, signs]) => {
@@ -1275,6 +1307,102 @@ export class App {
       body.replaceChildren(list());
     });
     return this.page('Режимы', body, { back: 'menu', intro: 'Ещё способы выучить правила — с друзьями, на время и за коллекцию.' });
+  }
+
+  // ─── Ситуации на дороге (этап 15) ──────────────────────────────────────────────
+
+  private situationsScreen(): HTMLElement {
+    const body = el('div', {}, el('p', { class: 'loading' }, 'Загрузка…'));
+    const route = this.route;
+    void loadSituations().then((all) => {
+      if (this.route !== route) return;
+      body.replaceChildren(situationsHubView(progress().modes?.situations ?? emptySituations(), all.length, (stage) => this.open({ name: 'situations-run', stage })));
+    });
+    return this.page('Ситуации на дороге', body, { back: 'modes' });
+  }
+
+  private situationsRunScreen(route: Extract<Route, { name: 'situations-run' }>): HTMLElement {
+    const bar = el('div', { class: 'progress__bar' });
+    const progressEl = el('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, bar);
+    const status = el('p', { class: 'exam-status', 'aria-live': 'polite' });
+    const body = el('div', { class: 'quiz' }, el('p', { class: 'loading' }, 'Загрузка…'));
+    let card: SituationCard | undefined;
+    let finished = false;
+    this.cleanup = () => card?.stop();
+    const leave = () =>
+      finished
+        ? this.back('situations')
+        : void showModal('Прервать заезд?', el('p', { class: 'rewards__line' }, 'Ответы этого заезда уже сохранены, но итог заезда не засчитается.'), [
+            { label: 'Продолжить', primary: true },
+            { label: 'Выйти', onClick: () => this.back('situations') },
+          ]);
+    const stageTitle = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор' }[route.stage];
+    const screen = this.page(`Ситуации: ${stageTitle}`, el('div', {}, status, body), { back: 'situations', progress: progressEl, onBack: leave });
+    const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
+
+    void Promise.all([loadSituations(), loadQuestions()]).then(([all, questions]) => {
+      if (this.route !== route) return;
+      const data = progress();
+      data.modes ??= {};
+      const state = (data.modes.situations ??= emptySituations());
+      if (!state.open.includes(route.stage)) {
+        body.replaceChildren(el('p', { class: 'intro' }, 'Эта ступень ещё закрыта.'));
+        return;
+      }
+      const list = pickRun(state, all, route.stage);
+      const run: SituationRun = { at: Date.now(), stage: route.stage, answers: [] };
+      playSound('start');
+
+      const show = (i: number) => {
+        const sit = list[i];
+        status.textContent = `Ситуация ${i + 1} из ${list.length}`;
+        progressEl.setAttribute('aria-valuemax', String(list.length));
+        progressEl.setAttribute('aria-valuenow', String(i));
+        bar.style.width = `${(i / list.length) * 100}%`;
+        const known = isKnown(state, sit.id);
+        const limit = limitFor(state, route.stage, sit.id);
+        card?.stop();
+        card = situationCard(sit, import.meta.env.BASE_URL, {
+          order: optionOrder(sit),
+          limit,
+          readMs: readMs(sit, known),
+          last: i === list.length - 1,
+          onAnswer: (choice, ms) => {
+            const correct = choice === sit.correct;
+            recordSituation(state, sit.id, correct, Date.now());
+            run.answers.push({ id: sit.id, choice, correct, ms, limit });
+            saveProgress();
+          },
+          onNext: () => (i + 1 < list.length ? show(i + 1) : results()),
+        });
+        body.replaceChildren(card.element);
+        scroller.scrollTop = 0;
+      };
+
+      const results = () => {
+        finished = true;
+        card?.stop();
+        const out = finishRun(state, run);
+        data.coins += out.coins;
+        saveProgress();
+        playSound(out.correct >= out.total * 0.7 ? 'pass' : 'fail');
+        bar.style.width = '100%';
+        status.textContent = '';
+        const byId = new Map<string, Situation>(all.map((x) => [x.id, x]));
+        body.replaceChildren(
+          situationsResultView(run, out, byId, new Map(questions.map((q) => [q.id, q])), {
+            again: () => this.replace({ name: 'situations-run', stage: route.stage }),
+            hub: () => this.back('situations'),
+            // Вместо итога: «Назад» из тренировки ведёт к выбору сложности, а не в новый заезд.
+            related: (ids) => this.replace({ name: 'drill', mode: 'related', ids, via: 'situations' }),
+          }),
+        );
+        scroller.scrollTop = 0;
+      };
+
+      show(0);
+    });
+    return screen;
   }
 
   private patrolScreen(): HTMLElement {

@@ -4247,3 +4247,283 @@ a.btn {
   gap: 8px;
   text-align: center;
 }
+
+/* ---------- Этап 15: «Ситуации на дороге» ---------- */
+
+.sit-badge {
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sit-hub__stats {
+  margin: 12px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.sit-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sit-stage {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.sit-stage:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.sit-stage.is-locked {
+  opacity: 0.6;
+}
+
+.sit-stage__num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 900;
+}
+
+.sit-stage.is-locked .sit-stage__num {
+  background: var(--line);
+}
+
+.sit-stage__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sit-stage__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.sit-stage__note {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sit-scene {
+  margin: 0 -4px;
+  border-radius: 10px;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.sit-scene__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 38vh;
+  aspect-ratio: 360 / 300;
+  object-fit: cover;
+}
+
+.sc-blink {
+  animation: sc-blink 1s steps(2, jump-none) infinite;
+}
+
+@keyframes sc-blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.sc-rain,
+.sc-snow {
+  animation: sc-fall 0.6s linear infinite;
+}
+
+.sc-snow {
+  animation-duration: 3s;
+}
+
+@keyframes sc-fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-blink,
+  .sc-rain,
+  .sc-snow {
+    animation: none;
+  }
+}
+
+.sit-timer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+}
+
+.sit-timer__bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.sit-timer__fill {
+  height: 100%;
+  background: var(--ok);
+  transform-origin: left center;
+}
+
+.sit-timer.is-low .sit-timer__fill {
+  background: var(--bad);
+}
+
+.sit-timer.is-reading .sit-timer__fill {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.sit-timer__secs {
+  min-width: 34px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sit-timer.is-done {
+  opacity: 0.5;
+}
+
+.sit-options.is-hidden {
+  display: none;
+}
+
+.sit-ready {
+  width: 100%;
+}
+
+.sit-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.sit-rule {
+  font-weight: 700;
+}
+
+.sit-next {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.sit-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sit-unlocked {
+  font-weight: 800;
+  color: var(--ok);
+}
+
+.sit-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sit-review__item {
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.sit-review__head {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 15px;
+}
+
+.sit-review__mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-weight: 900;
+  color: #fff;
+}
+
+.sit-review__mark.is-ok {
+  background: var(--ok);
+}
+
+.sit-review__mark.is-bad {
+  background: var(--bad);
+}
+
+.sit-review__time {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.sit-review__body {
+  padding: 0 12px 12px 48px;
+  font-size: 15px;
+}
+
+.sit-review__answer,
+.sit-review__right {
+  margin: 0 0 4px;
+}
+
+.sit-review__right {
+  font-weight: 700;
+  color: var(--ok);
+}
+
+:root[data-text='big'] .sit-review__head,
+:root[data-text='big'] .sit-review__body {
+  font-size: 18px;
+}

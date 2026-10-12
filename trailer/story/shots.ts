@@ -194,12 +194,17 @@ export const SHOTS: Shot[] = [
       `<circle cx="330" cy="430" r="34" fill="#f2ecd0"/>` +
       clock(810, 520, 110, 2, 47) +
       glow(260, 1180, 520, 'glowY', 0.85) +
+      g(hoodieBust() + g(heroHead('sleep'), 'translate(-6 40) rotate(-16)'), 'translate(540 1040) scale(1.2)', 'id="h4"') +
       rect(-100, 1250, W + 200, 70, COL.wood) +
       rect(-100, 1320, W + 200, 600, COL.woodDark, 0, 0) +
       g(path('M0,0 L-60,-170 L-150,-200', 'none', 12) + path('M-210,-260 L-90,-260 L-120,-170 L-180,-170 Z', '#e0b04a'), 'translate(240 1250)') +
       ticketPile(800, 1240, 9) +
       g(rect(-230, -40, 460, 40, '#f8f5ec', 3, 4), 'translate(540 1244) rotate(-3)') +
-      g(tube('M-170,40 Q-20,70 150,40', COL.hoodie, 90) + g(heroHead('sleep'), 'translate(-10 -40) rotate(-78) scale(1.25)'), 'translate(500 1170)', 'id="h4"'),
+      // Руки сложены на столе, голова лежит на них (вид спереди: плечи за столом, шея на месте).
+      tube('M760,1262 Q752,1222 690,1218 L420,1218', COL.hoodie, 72) +
+      g(palm(25), 'translate(414 1218)') +
+      tube('M320,1262 Q328,1236 392,1238 L668,1240', COL.hoodie, 72) +
+      g(palm(25), 'translate(672 1240)'),
     cam: { fx: 560, fy: 1080, s0: 1.25, s1: 1.32 },
     grade: { tint: '#6a5a7a', tintOp: 0.3, lift: '#ffb860', liftOp: 0.08, vignette: 0.65 },
     anim: (t0, t1) => `tl.to('#h4', { scaleY: 1.03, transformOrigin: '50% 100%', duration: 0.9, yoyo: true, repeat: ${Math.max(1, Math.round((t1 - t0) / 0.9) - 1)}, ease: 'sine.inOut' }, ${t0});`,

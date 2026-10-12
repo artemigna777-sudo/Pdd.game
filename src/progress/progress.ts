@@ -14,6 +14,7 @@
  */
 import { load, save } from '../storage.ts';
 import { sanitizeSituations, type SituationsState } from '../situations/run.ts';
+import { sanitizeStory, type StoryState } from '../story/plot.ts';
 import { KMH_PER_PX } from '../world/rules.ts';
 
 export const REVIEW_DAYS = [1, 3, 7] as const;
@@ -224,6 +225,8 @@ export interface ProgressData {
   signs?: { claimed: string[] };
   /** Рекорды режимов (этапы 12–13). */
   modes?: ModesState;
+  /** Решения в сюжете и открытые концовки (этап 17). */
+  story?: StoryState;
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -307,6 +310,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       data.chapters[id] = state;
     }
   }
+  const story = sanitizeStory(raw.story);
+  if (story) data.story = story;
   if (isObj(raw.signs)) data.signs = { claimed: [...new Set(strings(raw.signs.claimed))] };
   if (isObj(raw.modes)) {
     const m = raw.modes;

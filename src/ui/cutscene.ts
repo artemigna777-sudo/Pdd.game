@@ -46,7 +46,7 @@ export function showOverlay(root: HTMLElement): () => void {
  * Показать реплики по одной. Промис выполняется, когда сцена закончилась или пропущена, и
  * возвращает выбор игрока, если в сцене был выбор (реплика с вариантами ответа).
  */
-export function playCutscene(source: readonly Line[], opts: { last?: string } = {}): Promise<string | undefined> {
+export function playCutscene(source: readonly Line[], opts: { last?: string; /** Выбор сделан: так записываются развилки сюжета (`line.decision`). */ onChoice?: (line: Line, value: string) => void } = {}): Promise<string | undefined> {
   if (!source.length) return Promise.resolve(undefined);
   return new Promise((resolve) => {
     const lines = [...source];
@@ -107,6 +107,7 @@ export function playCutscene(source: readonly Line[], opts: { last?: string } = 
               type: 'button',
               onclick: () => {
                 chosen = o.value;
+                opts.onChoice?.(line, o.value);
                 lines.splice(index + 1, 0, ...(o.reply ?? []));
                 advance();
               },

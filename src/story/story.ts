@@ -9,6 +9,7 @@
  *
  * В тексте можно подставить `{percent}` (доля верных ответов главы) и `{goal}` (адрес доставки).
  */
+import type { Cond } from './plot.ts';
 
 export type CharacterId = 'narrator' | 'victor' | 'marina' | 'sokolov' | 'galina' | 'artem' | 'semyon' | 'anya' | 'gena';
 
@@ -35,6 +36,10 @@ export interface Line {
   text: string;
   /** Выбор игрока после реплики: кнопки вместо «Далее». */
   choices?: Choice[];
+  /** Реплика звучит, только если условие выполнено: герои помнят решения (этап 17, `plot.ts`). */
+  if?: Cond;
+  /** Выбор в этой реплике — развилка сюжета с таким id: он записывается в сохранение. */
+  decision?: string;
 }
 
 /** Вариант ответа в диалоге: что сказать и что ответят. */

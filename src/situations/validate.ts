@@ -4,7 +4,7 @@
 import { SECTIONS, SKILLS, isSceneItem, provocationSituation, type Provocation, type Situation } from './types.ts';
 
 /** «ПДД 10.1», «ПДД 13.11(1)», «КоАП 12.9», «КоАП 12.15 ч. 4», «Знак 3.24», «Разметка 1.1», «ПДД, Приложение 1 (…)». */
-const RULE = /^(ПДД \d+\.\d+(\(\d+\))?|ПДД, Приложение [12]( \(.+\))?|КоАП \d+\.\d+(\.\d+)?( ч\. \d+)?|Знак \d+\.\d+(\.\d+)?|Разметка \d+\.\d+(\.\d+)?|ОП \d+)$/;
+const RULE = /^(ПДД \d+(\.\d+){1,2}(\(\d+\))?|ПДД, Приложение [12]( \(.+\))?|КоАП \d+\.\d+(\.\d+)?( ч\. \d+)?|Знак \d+\.\d+(\.\d+)?|Разметка \d+\.\d+(\.\d+)?|ОП \d+)$/;
 
 const text = (v: unknown): v is string => typeof v === 'string' && v.trim() === v && v !== '';
 

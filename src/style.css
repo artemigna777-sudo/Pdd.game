@@ -4642,3 +4642,49 @@ a.btn {
   flex-direction: column;
   gap: 10px;
 }
+
+.sit-themes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sit-theme {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--secondary-shadow, var(--line));
+}
+
+.sit-theme:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--secondary-shadow, var(--line));
+}
+
+.sit-theme__icon {
+  font-size: 22px;
+}
+
+.sit-theme__title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.sit-theme__note {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sit-life.is-record {
+  font-weight: 800;
+  color: var(--ok);
+}

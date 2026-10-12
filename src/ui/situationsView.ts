@@ -5,7 +5,7 @@
 import { answerFeedback } from '../audio/feedback.ts';
 import { speak, stopSpeaking } from '../audio/voice.ts';
 import type { Question } from '../data/types.ts';
-import { STAGES, SITUATIONS, diaryPool, diarySkills, lockReason, provokeStats, runSkills, solvedCount, weakestSkill, type RunOutcome, type SituationRun, type SituationsState, type SkillStat, type StageId } from '../situations/run.ts';
+import { LIFE, STAGES, SITUATIONS, THEMES, lifeMatch, diaryPool, diarySkills, lockReason, provokeStats, runSkills, solvedCount, weakestSkill, type RunOutcome, type SituationRun, type SituationsState, type SkillStat, type StageId } from '../situations/run.ts';
 import { sceneSvg } from '../situations/scene.ts';
 import { PENALTY_FAIL, PENALTY_LABEL, SECTIONS, SKILLS, type Situation } from '../situations/types.ts';
 import { avatar } from './cutscene.ts';
@@ -24,7 +24,18 @@ export function ticketLabel(id: string): string {
 
 // ─── Главный экран режима ────────────────────────────────────────────────────────
 
-export const STAGE_TITLE: Record<StageId, string> = { calm: 'Спокойно', mix: 'Микс', hard: 'Хардкор', provoke: 'Провокации инспектора', diary: 'Повторить слабое' };
+export const STAGE_TITLE: Record<StageId, string> = {
+  calm: 'Спокойно',
+  mix: 'Микс',
+  hard: 'Хардкор',
+  provoke: 'Провокации инспектора',
+  diary: 'Повторить слабое',
+  night: 'Ночная езда',
+  rain: 'Дождь и снег',
+  highway: 'Трасса',
+  yard: 'Дворы и парковки',
+  life: 'Реальная жизнь',
+};
 
 /** Полоски навыков: доля верных ответов и (в заезде) среднее время. */
 function skillBars(stats: readonly SkillStat[]): HTMLElement {
@@ -92,6 +103,33 @@ export function situationsHubView(s: SituationsState, all: readonly Situation[],
           el('span', { class: 'sit-stage__body' }, el('span', { class: 'sit-stage__title' }, st.title), el('span', { class: 'sit-stage__note' }, lock ?? st.note)),
         );
       }),
+    ),
+    el('h2', { class: 'section-title' }, 'Темы'),
+    el(
+      'div',
+      { class: 'sit-themes' },
+      ...THEMES.map((t) => {
+        const n = all.filter(t.match).length;
+        return el(
+          'button',
+          { class: 'sit-theme', type: 'button', 'data-stage': t.id, onclick: () => start(t.id) },
+          el('span', { class: 'sit-theme__icon', 'aria-hidden': 'true' }, t.icon),
+          el('span', { class: 'sit-theme__title' }, t.title),
+          el('span', { class: 'sit-theme__note' }, `${n} ${plural(n, ['ситуация', 'ситуации', 'ситуаций'])}`),
+        );
+      }),
+    ),
+    el(
+      'button',
+      { class: 'sit-stage sit-stage--life', type: 'button', 'data-stage': 'life', onclick: () => start('life') },
+      el('span', { class: 'sit-stage__num', 'aria-hidden': 'true' }, '♾'),
+      el(
+        'span',
+        { class: 'sit-stage__body' },
+        el('span', { class: 'sit-stage__title' }, 'Реальная жизнь'),
+        el('span', { class: 'sit-stage__note' }, `Без инспектора и без конца: ${all.filter(lifeMatch).length} городских ситуаций вперемешку, на таймере. ${LIFE.lives} ошибки — заезд окончен.`),
+        s.life ? el('span', { class: 'sit-stage__note sit-stage__score' }, `🏆 Рекорд: ${s.life.best} · заездов: ${s.life.runs}`) : null,
+      ),
     ),
     el('h2', { class: 'section-title' }, 'Дневник водителя'),
     el(
@@ -295,7 +333,7 @@ export interface ResultActions {
   related: (ids: string[]) => void;
 }
 
-export function situationsResultView(run: SituationRun, out: RunOutcome, byId: Map<string, Situation>, questions: Map<string, Question>, actions: ResultActions): HTMLElement {
+export function situationsResultView(run: SituationRun, out: RunOutcome, byId: Map<string, Situation>, questions: Map<string, Question>, actions: ResultActions, lifeBest?: number): HTMLElement {
   const provoke = run.stage === 'provoke';
   const wrong = run.answers.filter((a) => !a.correct);
   const slow = run.answers.filter((a) => a.choice === null).length;
@@ -307,7 +345,8 @@ export function situationsResultView(run: SituationRun, out: RunOutcome, byId: M
     el(
       'section',
       { class: 'result' },
-      el('p', { class: 'result__score' }, `${out.correct} из ${out.total}`),
+      el('p', { class: 'result__score' }, run.stage === 'life' ? `${out.correct} ${plural(out.correct, ['верный', 'верных', 'верных'])}` : `${out.correct} из ${out.total}`),
+      run.stage === 'life' ? el('p', { class: `result__note sit-life ${out.record ? 'is-record' : ''}` }, out.record ? '🏆 Новый рекорд!' : `Рекорд: ${lifeBest ?? out.correct}`) : null,
       el('p', { class: 'result__label' }, out.correct === out.total ? 'Чистый заезд!' : out.passed ? 'Хороший заезд.' : 'Есть над чем поработать.'),
       el(
         'p',

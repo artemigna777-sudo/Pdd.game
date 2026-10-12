@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { Question } from '../src/data/types.ts';
 import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
-import { SITUATIONS, diaryPool, diarySkills, provokeStats, runSkills, solvedCount, weakestSkill, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
+import { LIFE, SITUATIONS, THEMES, lifeMatch, pickLife, diaryPool, diarySkills, provokeStats, runSkills, solvedCount, weakestSkill, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickRun, readMs, recordSituation, type SituationRun } from '../src/situations/run.ts';
 import { sceneSvg } from '../src/situations/scene.ts';
 import { OBEY, REFUSE, SKILLS, provocationSituation, type Provocation, type Situation } from '../src/situations/types.ts';
 import { validateProvocations, validateSituations } from '../src/situations/validate.ts';
@@ -241,4 +241,46 @@ test('дневник водителя: копит ошибки по навыка
   // «Повторить слабое» ступени не открывает.
   finishRun(s, { at: NOW, stage: 'diary', answers: run.map((x) => ({ id: x.id, choice: x.correct, correct: true, ms: 1000, limit: 10, penalty: 0 })) });
   assert.deepEqual(s.open, ['calm']);
+});
+
+// ─── Темы и «Реальная жизнь» ─────────────────────────────────────────────────────
+
+test('темы: в каждой хватает ситуаций, заезд только из своей темы', () => {
+  const s = emptySituations();
+  for (const t of THEMES) {
+    const own = LIST.filter(t.match);
+    assert.ok(own.length >= 8, `${t.title}: ${own.length}`);
+    const run = pickRun(s, LIST, t.id, seeded(11));
+    assert.equal(run.length, Math.min(10, own.length));
+    assert.ok(run.every(t.match), t.title);
+    assert.equal(lockReason(s, t.id), undefined);
+    assert.equal(limitFor(s, t.id, run[0].id), SITUATIONS.slow);
+  }
+});
+
+test('«Реальная жизнь»: городские ситуации без инспектора, без повторов подряд, рекорд', () => {
+  const city = LIST.filter(lifeMatch);
+  assert.ok(city.length >= 25);
+  assert.ok(city.every((x) => x.scene.place === 'city' && !x.scene.items.includes('inspector-in-car')));
+  const shown: string[] = [];
+  const rnd = seeded(13);
+  for (let i = 0; i < 40; i++) {
+    const x = pickLife(LIST, shown, rnd);
+    assert.ok(!shown.slice(-LIFE.recent).includes(x.id), 'повтор среди последних');
+    shown.push(x.id);
+  }
+  const s = emptySituations();
+  recordSituation(s, city[0].id, true, NOW);
+  assert.equal(limitFor(s, 'life', city[0].id), LIFE.fast);
+  assert.equal(limitFor(s, 'life', city[1].id), SITUATIONS.slow);
+  const run = (right: number): SituationRun => ({
+    at: NOW,
+    stage: 'life',
+    answers: [...city.slice(0, right).map((x) => ({ id: x.id, choice: x.correct, correct: true, ms: 1, limit: 10, penalty: 0 })), ...city.slice(right, right + 3).map((x) => ({ id: x.id, choice: null, correct: false, ms: 1, limit: 10, penalty: x.penalty }))],
+  });
+  assert.equal(finishRun(s, run(12)).record, true);
+  assert.equal(finishRun(s, run(5)).record, false);
+  assert.deepEqual(s.life, { best: 12, runs: 2 });
+  assert.deepEqual(s.open, ['calm']);
+  assert.deepEqual(sanitizeProgress(JSON.parse(JSON.stringify({ modes: { situations: s } }))).modes?.situations?.life, { best: 12, runs: 2 });
 });

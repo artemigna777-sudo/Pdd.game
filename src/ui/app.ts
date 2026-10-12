@@ -68,7 +68,7 @@ import { adminState } from '../stats/admin.ts';
 import { startStats, trackEvent, trackOnce, trackOncePerDay, trackView } from '../stats/track.ts';
 import { claimGroup, openSigns, type SignEntry } from '../signs/signs.ts';
 import { loadProvocations, loadSituations } from '../situations/data.ts';
-import { emptySituations, finishRun, isKnown, limitFor, optionOrder, pickRun, readMs, recordSituation, runPoints, solvedCount, type SituationRun, type StageId } from '../situations/run.ts';
+import { LIFE, emptySituations, finishRun, isKnown, limitFor, lockReason, optionOrder, pickLife, pickRun, readMs, recordSituation, runPoints, solvedCount, type SituationRun, type StageId } from '../situations/run.ts';
 import { PENALTY_FAIL, type Situation } from '../situations/types.ts';
 import { STAGE_TITLE, situationCard, situationsHubView, situationsResultView, type SituationCard } from './situationsView.ts';
 
@@ -1340,7 +1340,7 @@ export class App {
     const stageTitle = STAGE_TITLE[route.stage];
     // Штрафные баллы заезда, как на практическом экзамене: от 7 — «не сдал».
     const points = el('span', { class: 'topbar__score sit-points', 'aria-label': 'Штрафные баллы', title: 'Штрафные баллы: от 7 — экзамен не сдан' }, `0 / ${PENALTY_FAIL}`);
-    const screen = this.page(provoke ? 'Экзамен с подвохом' : `Ситуации: ${stageTitle}`, el('div', {}, status, body), { back: 'situations', aside: points, progress: progressEl, onBack: leave });
+    const screen = this.page(provoke ? 'Экзамен с подвохом' : route.stage === 'life' ? 'Реальная жизнь' : `Ситуации: ${stageTitle}`, el('div', {}, status, body), { back: 'situations', aside: points, progress: progressEl, onBack: leave });
     const scroller = screen.querySelector<HTMLElement>('.screen__body')!;
 
     void Promise.all([provoke ? loadProvocations() : loadSituations(), loadQuestions()]).then(([all, questions]) => {
@@ -1348,24 +1348,33 @@ export class App {
       const data = progress();
       data.modes ??= {};
       const state = (data.modes.situations ??= emptySituations());
-      if (!provoke && route.stage !== 'diary' && !state.open.includes(route.stage)) {
+      if (lockReason(state, route.stage)) {
         body.replaceChildren(el('p', { class: 'intro' }, 'Эта ступень ещё закрыта.'));
         return;
       }
-      const list = pickRun(state, all, route.stage);
-      if (!list.length) {
+      // «Реальная жизнь» — без конца, пока не кончатся жизни: ситуации выбираются по ходу.
+      const life = route.stage === 'life';
+      let lives: number = LIFE.lives;
+      const shown: string[] = [];
+      const list = life ? [] : pickRun(state, all, route.stage);
+      if (!life && !list.length) {
         body.replaceChildren(el('p', { class: 'intro' }, 'Повторять пока нечего: ошибок в ситуациях нет.'));
         return;
       }
       const run: SituationRun = { at: Date.now(), stage: route.stage, answers: [] };
       playSound('start');
 
+      const lifeStatus = () => `Верных: ${run.answers.filter((a) => a.correct).length} · ${'❤️'.repeat(lives)}${'🤍'.repeat(LIFE.lives - lives)}`;
       const show = (i: number) => {
-        const sit = list[i];
-        status.textContent = `Ситуация ${i + 1} из ${list.length}`;
-        progressEl.setAttribute('aria-valuemax', String(list.length));
-        progressEl.setAttribute('aria-valuenow', String(i));
-        bar.style.width = `${(i / list.length) * 100}%`;
+        const sit = life ? pickLife(all, shown) : list[i];
+        shown.push(sit.id);
+        if (life) status.textContent = lifeStatus();
+        else {
+          status.textContent = `Ситуация ${i + 1} из ${list.length}`;
+          progressEl.setAttribute('aria-valuemax', String(list.length));
+          progressEl.setAttribute('aria-valuenow', String(i));
+          bar.style.width = `${(i / list.length) * 100}%`;
+        }
         const known = isKnown(state, sit.id);
         const limit = limitFor(state, route.stage, sit.id);
         card?.stop();
@@ -1375,7 +1384,7 @@ export class App {
           speak: sit.speech,
           limit,
           readMs: readMs(sit, known),
-          last: i === list.length - 1,
+          last: !life && i === list.length - 1,
           onAnswer: (choice, ms) => {
             const correct = choice === sit.correct;
             recordSituation(state, sit.id, correct, Date.now());
@@ -1383,8 +1392,12 @@ export class App {
             saveProgress();
             points.textContent = `${runPoints(run)} / ${PENALTY_FAIL}`;
             points.classList.toggle('is-over', runPoints(run) >= PENALTY_FAIL);
+            if (life) {
+              if (!correct) lives--;
+              status.textContent = lifeStatus();
+            }
           },
-          onNext: () => (i + 1 < list.length ? show(i + 1) : results()),
+          onNext: () => ((life ? lives > 0 : i + 1 < list.length) ? show(i + 1) : results()),
         });
         body.replaceChildren(card.element);
         scroller.scrollTop = 0;
@@ -1406,7 +1419,7 @@ export class App {
             hub: () => this.back('situations'),
             // Вместо итога: «Назад» из тренировки ведёт к выбору сложности, а не в новый заезд.
             related: (ids) => this.replace({ name: 'drill', mode: 'related', ids, via: 'situations' }),
-          }),
+          }, state.life?.best),
         );
         scroller.scrollTop = 0;
       };

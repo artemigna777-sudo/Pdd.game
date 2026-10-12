@@ -18,7 +18,43 @@ import { PENALTY_FAIL, SKILLS, type Situation, type Skill } from './types.ts';
  * Ступени сложности, «Провокации инспектора» и «Повторить слабое» из «Дневника водителя» — два
  * последних заезда отдельные: ступени не открывают.
  */
-export type StageId = 'calm' | 'mix' | 'hard' | 'provoke' | 'diary';
+export type StageId = 'calm' | 'mix' | 'hard' | 'provoke' | 'diary' | ThemeId | 'life';
+
+/** Ступени, которые открываются по очереди. */
+export type ProgressStage = 'calm' | 'mix' | 'hard';
+
+/** Подрежимы по темам: заезд только из подходящих ситуаций, 10 секунд на ответ. */
+export type ThemeId = 'night' | 'rain' | 'highway' | 'yard';
+
+export const THEMES: readonly { id: ThemeId; title: string; icon: string; match: (x: Situation) => boolean }[] = [
+  { id: 'night', title: 'Ночная езда', icon: '🌙', match: (x) => x.scene.time === 'night' },
+  { id: 'rain', title: 'Дождь и снег', icon: '🌧', match: (x) => x.scene.weather !== undefined },
+  { id: 'highway', title: 'Трасса', icon: '🛣', match: (x) => x.scene.place === 'highway' || x.scene.place === 'country' },
+  {
+    id: 'yard',
+    title: 'Дворы и парковки',
+    icon: '🏘',
+    match: (x) => x.scene.place === 'yard' || ['yard-exit', 'yard-left', 'yard-exit-right-car', 'gas-station-exit', 'reverse-parking', 'sign:5.21'].some((i) => x.scene.items.includes(i)),
+  },
+];
+
+export const isTheme = (stage: StageId): stage is ThemeId => THEMES.some((t) => t.id === stage);
+
+/**
+ * «Реальная жизнь»: бесконечный заезд по городским ситуациям без инспектора. Новая ситуация —
+ * 10 секунд, уже решённая — 5. Три ошибки — заезд окончен; счёт — верные ответы.
+ */
+export const LIFE = { lives: 3, fast: 5, recent: 8 } as const;
+
+export const lifeMatch = (x: Situation) => x.scene.place === 'city' && x.skill !== 'inspector' && !x.scene.items.includes('inspector-in-car');
+
+/** Следующая ситуация «Реальной жизни»: случайная, но не из последних показанных. */
+export function pickLife(pool: readonly Situation[], recent: readonly string[], rnd: () => number = Math.random): Situation {
+  const city = pool.filter(lifeMatch);
+  const fresh = city.filter((x) => !recent.slice(-LIFE.recent).includes(x.id));
+  const from = fresh.length ? fresh : city;
+  return from[Math.floor(rnd() * from.length)];
+}
 
 export interface StageInfo {
   id: StageId;
@@ -84,9 +120,11 @@ export interface SituationRun {
 export interface SituationsState {
   seen: Record<string, SituationSeen>;
   /** Открытые ступени. */
-  open: StageId[];
+  open: ProgressStage[];
   /** Последние заезды, новые в конце. */
   runs: SituationRun[];
+  /** «Реальная жизнь»: лучший счёт и число заездов. */
+  life?: { best: number; runs: number };
 }
 
 export function emptySituations(): SituationsState {
@@ -110,6 +148,7 @@ export function provokeStats(s: SituationsState): { runs: number; best?: number;
 /** Секунд на ответ в этой ступени. */
 export function limitFor(s: SituationsState, stage: StageId, id: string): number {
   if (stage === 'hard') return SITUATIONS.fast;
+  if (stage === 'life') return isKnown(s, id) ? LIFE.fast : SITUATIONS.slow;
   if (stage === 'mix' && isKnown(s, id)) return SITUATIONS.fast;
   return SITUATIONS.slow;
 }
@@ -146,6 +185,11 @@ export function pickRun(s: SituationsState, pool: readonly Situation[], stage: S
     return out;
   };
   if (stage === 'provoke') return take(fresh(pool), stale(pool));
+  const theme = THEMES.find((t) => t.id === stage);
+  if (theme) {
+    const own = pool.filter(theme.match);
+    return shuffle(take(fresh(own), stale(own)), rnd);
+  }
   if (stage === 'diary') return shuffle(diaryPool(s, pool).slice(0, n), rnd);
   if (stage === 'calm') {
     const easy = pool.filter((x) => x.level === 1);
@@ -245,7 +289,9 @@ export interface RunOutcome {
   points: number;
   passed: boolean;
   /** Ступень, открытая этим заездом. */
-  unlocked?: StageId;
+  unlocked?: ProgressStage;
+  /** «Реальная жизнь»: новый рекорд. */
+  record?: boolean;
   coins: number;
 }
 
@@ -254,12 +300,18 @@ export function finishRun(s: SituationsState, run: SituationRun): RunOutcome {
   s.runs = [...s.runs, run].slice(-SITUATIONS.keepRuns);
   const correct = run.answers.filter((a) => a.correct).length;
   const known = solvedCount(s);
-  let unlocked: StageId | undefined;
+  let unlocked: ProgressStage | undefined;
   if (run.stage === 'calm' && correct >= SITUATIONS.mixUnlock && !s.open.includes('mix')) unlocked = 'mix';
   if (run.stage === 'mix' && correct >= SITUATIONS.hardUnlock && known >= SITUATIONS.hardKnown && !s.open.includes('hard')) unlocked = 'hard';
   if (unlocked) s.open = [...s.open, unlocked];
+  let record: boolean | undefined;
+  if (run.stage === 'life') {
+    const prev = s.life ?? { best: 0, runs: 0 };
+    record = correct > prev.best;
+    s.life = { best: Math.max(prev.best, correct), runs: prev.runs + 1 };
+  }
   const points = runPoints(run);
-  return { correct, total: run.answers.length, points, passed: points < PENALTY_FAIL, unlocked, coins: correct * SITUATIONS.coin };
+  return { correct, total: run.answers.length, points, passed: points < PENALTY_FAIL, unlocked, record, coins: correct * SITUATIONS.coin };
 }
 
 /** Штрафные баллы заезда. */
@@ -269,7 +321,8 @@ export function runPoints(run: SituationRun): number {
 
 /** Почему ступень закрыта — подсказка на кнопке. */
 export function lockReason(s: SituationsState, stage: StageId): string | undefined {
-  if (stage === 'provoke' || stage === 'diary' || s.open.includes(stage)) return undefined;
+  if (stage !== 'mix' && stage !== 'hard') return undefined;
+  if (s.open.includes(stage)) return undefined;
   if (stage === 'mix') return `Откроется после «Спокойно» с ${SITUATIONS.mixUnlock} верными из ${SITUATIONS.perRun}`;
   const known = solvedCount(s);
   return `Откроется после «Микса» с ${SITUATIONS.hardUnlock} верными из ${SITUATIONS.perRun}` + (known < SITUATIONS.hardKnown ? ` и когда решено ${SITUATIONS.hardKnown} ситуаций (сейчас ${known})` : '');
@@ -279,7 +332,8 @@ export function lockReason(s: SituationsState, stage: StageId): string | undefin
 
 const isInt = (v: unknown, min = 0): v is number => Number.isInteger(v) && (v as number) >= min;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard', 'provoke', 'diary'];
+const STAGE_IDS: StageId[] = ['calm', 'mix', 'hard', 'provoke', 'diary', 'night', 'rain', 'highway', 'yard', 'life'];
+const PROGRESS: ProgressStage[] = ['calm', 'mix', 'hard'];
 
 export function sanitizeSituations(raw: unknown): SituationsState | undefined {
   if (!isObj(raw)) return undefined;
@@ -290,7 +344,8 @@ export function sanitizeSituations(raw: unknown): SituationsState | undefined {
       s.seen[id] = { n: v.n, right: v.right, wrong: v.wrong, ok: v.ok, at: v.at };
     }
   }
-  if (Array.isArray(raw.open)) s.open = STAGE_IDS.filter((id) => id !== 'provoke' && id !== 'diary' && (id === 'calm' || (raw.open as unknown[]).includes(id)));
+  if (Array.isArray(raw.open)) s.open = PROGRESS.filter((id) => id === 'calm' || (raw.open as unknown[]).includes(id));
+  if (isObj(raw.life) && isInt(raw.life.best) && isInt(raw.life.runs)) s.life = { best: raw.life.best, runs: raw.life.runs };
   if (Array.isArray(raw.runs)) {
     s.runs = raw.runs
       .filter((r): r is SituationRun => isObj(r) && isInt(r.at) && STAGE_IDS.includes(r.stage as StageId) && Array.isArray(r.answers))

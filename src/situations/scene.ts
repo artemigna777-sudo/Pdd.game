@@ -451,6 +451,8 @@ function items(ctx: Ctx): { under: string; over: string } {
     for (let y = 66; y < 176; y += 14) s += `<rect x="${r.right + 22}" y="${y}" width="24" height="8" fill="${C.marking}"/>`;
     s += person(r.right + 34, 128, 180, { color: '#e76f51' });
   }
+  if (has('yard-left')) s += `<rect x="0" y="78" width="${r.left}" height="54" fill="${C.asphaltDark}"/>` + person(r.left - 13, 96, 180, { color: '#8338ec' });
+  if (has('warning-triangle')) s += `<path d="M${px} ${py + 76} l9 -16 l9 16z" transform="translate(-9 0)" fill="none" stroke="#e63946" stroke-width="3"/>`;
   if (has('median-gap')) s += `<rect x="${r.center - 10}" y="90" width="20" height="44" fill="${C.asphalt}"/>`;
   if (has('cyclist-right')) s += vehicle(r.right - 10, py + 6, 0, { kind: 'bike' });
   if (has('cyclist-lane')) s += vehicle(our, 120, 0, { kind: 'bike' });
@@ -523,9 +525,9 @@ export function sceneSvg(scene: SituationScene, base = '/'): string {
 
   const { under, over } = items(ctx);
   // Машина игрока.
-  const blink: CarOpts['blink'] = has('car-blindspot-left') || has('motorcycle-blindspot') ? 'l' : has('player-blinker') ? 'r' : undefined;
+  const blink: CarOpts['blink'] = has('car-blindspot-left') || has('motorcycle-blindspot') || has('yard-left') ? 'l' : has('player-blinker') ? 'r' : undefined;
   const rot = has('car-blindspot-left') ? -10 : has('motorcycle-blindspot') ? -16 : has('skid') ? 28 : 0;
-  let player = vehicle(px, py, rot, { kind: 'player', blink, reverse: layout === 'parking', brake: has('car-ahead-brake') || has('child-runout') || has('animal') });
+  let player = vehicle(px, py, rot, { kind: 'player', blink, hazard: has('player-hazard'), reverse: layout === 'parking', brake: has('car-ahead-brake') || has('child-runout') || has('animal') });
   if (has('skid')) player = `<path d="M${px - 8} ${py + 60} q-4 -30 2 -50 M${px + 8} ${py + 64} q4 -30 -2 -50" stroke="#1b1e22" stroke-width="4" fill="none" opacity=".5"/>` + player;
   if (has('curb')) player = `<rect x="${road.right - 3}" y="0" width="4" height="${SCENE_H}" fill="#fff"/>` + vehicle(road.right - 16, py, -6, { kind: 'player' });
 

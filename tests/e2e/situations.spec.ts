@@ -8,6 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
 const SITUATIONS: { id: string; correct: number; options: string[]; related: string[]; penalty: number }[] = readdirSync('data/situations')
   .filter((f) => f.endsWith('.json'))
   .flatMap((f) => JSON.parse(readFileSync(`data/situations/${f}`, 'utf8')));
+const SITUATIONS_FULL: { id: string; scene: { place: string; time: string } }[] = SITUATIONS as never;
 const SHOTS = process.env.SHOTS;
 
 test.beforeEach(async ({ page }) => {
@@ -260,4 +261,37 @@ test('настройки: выключатель «Голос инспектор
   await voice.tap();
   await expect(voice).toHaveAttribute('aria-pressed', 'false');
   expect(JSON.parse((await page.evaluate(() => localStorage.getItem('pdd-game:settings')))!).voice).toBe(false);
+});
+
+test('Темы и «Реальная жизнь»: заезд по теме, бесконечный заезд до трёх ошибок, рекорд', async ({ page }) => {
+  await seed(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Режимы' }).tap();
+  await page.locator('.mode-card', { hasText: 'Ситуации на дороге' }).tap();
+  await expect(page.locator('.sit-theme')).toHaveCount(4);
+  // «Ночная езда»: только ночные сцены.
+  await page.locator('[data-stage="night"]').tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Ситуации: Ночная езда');
+  const night = SITUATIONS_FULL.filter((s) => s.scene.time === 'night').map((s) => s.id);
+  await expect(page.locator('.exam-status')).toHaveText(`Ситуация 1 из ${Math.min(10, night.length)}`);
+  expect(night).toContain((await current(page)).id);
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await page.getByRole('button', { name: 'Выйти' }).tap();
+
+  // «Реальная жизнь»: 4 верных, потом 3 ошибки — конец, рекорд 4.
+  await page.locator('[data-stage="life"]').tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Реальная жизнь');
+  for (let i = 0; i < 7; i++) {
+    await expect(page.locator('.exam-status')).toContainText(`Верных: ${Math.min(i, 4)}`);
+    const sit = await current(page);
+    expect(SITUATIONS_FULL.find((s) => s.id === sit.id)!.scene.place).toBe('city');
+    await reveal(page);
+    const pick = i < 4 ? sit.correct : (sit.correct + 1) % sit.options.length;
+    await page.locator(`.sit-card .option[data-orig="${pick}"]`).tap();
+    await page.locator('.sit-card .sit-next').tap();
+  }
+  await expect(page.locator('.result__score')).toHaveText('4 верных');
+  await expect(page.locator('.sit-life')).toHaveText('🏆 Новый рекорд!');
+  await page.getByRole('button', { name: 'Выбрать сложность' }).tap();
+  await expect(page.locator('[data-stage="life"]')).toContainText('Рекорд: 4');
 });

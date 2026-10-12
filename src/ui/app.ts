@@ -39,6 +39,7 @@ import { installHelpUseful, installTip, openInstallGuide } from './installTip.ts
 import { getSettings, updateSettings } from '../settings.ts';
 import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuestions, resolveDuel, type DuelPayload } from '../duel/duel.ts';
 import { allDuels, duelStats, findDuel, saveAnswerToMine, saveChallenge, saveReply } from '../duel/duelHistory.ts';
+import { sendDuelReply, syncDuels } from '../duel/sync.ts';
 import { FINALE_STORY, STORY } from '../story/story.ts';
 import { chapterInfo } from '../world/mapping.ts';
 import { TEMPLATES } from '../world/templates.ts';
@@ -254,6 +255,12 @@ function screenForStats(route: Route): [string, string] | undefined {
       return title ? [`/${route.name}`, title] : undefined;
     }
   }
+}
+
+/** Сообщение о пришедших итогах дуэлей. */
+function duelRepliesToast(names: string[]): void {
+  playSound('reward');
+  showToast(names.length === 1 ? `Пришёл ответ на дуэль: ${names[0]}! Итог — в «Дуэли».` : `Пришли ответы на дуэли: ${names.join(', ')}. Итоги — в «Дуэли».`);
 }
 
 export class App {
@@ -1299,12 +1306,23 @@ export class App {
     const route = this.route;
     void Promise.all([loadQuestions(), loadSigns()]).then(([all, signs]) => {
       if (this.route !== route) return;
-      if (duels.length) {
-        const s = duelStats(duels, new Map(all.map((q) => [q.id, q])));
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const duelStatus = () => {
+        const duels = allDuels();
+        if (!duels.length) return;
+        const s = duelStats(duels, byId);
         cards.duel.status = `Побед: ${s.wins} · поражений: ${s.losses}${s.waiting ? ` · ждут ответа: ${s.waiting}` : ''}`;
-      }
+      };
+      duelStatus();
       cards.signs.status = `Собрано: ${openSigns(progress(), signs.signs).size} из ${signs.signs.length}`;
       body.replaceChildren(list());
+      // Итоги своих вызовов, которые друзья оставили у посредника.
+      void syncDuels().then((updated) => {
+        if (!updated.length || this.route !== route) return;
+        duelRepliesToast(updated.map((r) => r.them!.name));
+        duelStatus();
+        body.replaceChildren(list());
+      });
     });
     return this.page('Режимы', body, { back: 'menu', intro: 'Ещё способы выучить правила — с друзьями, на время и за коллекцию.' });
   }
@@ -1543,16 +1561,25 @@ export class App {
     loadQuestions().then((all) => {
       if (this.route !== route) return;
       const byId = new Map(all.map((q) => [q.id, q]));
-      const records = allDuels();
-      body.replaceChildren(
-        duelHubView(records, duelStats(records, byId), byId, {
-          name: getSettings().name,
-          setName: (name) => updateSettings({ name }),
-          start: () => this.open({ name: 'duel-run' }),
-          open: (r) => this.open({ name: 'duel-result', id: r.id, role: r.role }),
-          openLink: (hash) => void this.openDuelLink(hash),
-        }),
-      );
+      const render = () => {
+        const records = allDuels();
+        body.replaceChildren(
+          duelHubView(records, duelStats(records, byId), byId, {
+            name: getSettings().name,
+            setName: (name) => updateSettings({ name }),
+            start: () => this.open({ name: 'duel-run' }),
+            open: (r) => this.open({ name: 'duel-result', id: r.id, role: r.role }),
+            openLink: (hash) => void this.openDuelLink(hash),
+          }),
+        );
+      };
+      render();
+      // Итоги своих вызовов, которые друзья оставили у посредника.
+      void syncDuels().then((updated) => {
+        if (!updated.length || this.route !== route) return;
+        duelRepliesToast(updated.map((r) => r.them!.name));
+        render();
+      });
     });
     return this.page('Дуэль', body, { back: 'modes' });
   }
@@ -1645,6 +1672,8 @@ export class App {
         if (route.invite) {
           const p = { ...route.invite, to: { name, answers: chosen, ms } };
           saveReply(p, now);
+          // Итог сам придёт к автору вызова через посредника; без интернета — по ссылке-ответу.
+          void sendDuelReply(p.id, p.to).then((ok) => ok && showToast('Итог отправлен: автор вызова увидит его у себя в «Дуэли».'));
           playSound(right >= p.from.answers.filter((a, i) => a === list[i].correct).length ? 'pass' : 'fail');
           this.replace({ name: 'duel-result', id: p.id, role: 'to' });
         } else {

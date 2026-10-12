@@ -1,7 +1,8 @@
 name: Посредник статистики на Cloudflare
 
 # Загружает stats-worker/worker.js в Cloudflare Worker kurier-pdd-stats: на iPhone вставить код
-# в редактор Cloudflare не получается. Нужен секрет репозитория CLOUDFLARE_API_TOKEN
+# в редактор Cloudflare не получается. Заодно создаёт хранилище Workers KV kurier-pdd-duels для итогов
+# дуэлей и подключает его к посреднику как DUELS. Нужен секрет репозитория CLOUDFLARE_API_TOKEN
 # (Cloudflare → профиль → API Tokens → шаблон «Edit Cloudflare Workers»). Секреты самого
 # посредника (GC_TOKEN, STATS_KEY) задаются в Cloudflare и при загрузке кода не меняются.
 
@@ -39,4 +40,17 @@ jobs:
           export CLOUDFLARE_API_TOKEN="$TOKEN"
           # Номер аккаунта нужен, только если у ключа доступ к нескольким аккаунтам Cloudflare.
           if [ -n "$ACCOUNT" ]; then export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT"; fi
-          npx --yes wrangler@4 deploy
+          # Хранилище итогов дуэлей (Workers KV): найти, а если его нет — создать.
+          list() { npx --yes wrangler@4 kv namespace list 2>/dev/null | node kv-config.mjs id; }
+          ID=$(list || true)
+          if [ -z "$ID" ]; then
+            npx --yes wrangler@4 kv namespace create kurier-pdd-duels || true
+            ID=$(list || true)
+          fi
+          if [ -n "$ID" ]; then
+            DUELS_KV_ID="$ID" node kv-config.mjs config
+            npx --yes wrangler@4 deploy --config wrangler.deploy.json
+          else
+            echo "::warning::Не удалось найти или создать хранилище Workers KV для дуэлей — у ключа CLOUDFLARE_API_TOKEN нет права «Workers KV Storage: Edit»? Посредник загружен без итогов дуэлей."
+            npx --yes wrangler@4 deploy
+          fi

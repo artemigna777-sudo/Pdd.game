@@ -47,7 +47,7 @@ test('смена курьера: доставки, множитель, штра�
   await page.addInitScript((p) => {
     if (sessionStorage.getItem('seeded')) return;
     localStorage.clear();
-    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false, shiftScale: 0.4 }));
+    localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false, shiftScale: 4 }));
     localStorage.setItem('pdd-game:progress', JSON.stringify(p));
     sessionStorage.setItem('seeded', '1');
   }, progress);
@@ -93,8 +93,10 @@ test('смена курьера: доставки, множитель, штра�
   await expect(page.locator('.xp-pops')).toContainText('−15 с');
   await page.getByRole('button', { name: /Следующий заказ|Итоги смены/ }).tap();
 
-  // Конец смены: итог и первая строка таблицы рекордов.
-  await expect(page.locator('.modal')).toBeVisible({ timeout: 150_000 });
+  // Конец смены: смена длинная, чтобы медленный сервер CI успел с доставками, — тест сам оставляет
+  // на часах 3 секунды. Итог и первая строка таблицы рекордов.
+  await page.evaluate(() => (window as Any).__courierLeft(3));
+  await expect(page.locator('.modal')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.modal__title')).toHaveText('Рекорд смены! 🏆');
   await expect(page.locator('.patrol-result')).toContainText('Точность50% (1 из 2)');
   await page.getByRole('button', { name: 'Выйти' }).tap();

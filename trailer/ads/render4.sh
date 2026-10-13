@@ -6,8 +6,7 @@ cd "$(dirname "$0")"
 id="$1"
 npx tsx -e "
 import { writeVideo4 } from './engine4.ts';
-const mod = await import('./videos/v$id.ts');
-writeVideo4(Object.values(mod)[0]);
+import('./videos/v$id.ts').then((mod) => writeVideo4(Object.values(mod)[0]));
 "
 mkdir -p mp4
 (cd "out/$id" && npx -y hyperframes@0.8.119 render . --fps 30 --crf 20 --video-frame-format png -o raw.mp4 >/dev/null 2>&1)

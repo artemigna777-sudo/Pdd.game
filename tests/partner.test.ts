@@ -5,16 +5,19 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PARTNER, courseUrl, directUrl, embedUrl, formatTime, parseTime, partnerVideo, validatePartner, type PartnerData } from '../src/partner/partner.ts';
 
-const starts = (first: string | null) => [first, ...Array.from({ length: 19 }, (_, i) => `${i + 1}:${String((i * 7) % 60).padStart(2, '0')}`)];
+const starts = (first: string, n = 20) => Object.fromEntries([first, ...Array.from({ length: n - 1 }, (_, i) => `${i + 1}:${String((i * 7) % 60).padStart(2, '0')}`)].map((t, i) => [i + 1, t]));
 
 const DATA: PartnerData = {
   author: 'Пётр',
   role: 'автоинструктор',
   course: { title: 'Учимся понимать ПДД через разбор билетов', url: 'https://school.example/course?ref=1' },
   tickets: {
-    1: { url: 'https://www.youtube.com/watch?v=abcDEF12345', starts: starts('0:15') },
-    2: { url: 'https://vkvideo.ru/video-123456_789012', starts: starts(null) },
-    3: { url: 'https://rutube.ru/video/0123456789abcdef0123456789abcdef/', starts: starts('0:20') },
+    1: [{ url: 'https://www.youtube.com/watch?v=abcDEF12345', starts: starts('0:15') }],
+    2: [
+      { url: 'https://vkvideo.ru/video-123456_789012', starts: { 1: '0:10', 2: '1:00' } },
+      { url: 'https://vkvideo.ru/video-123456_789013', starts: { 3: '0:02', 4: '2:14' } },
+    ],
+    3: [{ url: 'https://rutube.ru/video/0123456789abcdef0123456789abcdef/', starts: starts('0:20') }],
   },
 };
 
@@ -29,7 +32,7 @@ test('тайм-коды: «м:сс» и «ч:мм:сс», ошибки — undef
 
 test('видео вопроса: только для билетов со ссылкой; плеер и ссылка — сразу на нужном вопросе', () => {
   const yt = partnerVideo({ ticket: 1, number: 1 }, DATA)!;
-  assert.deepEqual(yt, { ticket: 1, number: 1, url: DATA.tickets[1].url, start: 15 });
+  assert.deepEqual(yt, { ticket: 1, number: 1, url: DATA.tickets[1][0].url, start: 15 });
   assert.equal(embedUrl(yt), 'https://www.youtube.com/embed/abcDEF12345?start=15&rel=0&playsinline=1');
   assert.equal(directUrl(yt), 'https://www.youtube.com/watch?v=abcDEF12345&t=15s');
 
@@ -37,14 +40,17 @@ test('видео вопроса: только для билетов со ссы�
   assert.equal(vk.start, 60);
   assert.equal(embedUrl(vk), 'https://vk.com/video_ext.php?oid=-123456&id=789012&hd=2&t=1m0s');
   assert.equal(directUrl(vk), 'https://vkvideo.ru/video-123456_789012?t=1m0s');
-  // Тайм-кода нет — видео с начала.
-  assert.equal(partnerVideo({ ticket: 2, number: 1 }, DATA)!.start, undefined);
+  // Вторая половина билета — в другом видео.
+  const second = partnerVideo({ ticket: 2, number: 4 }, DATA)!;
+  assert.equal(second.url, 'https://vkvideo.ru/video-123456_789013');
+  assert.equal(embedUrl(second), 'https://vk.com/video_ext.php?oid=-123456&id=789013&hd=2&t=2m14s');
+  assert.equal(partnerVideo({ ticket: 2, number: 5 }, DATA), undefined, 'вопроса нет ни в одном видео — кнопки нет');
 
   const rt = partnerVideo({ ticket: 3, number: 1 }, DATA)!;
   assert.equal(embedUrl(rt), 'https://rutube.ru/play/embed/0123456789abcdef0123456789abcdef?t=20');
 
   // Страница не с видеохостинга — без плеера, открывается отдельно.
-  const other = partnerVideo({ ticket: 1, number: 1 }, { ...DATA, tickets: { 1: { url: 'https://school.example/lesson/1', starts: starts('0:15') } } })!;
+  const other = partnerVideo({ ticket: 1, number: 1 }, { ...DATA, tickets: { 1: [{ url: 'https://school.example/lesson/1', starts: starts('0:15') }] } })!;
   assert.equal(embedUrl(other), undefined);
   assert.equal(directUrl(other), 'https://school.example/lesson/1');
 
@@ -52,15 +58,34 @@ test('видео вопроса: только для билетов со ссы�
   assert.equal(courseUrl(DATA), 'https://school.example/course?ref=1&utm_source=kurier-pdd&utm_medium=game');
 });
 
-test('данные партнёра: пока ссылок нет — кнопок нет; проверка ловит ошибки', () => {
+test('видео Петра: билеты 1–3, все 60 вопросов, тайм-коды по порядку; дальше билетов нет', () => {
   assert.deepEqual(validatePartner(PARTNER), []);
-  for (const q of [1, 2, 3].flatMap((ticket) => Array.from({ length: 20 }, (_, i) => ({ ticket, number: i + 1 })))) assert.equal(partnerVideo(q, PARTNER), undefined);
+  for (const ticket of [1, 2, 3])
+    for (let number = 1; number <= 20; number++) {
+      const v = partnerVideo({ ticket, number }, PARTNER);
+      assert.ok(v?.start !== undefined, `билет ${ticket}, вопрос ${number}: есть видео и тайм-код`);
+      assert.match(v!.url, /^https:\/\/vkvideo\.ru\/video-148551566_\d+$/);
+      assert.match(embedUrl(v!)!, /^https:\/\/vk\.com\/video_ext\.php\?oid=-148551566&id=\d+&hd=2&t=\d+m\d+s$/);
+    }
+  // Билет 2: вопросы 1–11 и 12–20 — в разных видео; билет 3: 1–10 и 11–20.
+  assert.notEqual(partnerVideo({ ticket: 2, number: 11 }, PARTNER)!.url, partnerVideo({ ticket: 2, number: 12 }, PARTNER)!.url);
+  assert.notEqual(partnerVideo({ ticket: 3, number: 10 }, PARTNER)!.url, partnerVideo({ ticket: 3, number: 11 }, PARTNER)!.url);
+  assert.equal(partnerVideo({ ticket: 1, number: 20 }, PARTNER)!.start, 53 * 60 + 30);
+  assert.equal(partnerVideo({ ticket: 4, number: 1 }, PARTNER), undefined);
+});
+
+test('проверка данных партнёра ловит ошибки', () => {
   assert.deepEqual(validatePartner(DATA), []);
-  const bad: PartnerData = { ...DATA, tickets: { 41: { url: 'http://x', starts: ['1:00', '0:30', 'ой'] } } };
+  const bad: PartnerData = {
+    ...DATA,
+    tickets: {
+      41: [{ url: 'http://x', starts: { 1: '1:00', 2: '0:30', 3: 'ой', 25: '9:00' } }],
+      5: [
+        { url: 'https://a.example', starts: { 1: '0:10' } },
+        { url: 'https://b.example', starts: { 1: '0:20' } },
+      ],
+    },
+  };
   const errors = validatePartner(bad);
-  assert.ok(errors.some((e) => e.includes('такого билета нет')));
-  assert.ok(errors.some((e) => e.includes('https://')));
-  assert.ok(errors.some((e) => e.includes('нужно 20')));
-  assert.ok(errors.some((e) => e.includes('«ой»')));
-  assert.ok(errors.some((e) => e.includes('по возрастанию')));
+  for (const part of ['такого билета нет', 'https://', 'по возрастанию', '«ой»', 'вопроса 25', 'в двух видео']) assert.ok(errors.some((e) => e.includes(part)), part);
 });

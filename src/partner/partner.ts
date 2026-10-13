@@ -1,19 +1,20 @@
 /**
  * Видеоразборы партнёра — автоинструктора Петра (тест сотрудничества, 13.10.2026).
  *
- * У Петра бесплатные видеоразборы первых трёх билетов: одно видео на билет, внутри — все 20 вопросов.
- * После неверного ответа на вопрос такого билета рядом с пояснением появляется кнопка «Смотреть
- * разбор»: видео открывается в окне поверх игры сразу на нужном вопросе (по тайм-коду). Билет без
- * ссылки кнопку не показывает — поэтому, пока ссылок нет, игроки ничего не видят.
+ * У Петра бесплатные видеоразборы первых трёх билетов в VK Видео: у билета 1 одно видео, у билетов
+ * 2 и 3 — по два (первая и вторая половина вопросов). После неверного ответа на вопрос такого билета
+ * рядом с пояснением появляется кнопка «Смотреть разбор»: видео открывается в окне поверх игры сразу
+ * на нужном вопросе (по тайм-коду из описания видео). Билет без видео кнопку не показывает.
  *
- * Данные — `PARTNER` ниже: ссылки и тайм-коды присылает Артём.
+ * Ссылки и тайм-коды — из описаний видео Петра (прислал Артём 13.10.2026). Номера вопросов у Петра
+ * совпадают с билетами игры: на превью видны вопросы Б2 В11 и Б3 В11, тексты те же.
  */
 
-export interface PartnerTicket {
-  /** Ссылка на видео билета (YouTube, VK Видео, Rutube или любая страница). */
+export interface PartnerPart {
+  /** Ссылка на видео (YouTube, VK Видео, Rutube или любая страница). */
   url: string;
-  /** Где в видео начинается каждый из 20 вопросов: «м:сс» или «ч:мм:сс»; null — не знаем. */
-  starts: readonly (string | null)[];
+  /** Номер вопроса → где он начинается в видео: «м:сс» или «ч:мм:сс». */
+  starts: Readonly<Record<number, string>>;
 }
 
 export interface PartnerData {
@@ -22,19 +23,31 @@ export interface PartnerData {
   role: string;
   /** Полный курс автора — ссылка под видео (необязательно). */
   course?: { title: string; url: string };
-  /** Номер билета → видео. */
-  tickets: Readonly<Record<number, PartnerTicket>>;
+  /** Номер билета → видео этого билета (одно или несколько частей). */
+  tickets: Readonly<Record<number, readonly PartnerPart[]>>;
 }
 
-const none = Array.from({ length: 20 }, (): string | null => null);
+/** Тайм-коды по порядку, начиная с вопроса `from`. */
+const from = (first: number, times: string[]): Record<number, string> => Object.fromEntries(times.map((t, i) => [first + i, t]));
 
 export const PARTNER: PartnerData = {
   author: 'Пётр',
   role: 'автоинструктор',
   tickets: {
-    1: { url: '', starts: none },
-    2: { url: '', starts: none },
-    3: { url: '', starts: none },
+    1: [
+      {
+        url: 'https://vkvideo.ru/video-148551566_456239208',
+        starts: from(1, ['0:12', '3:35', '5:31', '8:03', '10:56', '16:15', '20:44', '22:10', '26:41', '30:05', '31:35', '35:05', '38:04', '39:01', '41:32', '44:29', '46:26', '48:28', '51:10', '53:30']),
+      },
+    ],
+    2: [
+      { url: 'https://vkvideo.ru/video-148551566_456239209', starts: from(1, ['0:53', '3:36', '6:08', '8:52', '11:58', '15:31', '20:11', '22:52', '26:37', '29:28', '32:02']) },
+      { url: 'https://vkvideo.ru/video-148551566_456239210', starts: from(12, ['0:02', '2:14', '6:24', '8:35', '10:56', '13:46', '18:56', '22:38', '28:38']) },
+    ],
+    3: [
+      { url: 'https://vkvideo.ru/video-148551566_456239215', starts: from(1, ['0:57', '2:19', '4:05', '7:10', '8:34', '10:37', '12:57', '15:39', '16:56', '20:06']) },
+      { url: 'https://vkvideo.ru/video-148551566_456239216', starts: from(11, ['0:02', '2:48', '5:04', '6:44', '8:36', '12:10', '13:38', '16:43', '18:43', '21:14']) },
+    ],
   },
 };
 
@@ -70,12 +83,12 @@ export interface PartnerVideo {
   start?: number;
 }
 
-/** Видеоразбор вопроса или undefined, если для билета нет ссылки. */
+/** Видеоразбор вопроса или undefined, если в видео билета этого вопроса нет. */
 export function partnerVideo(q: { ticket: number; number: number }, data: PartnerData = partnerData()): PartnerVideo | undefined {
-  const t = data.tickets[q.ticket];
-  if (!t?.url || !/^https:\/\//.test(t.url)) return undefined;
-  const start = parseTime(t.starts[q.number - 1]);
-  return { ticket: q.ticket, number: q.number, url: t.url, ...(start !== undefined ? { start } : {}) };
+  const part = data.tickets[q.ticket]?.find((p) => p.starts[q.number] !== undefined && /^https:\/\//.test(p.url));
+  if (!part) return undefined;
+  const start = parseTime(part.starts[q.number]);
+  return { ticket: q.ticket, number: q.number, url: part.url, ...(start !== undefined ? { start } : {}) };
 }
 
 type Host = { kind: 'youtube'; id: string } | { kind: 'rutube'; id: string } | { kind: 'vk'; oid: string; id: string; hash?: string } | { kind: 'other' };
@@ -145,16 +158,26 @@ export function courseUrl(data: PartnerData = partnerData()): string | undefined
 /** Ошибки в данных партнёра. Пустой список — всё в порядке. */
 export function validatePartner(data: PartnerData): string[] {
   const errors: string[] = [];
-  for (const [key, t] of Object.entries(data.tickets)) {
+  for (const [key, parts] of Object.entries(data.tickets)) {
     const n = Number(key);
     if (!Number.isInteger(n) || n < 1 || n > 40) errors.push(`билет ${key}: такого билета нет`);
-    if (t.url && !/^https:\/\//.test(t.url)) errors.push(`билет ${key}: ссылка должна начинаться с https://`);
-    if (t.starts.length !== 20) errors.push(`билет ${key}: тайм-кодов ${t.starts.length}, нужно 20`);
-    t.starts.forEach((s, i) => {
-      if (s !== null && parseTime(s) === undefined) errors.push(`билет ${key}, вопрос ${i + 1}: тайм-код «${s}» не похож на «м:сс»`);
-    });
-    const times = t.starts.map(parseTime).filter((x): x is number => x !== undefined);
-    if (times.some((x, i) => i > 0 && x <= times[i - 1])) errors.push(`билет ${key}: тайм-коды должны идти по возрастанию`);
+    const seen = new Set<number>();
+    for (const part of parts) {
+      if (!/^https:\/\//.test(part.url)) errors.push(`билет ${key}: ссылка «${part.url}» должна начинаться с https://`);
+      const entries = Object.entries(part.starts)
+        .map(([q, t]) => [Number(q), t] as const)
+        .sort((a, b) => a[0] - b[0]);
+      let last = -1;
+      for (const [q, t] of entries) {
+        if (!Number.isInteger(q) || q < 1 || q > 20) errors.push(`билет ${key}: вопроса ${q} в билете нет`);
+        if (seen.has(q)) errors.push(`билет ${key}, вопрос ${q}: есть в двух видео`);
+        seen.add(q);
+        const sec = parseTime(t);
+        if (sec === undefined) errors.push(`билет ${key}, вопрос ${q}: тайм-код «${t}» не похож на «м:сс»`);
+        else if (sec <= last) errors.push(`билет ${key}, вопрос ${q}: тайм-коды должны идти по возрастанию`);
+        else last = sec;
+      }
+    }
   }
   if (data.course?.url && !/^https:\/\//.test(data.course.url)) errors.push('курс: ссылка должна начинаться с https://');
   return errors;

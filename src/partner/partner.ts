@@ -33,6 +33,10 @@ const from = (first: number, times: string[]): Record<number, string> => Object.
 export const PARTNER: PartnerData = {
   author: 'Пётр',
   role: 'автоинструктор',
+  course: {
+    title: 'Учимся понимать ПДД через разбор билетов',
+    url: 'https://vk.com/market/product/128213-onlayn-kurs-quotuchimsya-ponimat-pdd-cherez-razbor-biletovquot-148551566-12559646',
+  },
   tickets: {
     1: [
       {

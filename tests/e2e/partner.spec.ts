@@ -153,6 +153,8 @@ test('видео Петра: ошибка в вопросе 12 билета 2 �
   const modal = page.getByRole('dialog', { name: 'Разбор: билет 2, вопрос 12' });
   await expect(modal.locator('iframe')).toHaveAttribute('src', 'https://vk.com/video_ext.php?oid=-148551566&id=456239210&hd=2&t=0m2s');
   await expect(modal.getByRole('link', { name: 'Открыть видео отдельно' })).toHaveAttribute('href', 'https://vkvideo.ru/video-148551566_456239210?t=0m2s');
+  await expect(modal).toContainText('Все 40 билетов — в курсе «Учимся понимать ПДД через разбор билетов».');
+  await expect(modal.getByRole('link', { name: 'О курсе' })).toHaveAttribute('href', /^https:\/\/vk\.com\/market\/product\/128213-.+-12559646\?utm_source=kurier-pdd&utm_medium=game$/);
   await modal.getByRole('button', { name: 'Вернуться к вопросу' }).tap();
   await expect(page.locator('iframe')).toHaveCount(0);
 });

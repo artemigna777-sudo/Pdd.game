@@ -72,6 +72,10 @@ test('видео Петра: билеты 1–3, все 60 вопросов, т�
   assert.notEqual(partnerVideo({ ticket: 3, number: 10 }, PARTNER)!.url, partnerVideo({ ticket: 3, number: 11 }, PARTNER)!.url);
   assert.equal(partnerVideo({ ticket: 1, number: 20 }, PARTNER)!.start, 53 * 60 + 30);
   assert.equal(partnerVideo({ ticket: 4, number: 1 }, PARTNER), undefined);
+  assert.equal(
+    courseUrl(PARTNER),
+    'https://vk.com/market/product/128213-onlayn-kurs-quotuchimsya-ponimat-pdd-cherez-razbor-biletovquot-148551566-12559646?utm_source=kurier-pdd&utm_medium=game',
+  );
 });
 
 test('проверка данных партнёра ловит ошибки', () => {

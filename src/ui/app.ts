@@ -53,6 +53,7 @@ import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './c
 import { el } from './dom.ts';
 import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { storyView } from './storyView.ts';
+import { catchUpPanel } from './catchUp.ts';
 import { runTale, talesList } from './taleView.ts';
 import { ownsTale, taleById } from '../progress/taleProgress.ts';
 import { countdownLabel, dateLabel, planLink, planView } from './planView.ts';
@@ -724,7 +725,8 @@ export class App {
         { class: 'btn btn--secondary story-link', type: 'button', onclick: () => this.open({ name: 'story' }) },
         `📖 Моя история: ${characterTitle(storyContext(data).traits).toLowerCase()} · концовок ${Object.keys(data.story?.endings ?? {}).length} из ${ENDINGS.length}`,
       );
-      list.replaceChildren(mine, ...cards, finaleCard);
+      const catchUp = catchUpPanel(() => this.replace({ name: 'chapters' }));
+      list.replaceChildren(...(catchUp ? [catchUp] : []), mine, ...cards, finaleCard);
     });
     return this.page('Главы', list, {
       back: 'menu',

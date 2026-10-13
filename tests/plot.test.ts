@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
-import { finishStory, recordDecision, rewind, storyContext } from '../src/progress/storyProgress.ts';
+import { finishStory, missedDecisions, recordDecision, rewind, storyContext } from '../src/progress/storyProgress.ts';
 import {
   BOND_START,
+  HEROES,
   REWIND_PRICE,
   characterTitle,
   check,
@@ -359,4 +360,33 @@ test('в каждой концовке реплики разрешаются б�
     // Эпилог перед экзаменом: Артём говорит ровно одну реплику.
     assert.equal(resolveLines(FINALE_STORY.epilogue, ctx).filter((l) => l.who === 'artem').length, 1, JSON.stringify(picks));
   }
+});
+
+test('наверстать историю: развилки из сцен, пройденных до обновления, — по порядку и с условиями', () => {
+  const data = emptyProgress();
+  assert.deepEqual(missedDecisions(data), [], 'новый игрок ничего не пропустил');
+  // Главы 1–6 пройдены до сюжета «Турбо-Доставки», глава 7 только начата (видно вступление).
+  for (const c of ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6']) data.chapters[c] = { points: [], seen: ['intro', 'race', 'beat1', 'beat2', 'ready'], stars: 3, delivered: 1 };
+  data.chapters.ch7 = { points: [], seen: ['intro'], stars: 0 };
+  const zero = storyContext(data);
+  assert.ok(Object.values(zero.traits).every((t) => t === 0), 'до наверстывания характер на нуле');
+
+  const missed = missedDecisions(data);
+  assert.equal(missed[0].id, 'ch1.card', 'начинается с первой развилки истории');
+  assert.ok(missed.every((d) => d.scene !== 'tale'));
+  assert.ok(!missed.some((d) => d.chapter === 'ch7' && d.scene !== 'intro'), 'сцены главы 7, которые ещё впереди, не считаются пропущенными');
+
+  // Решать по одной, как в игре: после каждого выбора список считается заново.
+  let n = 0;
+  for (let d = missedDecisions(data)[0]; d; d = missedDecisions(data)[0]) {
+    assert.ok(recordDecision(data, d.id, d.options[0].value, 1000 + n));
+    assert.ok(++n < 50, 'список кончается');
+  }
+  assert.deepEqual(missedDecisions(data), []);
+  const decided = Object.keys(storyContext(data).decisions);
+  for (const d of DECISIONS.filter((x) => Number(x.chapter.slice(2)) <= 6)) {
+    if (!d.when) assert.ok(decided.includes(d.id), `${d.id} наверстана`);
+  }
+  const after = storyContext(data);
+  assert.ok(Object.values(after.traits).some((t) => t > 0) && HEROES.some((h) => after.bonds[h] > zero.bonds[h]), 'сердечки и характер появились');
 });

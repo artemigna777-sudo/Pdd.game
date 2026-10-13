@@ -36,6 +36,7 @@ import {
 import { getSettings, onSettingsChange } from '../settings.ts';
 import { PROLOGUE, STORY, beatThresholds, fill, type Line } from '../story/story.ts';
 import { sceneLines, type StoryScene } from '../story/plot.ts';
+import { missedCount } from './catchUp.ts';
 import { PLOT } from '../story/turbo.ts';
 import { recordDecision, storyContext } from '../progress/storyProgress.ts';
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
@@ -59,6 +60,9 @@ import { RULES, questionsFor, type Violation } from '../world/rules.ts';
 import { vibrateError } from '../audio/feedback.ts';
 import { chapterDone } from '../stats/catalog.ts';
 import { trackEvent } from '../stats/track.ts';
+
+/** Подсказка «Наверстать историю» уже была в этом запуске. */
+let catchUpHinted = false;
 
 export interface CityScreen {
   element: HTMLElement;
@@ -771,6 +775,11 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     // Артём ездит по району, пока не доставил свою посылку.
     if (rival && info && seen('race') && raceActive(progress(), chapterId) && rivalProgress(progress(), info, rival) < 1) scene.setRival(true);
     else rivalDone = true;
+    // Главы пройдены до сюжета «Турбо-Доставки»: подсказать, где наверстать решения (раз за запуск).
+    if (!catchUpHinted && missedCount()) {
+      catchUpHinted = true;
+      showToast(`⏪ В «Моей истории» ждут решения из пройденных глав: ${missedCount()}. Без них сердечки и характер на нуле.`);
+    }
     showSideMarker();
     await advanceStory();
   });

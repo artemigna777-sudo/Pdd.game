@@ -150,3 +150,42 @@ test('«Моя история»: характер, команда, решени�
   await page.locator('.garage__item', { hasText: 'Красная' }).tap();
   expect((await readProgress(page)).coins).toBe(12);
 });
+
+test('наверстать историю: главы пройдены до «Турбо-Доставки» — развилки по порядку из «Глав»', async ({ page }) => {
+  const chapters: Record<string, unknown> = {};
+  for (const c of ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6']) chapters[c] = passed(c);
+  chapters.ch7 = { points: [], seen: ['intro', 'race'], stars: 0 };
+  await seed(page, { xp: 3000, coins: 0, questions: {}, chapters, finale: { control: [], seen: [] } });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Главы' }).tap();
+  const panel = page.locator('.story__catchup');
+  await expect(panel).toContainText('Наверстать историю');
+  await expect(panel).toContainText(/\d+ решени/);
+  await panel.getByRole('button', { name: 'Вспомнить и решить' }).tap();
+
+  const dialog = page.locator('.cutscene:not(.cutscene--modal)');
+  await expect(dialog.locator('.cutscene__text')).toContainText('появилась «Турбо-Доставка»');
+  const toast = page.locator('.toast__text');
+  // Всегда первый вариант; между развилками сцена закрывается и открывается снова.
+  for (let i = 0; i < 400 && !(await toast.allTextContents()).join().includes('История наверстана'); i++) {
+    const choices = dialog.locator('.cutscene__choices button');
+    if (await choices.count()) await choices.first().tap({ timeout: 2000 }).catch(() => undefined);
+    else if (await dialog.count()) await dialog.locator('.btn--primary:visible').first().tap({ timeout: 2000 }).catch(() => undefined);
+    await page.waitForTimeout(80);
+  }
+  await expect(toast).toContainText('История наверстана');
+  await expect(dialog).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+
+  const saved = await readProgress(page);
+  const ids: string[] = saved.story.choices.map((c: { id: string }) => c.id);
+  expect(ids[0]).toBe('ch1.card');
+  expect(ids).toContain('ch6.bakery');
+  expect(ids.every((id) => Number(id.slice(2, id.indexOf('.'))) <= 7)).toBe(true);
+
+  // В «Моей истории» — характер и решения; плашки больше нет.
+  await page.getByRole('button', { name: /Моя история/ }).tap();
+  await expect(page.locator('.story__title')).not.toHaveText('Новичок за рулём');
+  await expect(page.locator('.story__decisions li')).toHaveCount(ids.length);
+  await expect(page.locator('.story__catchup')).toHaveCount(0);
+});

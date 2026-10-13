@@ -8,6 +8,7 @@ import { GENA_DISCOUNT, endingScene, rewind, storyContext } from '../progress/st
 import { HEARTS_MAX, HEROES, REWIND_PRICE, TRAITS, TRAIT_IDS, TRAIT_MAX, characterTitle, check, lastBigDecision, type HeroId } from '../story/plot.ts';
 import { CHARACTERS } from '../story/story.ts';
 import { DECISIONS, ENDINGS, PLOT } from '../story/turbo.ts';
+import { catchUpPanel } from './catchUp.ts';
 import { avatar, playCutscene, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
 import { showToast } from './toast.ts';
@@ -185,7 +186,11 @@ export function storyView(data: ProgressData, onChange: () => void, openTale: (i
     );
 
     const tales = el('section', { class: 'panel' }, el('h2', { class: 'section-title' }, 'Дополнительные сюжеты'), el('p', { class: 'panel__note' }, 'Отдельные истории со своими выборами и концовками: ситуации на дороге и повторы твоих ошибок.'), talesList(data, openTale, onChange));
-    root.replaceChildren(character, teamPanel, decisions, rewindPanel, gallery, tales);
+    const catchUp = catchUpPanel(() => {
+      onChange();
+      render();
+    });
+    root.replaceChildren(...(catchUp ? [catchUp] : []), character, teamPanel, decisions, rewindPanel, gallery, tales);
   };
   render();
   return root;

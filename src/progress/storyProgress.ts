@@ -2,7 +2,7 @@
  * Сюжет в прогрессе игрока (этап 17): решения, отношения, характер, концовки и «Вернуть решение».
  * Сама модель — `story/plot.ts`, развилки и концовки — `story/turbo.ts`.
  */
-import { REWIND_PRICE, decide, emptyStory, endingFor, lastBigDecision, plotContext, rewindDecision, unlockEnding, type Ending, type PlotContext, type PlotSource, type StoryState } from '../story/plot.ts';
+import { REWIND_PRICE, check, decide, emptyStory, endingFor, lastBigDecision, plotContext, rewindDecision, unlockEnding, type Decision, type Ending, type PlotContext, type PlotSource, type StoryScene, type StoryState } from '../story/plot.ts';
 import { FINALE_STORY, type Line } from '../story/story.ts';
 import { ENDINGS, PLOT } from '../story/turbo.ts';
 import { spendCoins, type ProgressData } from './progress.ts';
@@ -27,6 +27,25 @@ export function storyContext(data: ProgressData, source: PlotSource = PLOT): Plo
 /** Записать выбор в развилке. false — такой развилки нет. */
 export function recordDecision(data: ProgressData, id: string, value: string, now: number, source: PlotSource = PLOT): boolean {
   return decide(storyOf(data), id, value, now, source);
+}
+
+/** Сцена главы уже позади: показана, а финал — когда посылка главы доставлена. */
+function scenePassed(data: ProgressData, chapter: string, scene: StoryScene): boolean {
+  const state = data.chapters[chapter];
+  if (!state) return false;
+  return scene === 'finale' ? state.delivered !== undefined : state.seen.includes(scene);
+}
+
+/**
+ * Пропущенные развилки: сцена уже позади, а решения нет. Так бывает у тех, кто прошёл главы до
+ * сюжета «Турбо-Доставки», — развилки появились в сценах, которые они уже видели. Порядок — как в
+ * истории; условия зависят от прежних решений, поэтому после каждого выбора список считают заново.
+ */
+export function missedDecisions(data: ProgressData, source: PlotSource = PLOT): Decision[] {
+  const ctx = storyContext(data, source);
+  return source.decisions.filter(
+    (d) => d.scene !== 'tale' && ctx.decisions[d.id] === undefined && scenePassed(data, d.chapter, d.scene) && check(d.when, ctx) && d.options.some((o) => check(o.when, ctx)),
+  );
 }
 
 /** Экзамен-босс сдан: открыть концовку по решениям и отношениям. */

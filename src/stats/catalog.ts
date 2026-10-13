@@ -41,6 +41,8 @@ export const EVENTS: readonly (readonly [name: string, title: string])[] = [
   ['plan-date', 'Указали дату экзамена'],
   ['real-exam-pass', 'Сдали экзамен в ГИБДД'],
   ['real-exam-fail', 'Не сдали экзамен в ГИБДД'],
+  ['partner-video', 'Видеоразбор партнёра: открыли'],
+  ['partner-course', 'Курс партнёра: перешли'],
 ];
 
 /** Глава в городе и событие «глава пройдена». */

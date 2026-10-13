@@ -5062,3 +5062,49 @@ a.btn {
 .live-lobby .qr {
   width: min(170px, 50vw);
 }
+
+/* Видеоразбор партнёра под пояснением и окно с видео */
+.partner-video {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.partner-video__title {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+.partner-video__text {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+.partner-video__open {
+  width: 100%;
+}
+.partner-modal__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+.partner-modal__frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.partner-modal__meta,
+.partner-modal__note,
+.partner-modal__course {
+  margin: 10px 0;
+  color: var(--text-muted);
+}
+.partner-modal__direct {
+  display: flex;
+  justify-content: center;
+  text-decoration: none;
+}

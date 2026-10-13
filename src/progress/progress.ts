@@ -14,6 +14,8 @@
  */
 import { load, save } from '../storage.ts';
 import { sanitizeSituations, type SituationsState } from '../situations/run.ts';
+import { sanitizeStory, type StoryState } from '../story/plot.ts';
+import { sanitizeTales, type TaleState } from '../story/tales.ts';
 import { KMH_PER_PX } from '../world/rules.ts';
 
 export const REVIEW_DAYS = [1, 3, 7] as const;
@@ -182,6 +184,12 @@ export interface ExamPlan {
 export interface GarageState {
   paint: string;
   sticker: string;
+  /** Тема города (этап 17); нет — обычный город. */
+  theme?: string;
+  /** Модель машины, клаксон и номер с ником (этап 17). */
+  model?: string;
+  horn?: string;
+  plate?: string;
   /** Купленные покраски и наклейки. */
   owned: string[];
 }
@@ -207,6 +215,8 @@ export interface ModesState {
   courier?: CourierRecord[];
   /** «Ситуации на дороге» (этап 15). */
   situations?: SituationsState;
+  /** Дуэль в реальном времени (этап 16): победы, поражения, ничьи. */
+  live?: { wins: number; losses: number; draws: number };
 }
 
 export interface ProgressData {
@@ -224,6 +234,10 @@ export interface ProgressData {
   signs?: { claimed: string[] };
   /** Рекорды режимов (этапы 12–13). */
   modes?: ModesState;
+  /** Решения в сюжете и открытые концовки (этап 17). */
+  story?: StoryState;
+  /** Дополнительные сюжеты из магазина: прохождение и концовки. */
+  tales?: Record<string, TaleState>;
   finale: {
     control: ControlSlot[];
     seen: string[];
@@ -274,6 +288,10 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     const owned = [...new Set([DEFAULT_PAINT, DEFAULT_STICKER, ...strings(raw.garage.owned)])];
     const pick = (v: unknown, fallback: string) => (typeof v === 'string' && owned.includes(v) ? v : fallback);
     data.garage = { paint: pick(raw.garage.paint, DEFAULT_PAINT), sticker: pick(raw.garage.sticker, DEFAULT_STICKER), owned };
+    if (typeof raw.garage.theme === 'string' && owned.includes(`theme:${raw.garage.theme}`)) data.garage.theme = raw.garage.theme;
+    if (typeof raw.garage.model === 'string' && owned.includes(`model:${raw.garage.model}`)) data.garage.model = raw.garage.model;
+    if (typeof raw.garage.horn === 'string' && owned.includes(`horn:${raw.garage.horn}`)) data.garage.horn = raw.garage.horn;
+    if (typeof raw.garage.plate === 'string' && owned.includes('plate') && /^[A-ZА-Я0-9 -]{1,8}$/.test(raw.garage.plate)) data.garage.plate = raw.garage.plate;
   }
   const dr = raw.drive;
   if (isObj(dr) && isNum(dr.clean) && isNum(dr.best) && isNum(dr.total) && isInt(dr.violations)) {
@@ -307,6 +325,10 @@ export function sanitizeProgress(raw: unknown): ProgressData {
       data.chapters[id] = state;
     }
   }
+  const story = sanitizeStory(raw.story);
+  if (story) data.story = story;
+  const tales = sanitizeTales(raw.tales);
+  if (tales) data.tales = tales;
   if (isObj(raw.signs)) data.signs = { claimed: [...new Set(strings(raw.signs.claimed))] };
   if (isObj(raw.modes)) {
     const m = raw.modes;
@@ -321,6 +343,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     }
     const situations = sanitizeSituations(m.situations);
     if (situations) data.modes.situations = situations;
+    const live = m.live;
+    if (isObj(live) && isInt(live.wins) && isInt(live.losses) && isInt(live.draws)) data.modes.live = { wins: live.wins, losses: live.losses, draws: live.draws };
   }
   const plan = raw.plan;
   if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {

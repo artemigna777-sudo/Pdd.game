@@ -60,6 +60,43 @@ const SOUNDS: Record<SoundName, Note[]> = {
   ],
 };
 
+/** Клаксоны из магазина (этап 17) — тоже синтез, без файлов. */
+export const HORN_SOUNDS: Record<string, Note[]> = {
+  beep: [
+    { f: 415, t: 0, d: 0.16, wave: 'square', gain: 0.07 },
+    { f: 523, t: 0, d: 0.16, wave: 'square', gain: 0.05 },
+    { f: 415, t: 0.22, d: 0.22, wave: 'square', gain: 0.07 },
+    { f: 523, t: 0.22, d: 0.22, wave: 'square', gain: 0.05 },
+  ],
+  truck: [
+    { f: 155, t: 0, d: 0.75, wave: 'sawtooth', gain: 0.09 },
+    { f: 196, t: 0, d: 0.75, wave: 'sawtooth', gain: 0.06 },
+  ],
+  bell: [
+    { f: 2093, t: 0, d: 0.3, gain: 0.07 },
+    { f: 2637, t: 0, d: 0.3, gain: 0.04 },
+    { f: 2093, t: 0.16, d: 0.4, gain: 0.07 },
+    { f: 2637, t: 0.16, d: 0.4, gain: 0.04 },
+  ],
+  duck: [
+    { f: 620, t: 0, d: 0.16, wave: 'sawtooth', gain: 0.06, to: 380 },
+    { f: 620, t: 0.22, d: 0.18, wave: 'sawtooth', gain: 0.06, to: 360 },
+  ],
+  chip: [
+    { f: 523, t: 0, d: 0.07, wave: 'square', gain: 0.06 },
+    { f: 659, t: 0.07, d: 0.07, wave: 'square', gain: 0.06 },
+    { f: 784, t: 0.14, d: 0.07, wave: 'square', gain: 0.06 },
+    { f: 1047, t: 0.21, d: 0.16, wave: 'square', gain: 0.06 },
+  ],
+  tune: [
+    { f: 392, t: 0, d: 0.11, wave: 'triangle', gain: 0.12 },
+    { f: 392, t: 0.13, d: 0.11, wave: 'triangle', gain: 0.12 },
+    { f: 523, t: 0.26, d: 0.11, wave: 'triangle', gain: 0.12 },
+    { f: 659, t: 0.39, d: 0.11, wave: 'triangle', gain: 0.12 },
+    { f: 784, t: 0.52, d: 0.3, wave: 'triangle', gain: 0.12 },
+  ],
+};
+
 let ctx: AudioContext | undefined;
 
 /** Общий аудиоконтекст игры (создаётся при первом звуке). */
@@ -77,12 +114,21 @@ export function context(): AudioContext | undefined {
 
 /** Сыграть звук (если звуки включены). */
 export function playSound(name: SoundName): void {
+  playNotes(SOUNDS[name]);
+}
+
+/** Посигналить клаксоном машины (если звуки включены). */
+export function playHorn(id: string): void {
+  playNotes(HORN_SOUNDS[id] ?? HORN_SOUNDS.beep);
+}
+
+function playNotes(notes: readonly Note[]): void {
   if (!getSettings().sound) return;
   const c = context();
   if (!c) return;
   try {
     const now = c.currentTime + 0.01;
-    for (const n of SOUNDS[name]) {
+    for (const n of notes) {
       const osc = c.createOscillator();
       const gain = c.createGain();
       osc.type = n.wave ?? 'sine';

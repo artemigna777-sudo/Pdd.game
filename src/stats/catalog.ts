@@ -15,12 +15,15 @@ export const SCREENS: readonly (readonly [path: string, title: string])[] = [
   ['/plan', 'Мой экзамен'],
   ['/modes', 'Режимы'],
   ['/situations', 'Ситуации на дороге'],
+  ['/story', 'Моя история'],
+  ['/tale', 'Дополнительный сюжет'],
   ['/duel', 'Дуэль'],
   ['/duel-invite', 'Дуэль: вызов по ссылке'],
+  ['/live', 'Дуэль в реальном времени'],
   ['/signs', 'Знакодекс'],
   ['/patrol', 'Пост ДПС'],
   ['/courier', 'Смена курьера'],
-  ['/garage', 'Гараж'],
+  ['/garage', 'Магазин'],
   ['/settings', 'Настройки'],
 ];
 

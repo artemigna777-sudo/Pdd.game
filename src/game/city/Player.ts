@@ -60,9 +60,9 @@ export class Player {
     lane: Lane,
     s: number,
   ) {
-    // Покраска и наклейка из гаража.
+    // Модель, покраска и наклейка из магазина.
     const look = carLook(progress());
-    const body = bakedImage(scene, `player-car:${look.color}:${look.sticker}`, 40, 56, (g) => drawPlayerCar(g, look.color, look.sticker));
+    const body = bakedImage(scene, `player-car:${look.model}:${look.color}:${look.sticker}`, 40, 56, (g) => drawPlayerCar(g, look.color, look.sticker, look.model));
     this.blinkers = scene.add.graphics();
     this.container = scene.add.container(0, 0, [body, this.blinkers]).setDepth(6);
     this.line = new Polyline([graph.pointOnLane(lane, s)]);

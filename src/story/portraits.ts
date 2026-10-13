@@ -240,6 +240,30 @@ const DRAW: Record<PortraitId, () => string> = {
       smile('#9c5a44', 56.2, 2.6)
     );
   },
+
+  /** Хозяин «Турбо-Доставки»: зачёсанные назад волосы с проседью, очки на лбу, ухмылка, куртка с оранжевой молнией. */
+  turbin: () => {
+    const s = { skin: '#efc19c', shade: '#d39f7a' };
+    return (
+      halo +
+      body('#14161f', true) +
+      '<path d="M30 70L44 96M66 70L52 96" stroke="#f77f00" stroke-width="3"/>' +
+      '<path d="M38.6 68L48 80L57.4 68Z" fill="#e9ecef"/>' +
+      '<path d="M60 78L66 84L62 85L67 92L58 85L62 84Z" fill="#f77f00"/>' +
+      neck(s) +
+      head(s, 15, 18.5) +
+      '<path d="M32.6 41Q30.6 21.4 48 20.6Q65.4 21.4 63.4 41Q62 31 56 28.6Q48 26.4 40 28.6Q34 31 32.6 41Z" fill="#1f1f24"/>' +
+      '<path d="M53 22.6Q60.6 23.6 62.4 32" stroke="#9aa0a6" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+      '<rect x="35.4" y="27.4" width="11.4" height="5.6" rx="2.6" fill="#ff9f1c" stroke="#111" stroke-width="1.5"/>' +
+      '<rect x="49.2" y="27.4" width="11.4" height="5.6" rx="2.6" fill="#ff9f1c" stroke="#111" stroke-width="1.5"/>' +
+      '<path d="M46.8 29.6Q48 28.6 49.2 29.6" stroke="#111" stroke-width="1.4" fill="none"/>' +
+      `<path d="M38 38.8Q42 37.2 45.6 38.6M50.4 37.6Q54 35.4 57.8 37" stroke="#1f1f24" stroke-width="2.1" fill="none" stroke-linecap="round"/>` +
+      eyes(44) +
+      nose(s) +
+      '<g fill="#6b5446" opacity="0.4"><circle cx="41" cy="57" r="0.6"/><circle cx="44" cy="58.6" r="0.6"/><circle cx="48" cy="59.2" r="0.6"/><circle cx="52" cy="58.6" r="0.6"/><circle cx="55" cy="57" r="0.6"/></g>' +
+      `<path d="M42.4 54.4Q48 56.4 55 52.4" stroke="#8c4a3a" stroke-width="1.8" fill="none" stroke-linecap="round"/>`
+    );
+  },
 };
 
 /** SVG-портрет персонажа (квадрат 96×96 с фоном цвета героя). */

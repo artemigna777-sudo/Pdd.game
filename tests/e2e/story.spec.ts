@@ -93,7 +93,7 @@ async function readCutscene(page: Page) {
   const dialog = page.locator('.cutscene:not(.cutscene--modal)');
   await expect(dialog).toBeVisible(SLOW);
   while (await dialog.count()) {
-    await dialog.locator('.btn--primary').tap();
+    await dialog.locator('.btn--primary:visible').first().tap();
     await page.waitForTimeout(150);
   }
 }

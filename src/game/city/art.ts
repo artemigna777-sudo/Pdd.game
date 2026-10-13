@@ -73,9 +73,85 @@ export function drawCar(g: Phaser.GameObjects.Graphics, color: number, courier =
 
 export type CarSticker = 'none' | 'stripes' | 'flash' | 'star' | 'heart' | 'flames' | 'checker' | 'triangle' | 'diamond' | 'ring' | 'arrow';
 
-/** Машина курьера с покраской и наклейкой из гаража (размер как у легковой). */
-export function drawPlayerCar(g: Phaser.GameObjects.Graphics, color: number, sticker: CarSticker) {
-  drawCar(g, color, true);
+export type CarModelId = 'sedan' | 'hatch' | 'pickup' | 'van' | 'retro' | 'electro';
+
+/** Посылка курьера на крыше. */
+function roofParcel(g: Phaser.GameObjects.Graphics, y: number) {
+  g.fillStyle(COLORS.parcel).fillRect(-5, y, 10, 9);
+  g.fillStyle(0x9c5c26).fillRect(-5, y + 3.5, 10, 2);
+}
+
+/**
+ * Модели машины курьера из магазина (этап 17). Размер на дороге почти тот же, что у легковой:
+ * меняется только силуэт, на езду и правила модель не влияет.
+ */
+function drawModel(g: Phaser.GameObjects.Graphics, model: CarModelId, color: number) {
+  const { w, h } = VEHICLE_SIZE.car;
+  switch (model) {
+    case 'hatch': {
+      // Короче, с большим задним стеклом.
+      body(g, w, h - 4, color, 8);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 3, -h / 2 + 8, w - 6, 7, 2);
+      g.fillStyle(COLORS.playerRoof).fillRoundedRect(-w / 2 + 3, -h / 2 + 16, w - 6, 11, 3);
+      roofParcel(g, -h / 2 + 17);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 3, h / 2 - 14, w - 6, 7, 2);
+      lights(g, w, h - 4);
+      break;
+    }
+    case 'pickup': {
+      body(g, w, h + 2, color, 5);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 3, -h / 2 + 7, w - 6, 6, 2);
+      g.fillStyle(COLORS.playerRoof).fillRoundedRect(-w / 2 + 3, -h / 2 + 14, w - 6, 7, 2);
+      // Открытый кузов с коробками.
+      g.fillStyle(0x000000, 0.28).fillRect(-w / 2 + 3, -h / 2 + 23, w - 6, h - 22);
+      g.fillStyle(COLORS.parcel).fillRect(-7, -h / 2 + 25, 7, 7).fillRect(1, -h / 2 + 27, 6, 6).fillRect(-5, -h / 2 + 34, 9, 6);
+      g.fillStyle(0x9c5c26).fillRect(-7, -h / 2 + 27.5, 7, 1.5).fillRect(-5, -h / 2 + 36.5, 9, 1.5);
+      lights(g, w, h + 2);
+      break;
+    }
+    case 'van': {
+      body(g, w + 2, h + 4, color, 4);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, 6, 2);
+      // Высокая грузовая крыша с полосой «Стрелы».
+      g.fillStyle(0xffffff, 0.18).fillRect(-w / 2 + 1, -h / 2 + 10, w - 2, h - 10);
+      g.fillStyle(COLORS.playerRoof).fillRect(-w / 2 + 1, -h / 2 + 18, w - 2, 5);
+      roofParcel(g, -h / 2 + 26);
+      lights(g, w + 2, h + 4);
+      break;
+    }
+    case 'retro': {
+      // Круглые крылья, хромированные бамперы, круглые фары.
+      g.fillStyle(COLORS.shadow, 0.25).fillRoundedRect(-w / 2 + 3, -h / 2 + 4, w, h, 9);
+      g.fillStyle(color);
+      for (const [x, y] of [[-w / 2 + 2, -h / 2 + 8], [w / 2 - 2, -h / 2 + 8], [-w / 2 + 2, h / 2 - 8], [w / 2 - 2, h / 2 - 8]] as const) g.fillCircle(x, y, 5);
+      g.fillRoundedRect(-w / 2 + 1, -h / 2, w - 2, h, 9);
+      g.fillStyle(0xd9dde3).fillRect(-w / 2 + 2, -h / 2 - 1, w - 4, 2).fillRect(-w / 2 + 2, h / 2 - 1, w - 4, 2);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 4, -h / 2 + 9, w - 8, 6, 3);
+      g.fillStyle(COLORS.playerRoof).fillRoundedRect(-w / 2 + 4, -h / 2 + 16, w - 8, 12, 4);
+      roofParcel(g, -h / 2 + 17.5);
+      g.fillStyle(COLORS.glass).fillRoundedRect(-w / 2 + 5, h / 2 - 10, w - 10, 5, 2);
+      g.fillStyle(COLORS.headlight).fillCircle(-w / 2 + 4, -h / 2 + 3, 2).fillCircle(w / 2 - 4, -h / 2 + 3, 2);
+      g.fillStyle(COLORS.taillight).fillCircle(-w / 2 + 4, h / 2 - 3, 1.6).fillCircle(w / 2 - 4, h / 2 - 3, 1.6);
+      break;
+    }
+    case 'electro': {
+      // Обтекаемый, панорамная стеклянная крыша, световые полосы спереди и сзади.
+      body(g, w, h, color, 11);
+      g.fillStyle(COLORS.glass, 0.9).fillRoundedRect(-w / 2 + 3, -h / 2 + 8, w - 6, h - 17, 6);
+      g.fillStyle(0xffffff, 0.18).fillRoundedRect(-w / 2 + 5, -h / 2 + 10, 4, h - 22, 2);
+      roofParcel(g, -h / 2 + 18);
+      g.fillStyle(0xcff4ff).fillRect(-w / 2 + 3, -h / 2 + 1.5, w - 6, 1.6);
+      g.fillStyle(COLORS.taillight).fillRect(-w / 2 + 3, h / 2 - 2.5, w - 6, 1.4);
+      break;
+    }
+    default:
+      drawCar(g, color, true);
+  }
+}
+
+/** Машина курьера с моделью, покраской и наклейкой из магазина. */
+export function drawPlayerCar(g: Phaser.GameObjects.Graphics, color: number, sticker: CarSticker, model: CarModelId = 'sedan') {
+  drawModel(g, model, color);
   const { w, h } = VEHICLE_SIZE.car;
   const hood = -h / 2 + 4;
   switch (sticker) {

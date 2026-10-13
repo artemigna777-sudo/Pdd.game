@@ -8,7 +8,8 @@
  * пройдены и верных от 80%, на карте появляется флажок доставки → финал главы и награды.
  */
 import type * as Phaser from 'phaser';
-import { playSound } from '../audio/feedback.ts';
+import { playHorn, playSound } from '../audio/feedback.ts';
+import { hornOf } from '../progress/garage.ts';
 import { loadMapping, loadQuestions } from '../data/questions.ts';
 import type { CityData, CityScene, RuleHint } from '../game/city/CityScene.ts';
 import {
@@ -34,6 +35,9 @@ import {
 } from '../progress/progress.ts';
 import { getSettings, onSettingsChange } from '../settings.ts';
 import { PROLOGUE, STORY, beatThresholds, fill, type Line } from '../story/story.ts';
+import { sceneLines, type StoryScene } from '../story/plot.ts';
+import { PLOT } from '../story/turbo.ts';
+import { recordDecision, storyContext } from '../progress/storyProgress.ts';
 import { chapterInfo, type Mapping } from '../world/mapping.ts';
 import { avatar, playCutscene, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
@@ -219,15 +223,22 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     if (pause && game.scene.isPaused('city')) game.scene.resume('city');
     return true;
   };
-  const cutscene = (lines: Line[], last?: string) => paused(() => playCutscene(lines, { last }).then(() => undefined));
+  /** Выбор в развилке сюжета записывается сразу — даже если сцену потом закроют. */
+  const onChoice = (line: Line, value: string) => {
+    if (line.decision && recordDecision(progress(), line.decision, value, Date.now())) saveProgress();
+  };
+  const cutscene = (lines: Line[], last?: string) => paused(() => playCutscene(lines, { last, onChoice }).then(() => undefined));
   /** Сцена с выбором: undefined — экран закрыт. */
   const choose = async (lines: Line[], last?: string): Promise<string | null | undefined> => {
     let value: string | undefined;
     const ok = await paused(async () => {
-      value = await playCutscene(lines, { last });
+      value = await playCutscene(lines, { last, onChoice });
     });
     return ok ? (value ?? null) : undefined;
   };
+
+  /** Реплики по решениям игрока (герои помнят выбор) и развилки этой сцены. */
+  const plotScene = (key: StoryScene, base: readonly Line[]) => sceneLines(chapterId, key, base, storyContext(progress()), PLOT);
 
   const seen = (id: string) => chapterState(progress(), chapterId).seen.includes(id);
   const see = (id: string) => {
@@ -244,7 +255,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     for (const [i, need] of [first, second].entries()) {
       const id = `beat${i + 1}`;
       if (r.pointsDone >= need && !seen(id)) {
-        if (!(await cutscene(story.beats[i], 'Дальше'))) return;
+        if (!(await cutscene(plotScene(i ? 'beat2' : 'beat1', story.beats[i]), 'Дальше'))) return;
         see(id);
       }
     }
@@ -255,7 +266,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
     }
     if (canDeliver(r)) {
       if (!seen('ready')) {
-        if (!(await cutscene(fill(story.ready, { percent: percent(r.share) }), 'Везу!'))) return;
+        if (!(await cutscene(plotScene('ready', fill(story.ready, { percent: percent(r.share) })), 'Везу!'))) return;
         see('ready');
       } else showToast(`Флажок доставки на карте: ${story.goal}.`);
       goalShown = true;
@@ -445,7 +456,9 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
   /** Посылка доставлена: финал главы, награды, следующая глава. */
   const onGoal = async () => {
     if (!info || !story || !mapping) return;
-    if (!(await cutscene(story.finale, 'Награда'))) return;
+    // Посылка у адресата — клаксон из магазина.
+    playHorn(hornOf(progress()));
+    if (!(await cutscene(plotScene('finale', story.finale), 'Награда'))) return;
     const out = deliver(progress(), info, Date.now());
     trackEvent(chapterDone(info.id), `Глава ${info.id.replace(/\D/g, '')} пройдена`);
     const race = rival ? settleRace(progress(), info, rival, Date.now()) : undefined;
@@ -743,7 +756,7 @@ export function cityScreen(game: Phaser.Game, chapterId: string, nav: CityNav): 
       see('prologue');
     }
     if (!seen('intro')) {
-      if (!(await cutscene(story.intro))) return;
+      if (!(await cutscene(plotScene('intro', story.intro)))) return;
       see('intro');
     }
     if (!(await raceIntro())) return;

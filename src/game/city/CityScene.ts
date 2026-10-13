@@ -16,6 +16,9 @@ import { LANE_WIDTH, RoadGraph, roadHalfWidth, type Lane, type PathPart } from '
 import { TEMPLATES, type Maneuver, type TemplateInfo } from '../../world/templates.ts';
 import { bakedTexture } from '../bake.ts';
 import { PIXEL_RATIO } from '../display.ts';
+import { progress } from '../../progress/progress.ts';
+import { COLORS } from './art.ts';
+import { ThemeFx, applyCityTheme } from './themes.ts';
 import type { InteriorScene, MinigameKind } from '../interior/InteriorScene.ts';
 import { Atmosphere } from './atmosphere.ts';
 import { MapRenderer } from './mapRenderer.ts';
@@ -195,6 +198,7 @@ export class CityScene extends Phaser.Scene {
   private graph!: RoadGraph;
   private mapView!: MapRenderer;
   private atmosphere!: Atmosphere;
+  private themeFx?: ThemeFx;
   private player!: Player;
   private pois: Poi[] = [];
   private signals: Signal[] = [];
@@ -271,8 +275,11 @@ export class CityScene extends Phaser.Scene {
     this.points = chapter.points;
     this.graph = new RoadGraph(map);
     this.rules = districtRules(this.graph, this.points);
+    // Тема города из магазина — до отрисовки карты (этап 17).
+    applyCityTheme(progress().garage.theme);
     this.mapView = new MapRenderer(this, this.graph, this.points, this.rules);
     this.atmosphere = new Atmosphere(this);
+    this.themeFx = new ThemeFx(this, PIXEL_RATIO);
     if (!this.shift) this.buildPois();
     this.buildSignals();
     this.buildRuleSigns();
@@ -286,7 +293,7 @@ export class CityScene extends Phaser.Scene {
     this.joyGfx = this.add.graphics().setDepth(30);
 
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#5b9a4f');
+    cam.setBackgroundColor(COLORS.grass);
     cam.setZoom(PIXEL_RATIO);
     cam.setBounds(map.bounds.x, map.bounds.y, map.bounds.width, map.bounds.height);
     cam.startFollow(this.player.container, true, 0.1, 0.1);
@@ -1413,6 +1420,7 @@ export class CityScene extends Phaser.Scene {
     this.player.gas = this.pedalGas || this.joyGas;
     if (this.control === 'joystick') this.driveJoystick();
     this.player.update(dt);
+    this.themeFx?.update(deltaMs);
     this.active?.kit?.update(dt);
     this.violation?.kit?.update(dt);
     this.updateSignals(dt);

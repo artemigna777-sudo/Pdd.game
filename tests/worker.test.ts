@@ -90,3 +90,85 @@ test('ошибки GoatCounter: неверный ключ GoatCounter, сбой,
   assert.equal(down.status, 502);
   assert.deepEqual(await down.json(), { error: 'gc-network' });
 });
+
+// ─── Итог дуэли (этап 14) ────────────────────────────────────────────────────────
+
+/** Workers KV в памяти: значения и срок хранения. */
+function fakeKv() {
+  const store = new Map<string, { value: string; ttl?: number }>();
+  return {
+    store,
+    get: async (key: string) => store.get(key)?.value ?? null,
+    put: async (key: string, value: string, opts?: { expirationTtl?: number }) => void store.set(key, { value, ttl: opts?.expirationTtl }),
+  };
+}
+
+const duelCall = (path: string, env: object, init: { method?: string; body?: string } = {}) =>
+  worker.fetch(
+    new Request(`https://kurier-pdd-stats.artemigna777.workers.dev${path}`, {
+      method: init.method ?? 'GET',
+      headers: { Origin: GAME, 'Content-Type': 'application/json' },
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    }),
+    env,
+  );
+
+test('дуэль: друг оставляет итог, автор забирает его; хранится 30 дней и только имя, ответы и время', async () => {
+  const DUELS = fakeKv();
+  const env = { ...ENV, DUELS };
+  assert.equal((await duelCall('/duel/abc123', env)).status, 404);
+  const body = JSON.stringify({ name: '  Вася \n Пупкин  ', answers: '0120120120', ms: 95_000, extra: 'лишнее', q: [1, 2] });
+  const put = await duelCall('/duel/abc123', env, { method: 'PUT', body });
+  assert.equal(put.status, 201);
+  assert.equal(put.headers.get('Access-Control-Allow-Origin'), GAME);
+  assert.deepEqual(await (await duelCall('/duel/abc123', env)).json(), { name: 'Вася Пупкин', answers: '0120120120', ms: 95_000 });
+  assert.equal(DUELS.store.get('duel:abc123')!.ttl, 30 * 24 * 3600);
+  // Второй ответ на тот же вызов не заменяет первый.
+  assert.equal((await duelCall('/duel/abc123', env, { method: 'PUT', body: JSON.stringify({ name: 'Злоумышленник', answers: '0000000000', ms: 1 }) })).status, 409);
+  assert.equal((await (await duelCall('/duel/abc123', env)).json()).name, 'Вася Пупкин');
+  // Предварительный запрос браузера разрешает PUT с JSON.
+  const pre = await duelCall('/duel/abc123', env, { method: 'OPTIONS' });
+  assert.match(pre.headers.get('Access-Control-Allow-Methods') ?? '', /PUT/);
+  assert.match(pre.headers.get('Access-Control-Allow-Headers') ?? '', /Content-Type/);
+  // Итог дуэли не требует ключа автора и не открывает статистику.
+  assert.equal((await duelCall('/api/v0/stats/total', env)).status, 401);
+});
+
+test('дуэль: испорченные данные, чужие адреса и посредник без хранилища', async () => {
+  const env = { ...ENV, DUELS: fakeKv() };
+  const bad = [
+    '{',
+    JSON.stringify({ name: '', answers: '0120120120', ms: 1 }),
+    JSON.stringify({ name: 'Вася', answers: '012', ms: 1 }),
+    JSON.stringify({ name: 'Вася', answers: '012012012a', ms: 1 }),
+    JSON.stringify({ name: 'Вася', answers: '0120120120', ms: -5 }),
+    JSON.stringify({ name: 'Вася', answers: '0120120120', ms: 99_999_999 }),
+  ];
+  for (const body of bad) assert.equal((await duelCall('/duel/abc123', env, { method: 'PUT', body })).status, 400, body);
+  assert.equal((await duelCall('/duel/abc123', env, { method: 'PUT', body: 'x'.repeat(2000) })).status, 413);
+  assert.equal((await duelCall('/duel/AB', env)).status, 401, 'неправильный номер дуэли — не адрес дуэли, а без ключа автора посредник ничего не отдаёт');
+  assert.equal((await duelCall('/duel/abc123', env, { method: 'DELETE' })).status, 405);
+  const noKv = await duelCall('/duel/abc123', ENV);
+  assert.equal(noKv.status, 503);
+  assert.deepEqual(await noKv.json(), { error: 'kv' });
+});
+
+test('загрузка посредника: номер хранилища дуэлей из списка wrangler и настройки с привязкой DUELS', async () => {
+  // @ts-expect-error — обычный JS-модуль без типов.
+  const { findKvId, deployConfig } = await import('../stats-worker/kv-config.mjs');
+  const list = `[{"id":"aaa","title":"other"},{"id":"bbb","title":"kurier-pdd-stats-kurier-pdd-duels"}]`;
+  assert.equal(findKvId(`Wrangler 4\n${list}\n`), 'bbb');
+  assert.equal(findKvId('[{"id":"ccc","title":"kurier-pdd-duels"}]'), 'ccc');
+  assert.equal(findKvId('[]'), undefined);
+  assert.equal(findKvId('ошибка: нет доступа'), undefined);
+  const { readFileSync } = await import('node:fs');
+  const config = deployConfig(readFileSync('stats-worker/wrangler.jsonc', 'utf8'), 'ddd');
+  assert.equal(config.name, 'kurier-pdd-stats');
+  assert.deepEqual(config.kv_namespaces, [{ binding: 'DUELS', id: 'ddd' }]);
+  // Комнаты дуэли в реальном времени — Durable Object LiveRoom; без них загрузка тоже возможна.
+  assert.deepEqual(config.durable_objects, { bindings: [{ name: 'LIVE', class_name: 'LiveRoom' }] });
+  assert.deepEqual(config.migrations, [{ tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] }]);
+  const plain = deployConfig(readFileSync('stats-worker/wrangler.jsonc', 'utf8'), undefined, false);
+  assert.equal(plain.durable_objects, undefined);
+  assert.equal(plain.kv_namespaces, undefined);
+});

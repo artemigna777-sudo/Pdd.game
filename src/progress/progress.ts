@@ -215,6 +215,8 @@ export interface ModesState {
   courier?: CourierRecord[];
   /** «Ситуации на дороге» (этап 15). */
   situations?: SituationsState;
+  /** Дуэль в реальном времени (этап 16): победы, поражения, ничьи. */
+  live?: { wins: number; losses: number; draws: number };
 }
 
 export interface ProgressData {
@@ -341,6 +343,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     }
     const situations = sanitizeSituations(m.situations);
     if (situations) data.modes.situations = situations;
+    const live = m.live;
+    if (isObj(live) && isInt(live.wins) && isInt(live.losses) && isInt(live.draws)) data.modes.live = { wins: live.wins, losses: live.losses, draws: live.draws };
   }
   const plan = raw.plan;
   if (isObj(plan) && isInt(plan.date) && isInt(plan.total, 1)) {

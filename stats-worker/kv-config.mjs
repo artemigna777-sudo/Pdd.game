@@ -3,7 +3,8 @@
  * и собрать wrangler.deploy.json — те же настройки, что wrangler.jsonc, плюс привязка `DUELS`.
  *
  *   node kv-config.mjs id < вывод «wrangler kv namespace list»   — напечатать номер хранилища или ничего
- *   DUELS_KV_ID=… node kv-config.mjs config                        — записать wrangler.deploy.json
+ *   DUELS_KV_ID=… node kv-config.mjs config [--no-live]            — записать wrangler.deploy.json
+ *                                                                    (с комнатами дуэли LIVE или без них)
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -25,10 +26,16 @@ export function findKvId(text) {
   return hit && typeof hit.id === 'string' ? hit.id : undefined;
 }
 
-/** Настройки wrangler с привязкой хранилища. */
-export function deployConfig(jsonc, id) {
+/** Комнаты дуэли в реальном времени (этап 16): Durable Object `LiveRoom`, привязка `LIVE`. */
+export const LIVE_ROOMS = {
+  durable_objects: { bindings: [{ name: 'LIVE', class_name: 'LiveRoom' }] },
+  migrations: [{ tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] }],
+};
+
+/** Настройки wrangler: привязка хранилища (если есть номер) и комнаты дуэли (если `live`). */
+export function deployConfig(jsonc, id, live = true) {
   const config = JSON.parse(jsonc.replace(/^\s*\/\/.*$/gm, ''));
-  return { ...config, kv_namespaces: [{ binding: 'DUELS', id }] };
+  return { ...config, ...(id ? { kv_namespaces: [{ binding: 'DUELS', id }] } : {}), ...(live ? LIVE_ROOMS : {}) };
 }
 
 const [cmd] = process.argv.slice(2);
@@ -36,8 +43,8 @@ if (cmd === 'id') {
   const id = findKvId(readFileSync(0, 'utf8'));
   if (id) process.stdout.write(id);
 } else if (cmd === 'config') {
-  const id = process.env.DUELS_KV_ID;
-  if (!id) throw new Error('Нет DUELS_KV_ID');
+  // `config` — с комнатами дуэли, `config --no-live` — без них (если Cloudflare их не принял).
+  const live = !process.argv.includes('--no-live');
   const here = new URL('.', import.meta.url);
-  writeFileSync(new URL('wrangler.deploy.json', here), JSON.stringify(deployConfig(readFileSync(new URL('wrangler.jsonc', here), 'utf8'), id), null, 2) + '\n');
+  writeFileSync(new URL('wrangler.deploy.json', here), JSON.stringify(deployConfig(readFileSync(new URL('wrangler.jsonc', here), 'utf8'), process.env.DUELS_KV_ID, live), null, 2) + '\n');
 }

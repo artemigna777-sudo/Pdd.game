@@ -2,7 +2,8 @@ name: Посредник статистики на Cloudflare
 
 # Загружает stats-worker/worker.js в Cloudflare Worker kurier-pdd-stats: на iPhone вставить код
 # в редактор Cloudflare не получается. Заодно создаёт хранилище Workers KV kurier-pdd-duels для итогов
-# дуэлей и подключает его к посреднику как DUELS. Нужен секрет репозитория CLOUDFLARE_API_TOKEN
+# дуэлей и подключает его к посреднику как DUELS, а комнаты дуэли в реальном времени — как LIVE
+# (Durable Object LiveRoom, бесплатный тариф Workers их поддерживает). Нужен секрет репозитория CLOUDFLARE_API_TOKEN
 # (Cloudflare → профиль → API Tokens → шаблон «Edit Cloudflare Workers»). Секреты самого
 # посредника (GC_TOKEN, STATS_KEY) задаются в Cloudflare и при загрузке кода не меняются.
 
@@ -47,10 +48,14 @@ jobs:
             npx --yes wrangler@4 kv namespace create kurier-pdd-duels || true
             ID=$(list || true)
           fi
-          if [ -n "$ID" ]; then
-            DUELS_KV_ID="$ID" node kv-config.mjs config
-            npx --yes wrangler@4 deploy --config wrangler.deploy.json
-          else
+          if [ -z "$ID" ]; then
             echo "::warning::Не удалось найти или создать хранилище Workers KV для дуэлей — у ключа CLOUDFLARE_API_TOKEN нет права «Workers KV Storage: Edit»? Посредник загружен без итогов дуэлей."
-            npx --yes wrangler@4 deploy
+          fi
+          # Сначала — с комнатами дуэли в реальном времени (Durable Object LiveRoom). Если Cloudflare их
+          # не принял, загрузить без них: статистика и дуэли по ссылке должны работать в любом случае.
+          DUELS_KV_ID="$ID" node kv-config.mjs config
+          if ! npx --yes wrangler@4 deploy --config wrangler.deploy.json; then
+            echo "::warning::Cloudflare не принял комнаты дуэли в реальном времени (Durable Objects). Посредник загружен без них: живая дуэль недоступна, остальное работает."
+            DUELS_KV_ID="$ID" node kv-config.mjs config --no-live
+            npx --yes wrangler@4 deploy --config wrangler.deploy.json
           fi

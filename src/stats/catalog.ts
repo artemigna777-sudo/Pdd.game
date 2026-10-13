@@ -19,6 +19,7 @@ export const SCREENS: readonly (readonly [path: string, title: string])[] = [
   ['/tale', 'Дополнительный сюжет'],
   ['/duel', 'Дуэль'],
   ['/duel-invite', 'Дуэль: вызов по ссылке'],
+  ['/live', 'Дуэль в реальном времени'],
   ['/signs', 'Знакодекс'],
   ['/patrol', 'Пост ДПС'],
   ['/courier', 'Смена курьера'],

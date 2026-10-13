@@ -4936,3 +4936,129 @@ a.btn {
 .tale-summary p {
   margin: 0;
 }
+
+/* ─── Дуэль в реальном времени (этап 16) ─────────────────────────────────────── */
+.live-hub {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.live-hub .section-title {
+  margin: 0;
+}
+.live-join {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.live-join .plate-input,
+.live-name {
+  min-width: 0;
+  width: 100%;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.live-name {
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 12px;
+}
+.live-lobby {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.live-code {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.live-peer {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.live-peer.is-ready {
+  color: var(--ok-text, var(--ok));
+}
+.live-start {
+  margin-top: 12px;
+  width: 100%;
+}
+.live-countdown {
+  margin: 18vh 0 0;
+  text-align: center;
+  font-size: 5rem;
+  font-weight: 800;
+  color: var(--text);
+  animation: live-pop 0.8s ease-out infinite;
+}
+@keyframes live-pop {
+  from {
+    transform: scale(1.25);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-countdown {
+    animation: none;
+  }
+}
+.live-result {
+  text-align: center;
+  margin-bottom: 14px;
+}
+.live-verdict {
+  margin: 0 0 6px;
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+.live-result.is-win .live-verdict {
+  color: var(--ok-text, var(--ok));
+}
+.live-result.is-loss .live-verdict {
+  color: var(--bad-text, var(--bad));
+}
+.live-final {
+  margin: 0 0 6px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.live-rounds {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.live-rounds li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.live-rounds__mark {
+  font-size: 1.3rem;
+  text-align: center;
+}
+.live-note {
+  margin-top: 12vh;
+  text-align: center;
+}
+.live-lobby .qr {
+  width: min(170px, 50vw);
+}

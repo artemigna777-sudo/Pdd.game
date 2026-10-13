@@ -262,6 +262,9 @@ export function courierScreen(game: Phaser.Game, chapterId: string, nav: Courier
     sheet,
   );
 
+  // Браузерным тестам: закончить смену, когда нужно, а не по часам медленного сервера CI.
+  if (import.meta.env.DEV) (window as unknown as { __courierLeft?: (s: number) => void }).__courierLeft = (s) => (left = s);
+
   // Время идёт, пока город на экране (вопрос у двери время не отнимает).
   const ticker = window.setInterval(() => {
     const now = performance.now();

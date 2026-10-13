@@ -95,7 +95,7 @@ export interface Video3 {
 }
 
 const font = (file: string) => readFileSync(new URL(`../video/fonts/${file}`, import.meta.url)).toString('base64');
-const FONTS = `@font-face { font-family: 'Montserrat'; font-weight: 100 900; src: url(data:font/woff2;base64,${font('montserrat-cyrillic.woff2')}) format('woff2');
+export const FONTS = `@font-face { font-family: 'Montserrat'; font-weight: 100 900; src: url(data:font/woff2;base64,${font('montserrat-cyrillic.woff2')}) format('woff2');
         unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
       @font-face { font-family: 'Montserrat'; font-weight: 100 900; src: url(data:font/woff2;base64,${font('montserrat-latin.woff2')}) format('woff2');
         unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }`;
@@ -105,7 +105,7 @@ const FONTS = `@font-face { font-family: 'Montserrat'; font-weight: 100 900; src
 const ANGLES = [0, 30, 60, 90, 120, 150];
 const hatch = (id: string, step: number, w: number, ink: string, angle: number, extra = '') =>
   `<pattern id="${id}" width="${step}" height="${step}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})"><path d="M-1,${step / 2} H${step + 1}" stroke="${ink}" stroke-width="${w}" ${extra}/></pattern>`;
-const PATTERNS = (ink: string) => `<svg width="0" height="0" style="position:absolute"><defs>
+export const PATTERNS = (ink: string) => `<svg width="0" height="0" style="position:absolute"><defs>
   ${ANGLES.map((a) => hatch(`a${a}`, 8, 1.5, ink, a) + hatch(`b${a}`, 5, 1.6, ink, a) + hatch(`c${a}`, 12, 1.3, ink, a)).join('\n  ')}
   ${hatch('sky', 11, 1.1, ink, 0, 'stroke-opacity="0.55"')}
   <pattern id="x45" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0,3 H6 M3,0 V6" stroke="${ink}" stroke-width="1.6"/></pattern>
@@ -119,7 +119,7 @@ const svgLines = (p: Pen, body: string, stroke: number, extra = '') =>
 
 const camAt = (fx: number, fy: number, s: number, cy = 960) => ({ x: 540 - fx * s, y: cy - fy * s, scale: s });
 
-function dialogue(v: Video3, T: Timing): { html: string; tweens: string } {
+export function dialogue(v: Pick<Video3, 'lines' | 'scene' | 'heads' | 'wide' | 'ab' | 'closeScale'>, T: Pick<Timing, 'lines' | 'sub'>): { html: string; tweens: string } {
   const close = v.closeScale ?? 2.2;
   const wide = v.wide ?? { fx: 540, fy: 1060, s: 1 };
   const ab = v.ab ?? { fx: 540, fy: 1060, s: 1.45 };
@@ -194,7 +194,7 @@ function tableau(v: Video3, T: Timing): { html: string; tweens: string } {
   return { html, tweens: tw.join('\n      ') };
 }
 
-function ctaBio(v: Video3, T: Timing): { html: string; tweens: string } {
+export function ctaBio(v: Pick<Video3, 'cta' | 'bioGlyph'>, T: Pick<Timing, 'cta' | 'ctaOut' | 'bio'>): { html: string; tweens: string } {
   const html = `<div class="clip scene black" id="cta" data-start="${T.cta[0]}" data-duration="${(T.bio[0] - T.cta[0]).toFixed(3)}">
         <div class="ctaBox" id="ctaBox">${v.cta.lines.map((l, i) => `<div id="cta${i}" ${i === v.cta.accent ? 'class="acc"' : ''}>${l}</div>`).join('')}</div>
       </div>
@@ -215,19 +215,8 @@ function ctaBio(v: Video3, T: Timing): { html: string; tweens: string } {
 const bioIcon = (glyph?: string) =>
   bracketIcon(`<rect x="-46" y="-46" width="92" height="92" rx="20" fill="#1c1c1e" stroke="#1c1c1e"/>${glyph ? `<g stroke="#4a4a4e" stroke-width="5">${glyph}</g>` : ''}`, C.line, C.line);
 
-export function buildVideo3(v: Video3): string {
-  const T = v.format === 'long' ? LONG : SHORT;
-  const d = dialogue(v, T);
-  const tb = tableau(v, T);
-  const cb = ctaBio(v, T);
-  return `<!doctype html>
-<html lang="ru" data-resolution="portrait">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=${W}, height=${H}" />
-    <title>${v.title}</title>
-    <script src="gsap.min.js"></script>
-    <style>
+/** Стили серии (общие для третьей серии и роликов по картинкам, `engine4.ts`). */
+export const CSS3 = `
       ${FONTS}
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: #000; }
@@ -253,7 +242,22 @@ export function buildVideo3(v: Video3): string {
       #bioIcon { width: 200px; height: 200px; }
       #bioText { margin-top: 34px; font-size: 50px; font-weight: 400; color: #fff; }
       #white { position: absolute; inset: 0; background: #f2efe8; opacity: 0; pointer-events: none; }
-      #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+      #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }`;
+
+export function buildVideo3(v: Video3): string {
+  const T = v.format === 'long' ? LONG : SHORT;
+  const d = dialogue(v, T);
+  const tb = tableau(v, T);
+  const cb = ctaBio(v, T);
+  return `<!doctype html>
+<html lang="ru" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=${W}, height=${H}" />
+    <title>${v.title}</title>
+    <script src="gsap.min.js"></script>
+    <style>
+      ${CSS3}
     </style>
   </head>
   <body>

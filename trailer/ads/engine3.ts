@@ -114,7 +114,7 @@ export const PATTERNS = (ink: string) => `<svg width="0" height="0" style="posit
   <pattern id="hd" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="${ink}"/><circle cx="6" cy="6" r="1.1" fill="${ink}"/></pattern>
 </defs></svg>`;
 
-const svgLines = (p: Pen, body: string, stroke: number, extra = '') =>
+export const svgLines = (p: Pen, body: string, stroke: number, extra = '') =>
   `<svg class="ln" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" overflow="visible" ${extra}><g fill="none" stroke="${p.ink}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" color="${p.ink}">${body}</g></svg>`;
 
 const camAt = (fx: number, fy: number, s: number, cy = 960) => ({ x: 540 - fx * s, y: cy - fy * s, scale: s });

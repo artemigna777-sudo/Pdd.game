@@ -1,25 +1,35 @@
 /**
- * Этап 18: анимированные сцены сюжета. Каждая сцена — лёгкий SVG без id и ссылок, все шаги
- * анимации находят свои элементы, а сюжет ссылается только на существующие сцены.
+ * Этап 18: кат-сцены сюжета. Каждая сцена — разметка без скриптов и ссылок, её картинки лежат в
+ * public/scenes и лёгкие, все шаги анимации находят свои элементы, а сюжет ссылается только на
+ * существующие сцены.
  */
 import assert from 'node:assert/strict';
+import { existsSync, statSync } from 'node:fs';
 import { test } from 'node:test';
 import { FILM_IDS, FILMS } from '../src/story/films.ts';
 import { hasFilm, plotContext, plotLines, replayLines } from '../src/story/plot.ts';
 import type { Line } from '../src/story/story.ts';
 import { DECISIONS, ENDINGS, PLOT } from '../src/story/turbo.ts';
 
-test('сцены: SVG без id, ссылок и скриптов, лёгкие; шаги находят элементы; не длиннее 10 секунд', () => {
+test('сцены: без скриптов и ссылок, картинки на месте и лёгкие, шаги находят элементы, не длиннее 10 секунд', () => {
   for (const id of FILM_IDS) {
     const f = FILMS[id];
-    assert.match(f.svg, /^<svg viewBox="0 0 360 200"[^>]*>.*<\/svg>$/s, id);
-    assert.doesNotMatch(f.svg, /\sid=|href|<script|url\(/, `${id}: без id, ссылок и скриптов`);
-    const open = (f.svg.match(/<(svg|g)[\s>]/g) ?? []).length;
-    const close = (f.svg.match(/<\/(svg|g)>/g) ?? []).length;
+    assert.doesNotMatch(f.html, /\sid=|href|<script|\son[a-z]+=/, `${id}: без id, ссылок и скриптов`);
+    const open = (f.html.match(/<div[\s>]/g) ?? []).length;
+    const close = (f.html.match(/<\/div>/g) ?? []).length;
     assert.equal(open, close, `${id}: теги закрыты`);
-    assert.ok(f.svg.length < 40_000, `${id}: сцена лёгкая (${f.svg.length} символов)`);
-    assert.ok(f.title.length > 10, `${id}: описание для экранного диктора`);
-    const classes = new Set([...f.svg.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
+    assert.ok(f.title.length > 20, `${id}: описание для экранного диктора`);
+    // Картинки — только свои, из public/scenes, и все заранее загружаются.
+    const srcs = [...f.html.matchAll(/src="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(srcs.length > 0, `${id}: есть кадры`);
+    for (const src of srcs) {
+      assert.match(src, /^\/scenes\/ch\d+\/[a-z0-9-]+\.webp$/, `${id}: ${src}`);
+      const file = `public${src}`;
+      assert.ok(existsSync(file), `${id}: нет файла ${file}`);
+      assert.ok(statSync(file).size < 300_000, `${id}: ${file} тяжелее 300 КБ`);
+      assert.ok(f.images.includes(src), `${id}: ${src} не загружается заранее`);
+    }
+    const classes = new Set([...f.html.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
     for (const s of f.steps) {
       assert.match(s.sel, /^\.[a-z0-9-]+$/, `${id}: шаг по классу`);
       assert.ok(classes.has(s.sel.slice(1)), `${id}: нет элемента ${s.sel}`);
@@ -29,6 +39,10 @@ test('сцены: SVG без id, ссылок и скриптов, лёгкие;
     }
     for (const snd of f.sounds ?? []) assert.ok(snd.at >= 0 && snd.at <= 10, `${id}: звук ${snd.name}`);
   }
+  // Все кадры главы вместе — около мегабайта: игра хранится на телефоне целиком.
+  const all = new Set(FILM_IDS.flatMap((id) => FILMS[id].images));
+  const total = [...all].reduce((sum, src) => sum + statSync(`public${src}`).size, 0);
+  assert.ok(total < 1_500_000, `кадры весят ${Math.round(total / 1024)} КБ`);
 });
 
 test('большая развилка главы 3: сцена разговора, сцена выбора и своя сцена у каждого варианта', () => {

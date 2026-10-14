@@ -1,6 +1,6 @@
 /**
- * Этап 18: анимированные сцены сюжета. В большой развилке главы 3 над репликами идёт «мультик»:
- * Турбин зовёт Артёма в «Турбо», Артём выбирает, и у каждого выбора своя сцена.
+ * Этап 18: кат-сцены сюжета. В большой развилке главы 3 на весь экран идёт сцена по рисованным кадрам:
+ * Турбин зовёт Артёма в «Турбо», реплики — субтитрами, выбор выезжает снизу, у каждого выбора своя сцена.
  * Кадры для просмотра: FILM_SHOTS=<папка> npx playwright test films.
  */
 import { readFileSync } from 'node:fs';
@@ -63,10 +63,14 @@ for (const [n, value, film, reply] of [
     const text = dialog.locator('.cutscene__text');
     while (!(await text.textContent())?.startsWith('Можно с тобой поговорить')) await dialog.getByRole('button', { name: 'Далее' }).tap();
 
-    // Внедорожник «Турбо», Турбин с ключами, Артём и печать «Правила — для медленных».
+    // На весь экран: внедорожник «Турбо», Турбин с ключами, Артём и печать «Правила — для медленных».
     await expect(screen).toBeVisible();
+    await expect(dialog).toHaveClass(/cutscene--full/);
     await expect(screen).toHaveAttribute('data-film', 'ch3-offer');
-    await expect(screen).toHaveAttribute('aria-label', /Турбо/);
+    await expect(screen).toHaveAttribute('aria-label', /Турбин/);
+    expect(await screen.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
+    // Кадры из public/scenes загрузились.
+    await expect.poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>('.cutscene__film img')].every((i) => i.complete && i.naturalWidth > 0))).toBe(true);
     expect(await running(page)).toBeGreaterThan(0);
     if (n === 0 && SHOTS) {
       const t0 = Date.now();
@@ -102,7 +106,7 @@ for (const [n, value, film, reply] of [
   });
 }
 
-test('сцена на маленьком экране помещается, а с «Уменьшить движение» сразу виден итоговый кадр', async ({ browser }) => {
+test('сцена на маленьком экране: на весь экран, выбор целиком виден; с «Уменьшить движение» сразу итоговый кадр', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const dialog = await openFork(page);
@@ -116,13 +120,12 @@ test('сцена на маленьком экране помещается, а �
   await dialog.getByRole('button', { name: 'Пропустить' }).tap();
   await expect(screen).toHaveAttribute('data-film', 'ch3-choice');
   await shot(page, 'small-choice');
-  const film = (await screen.boundingBox())!;
+  // Сцена — на весь экран, субтитры и кнопки выбора — поверх неё, целиком на экране.
+  expect(await screen.boundingBox()).toEqual({ x: 0, y: 0, width: 320, height: 568 });
+  const card = (await dialog.locator('.cutscene__card').boundingBox())!;
   const last = (await dialog.locator('.cutscene__choices button').last().boundingBox())!;
-  expect(film.y).toBeGreaterThanOrEqual(0);
-  // Сцене не хватило места — она меньше, но видна.
-  expect(film.height).toBeGreaterThanOrEqual(90);
+  expect(card.y).toBeGreaterThanOrEqual(0);
   expect(last.y + last.height).toBeLessThanOrEqual(568);
-  expect(film.y + film.height).toBeLessThanOrEqual((await dialog.locator('.cutscene__card').boundingBox())!.y);
   await context.close();
 });
 

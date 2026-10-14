@@ -8,6 +8,7 @@ import { resolveLines } from '../story/plot.ts';
 import { storyContext } from '../progress/storyProgress.ts';
 import { progress } from '../progress/progress.ts';
 import { el } from './dom.ts';
+import { FILMS, preloadFilms, type FilmId } from '../story/films.ts';
 import { playFilm, type FilmHandle } from './film.ts';
 
 /** Круглый портрет персонажа. */
@@ -62,6 +63,9 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
   // Реплики с условиями — по решениям игрока: герои помнят выбор (этап 17).
   const lines = resolveLines(source, storyContext(progress()));
   if (!lines.length) return Promise.resolve(undefined);
+  // Картинки кат-сцен (и в ответах на выбор) — заранее, чтобы кадр не появлялся пустым.
+  const films = (ls: readonly Line[]): FilmId[] => ls.flatMap((l) => [...(l.film ? [l.film] : []), ...(l.choices ?? []).flatMap((c) => films(c.reply ?? []))]);
+  preloadFilms(films(lines));
   return new Promise((resolve) => {
     let index = 0;
     let chosen: string | undefined;
@@ -76,7 +80,7 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
     const actions = el('div', { class: 'cutscene__actions' }, skip, next);
     const choices = el('div', { class: 'cutscene__choices', role: 'group', 'aria-label': 'Ваш ответ', hidden: true });
     const card = el('div', { class: 'cutscene__card' }, el('div', { class: 'cutscene__head' }, who, count), textEl, actions, choices);
-    // Анимированная сцена над репликами (этап 18): с реплики, у которой есть `film`, и до конца окна.
+    // Кат-сцена на весь экран (этап 18): с реплики, у которой есть `film`, и до конца окна; реплики — субтитрами.
     const screen = el('div', { class: 'cutscene__film', role: 'img', hidden: true });
     const root = el('div', { class: 'cutscene', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Сюжет' }, screen, card);
 
@@ -93,9 +97,10 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
     };
     const show = () => {
       const line = lines[index];
-      if (line.film && screen.dataset.film !== line.film) {
+      if (line.film && FILMS[line.film] && screen.dataset.film !== line.film) {
         stopFilm();
         screen.hidden = false;
+        root.classList.add('cutscene--full');
         film = playFilm(screen, line.film);
       }
       const narrator = line.who === 'narrator';

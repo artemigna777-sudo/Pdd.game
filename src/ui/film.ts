@@ -1,5 +1,5 @@
 /**
- * Проигрыватель анимированных сцен сюжета (`story/films.ts`, этап 18): SVG оживает анимациями
+ * Проигрыватель кат-сцен сюжета (`story/films.ts`, этап 18): кадры и эффекты оживают анимациями
  * браузера, звуки — синтез, как у остальной игры. При «Уменьшить движение» сразу виден итоговый кадр.
  */
 import { playSound } from '../audio/feedback.ts';
@@ -20,7 +20,7 @@ const reduced = () => {
 /** Показать сцену в `host` (заменяет то, что там было). */
 export function playFilm(host: HTMLElement, id: FilmId): FilmHandle {
   const film = FILMS[id];
-  host.innerHTML = film.svg;
+  host.innerHTML = `<div class="f-stage">${film.html}</div><div class="f-vignette"></div>`;
   host.dataset.film = id;
   host.setAttribute('aria-label', film.title);
   const anims: Animation[] = [];
@@ -31,7 +31,7 @@ export function playFilm(host: HTMLElement, id: FilmId): FilmHandle {
     const steps = [...film.steps].sort((a, b) => a.at - b.at);
     for (const s of steps) {
       const props = Object.keys(s.kf[0]).filter((k) => k !== 'offset' && k !== 'easing');
-      host.querySelectorAll<SVGElement>(s.sel).forEach((node, i) => {
+      host.querySelectorAll(s.sel).forEach((node, i) => {
         const keys = props.map((p) => `${s.sel}#${i}:${p}`);
         const fill: FillMode = keys.some((k) => seen.has(k)) ? 'forwards' : 'both';
         keys.forEach((k) => seen.add(k));

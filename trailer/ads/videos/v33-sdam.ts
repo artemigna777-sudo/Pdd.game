@@ -353,7 +353,8 @@ const END = S2.end;
 // Вступление образца (до 13,8 с) — только тихая бочка, поэтому в начале ролика играет кусок с басом
 // (13,84–28,1 с — ровно 8 тактов), дальше образец идёт как есть.
 const R_DROP = 56.03;
-const R_END = 64.4;
+// В 63,53 с образца начинается заставка TikTok со своим звуком — музыка до неё.
+const R_END = 63.5;
 const DROP = S2.shots[S2.shots.length - 1].t;
 const MONTH = S2.shots[0].t;
 const r2 = R_DROP - (DROP - MONTH);
@@ -388,7 +389,7 @@ export const v33: Video5 = {
       { from: 13.84, to: 28.1, at: shift + 13.84, novox: true, side: 2, vol: 0.85, fadeIn: 0.02 },
       { from: 28.1, to: r1, at: shift + 28.1, novox: true, vol: 0.85 },
       { from: r2, to: R_DROP, at: MONTH, novox: true, vol: 0.85 },
-      { from: R_DROP, to: R_END, at: DROP, vol: 0.65, fadeOut: 0.4 },
+      { from: R_DROP, to: R_END, at: DROP, vol: 0.65, fadeOut: 0.3 },
     ],
   },
 };

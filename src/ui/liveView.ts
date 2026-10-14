@@ -15,6 +15,9 @@ import { renderQuestionCard } from './questionCard.ts';
 import { situationCard, type SituationCard } from './situationsView.ts';
 import { showToast } from './toast.ts';
 
+/** Во сколько раз дольше раунды — только для браузерных тестов на медленном сервере (`window.__liveSlow`). */
+const slow = (): number => (import.meta.env.DEV ? ((window as unknown as { __liveSlow?: number }).__liveSlow ?? 1) : 1);
+
 export interface LiveDeps {
   code: string;
   host: boolean;
@@ -175,7 +178,7 @@ export function runLive(d: LiveDeps): { stop: () => void } {
         const sit = sitById.get(id)!;
         card = situationCard(sit, import.meta.env.BASE_URL, {
           order: optionOrder(sit),
-          limit: LIVE.situationSec,
+          limit: LIVE.situationSec * slow(),
           readMs: readMs(sit, false),
           last: i === items.length - 1,
           onAnswer: (choice, ms) => answer(choice, ms),
@@ -184,9 +187,10 @@ export function runLive(d: LiveDeps): { stop: () => void } {
         show(card.element);
       } else {
         const q = qById.get(id)!;
+        const questionSec = LIVE.questionSec * slow();
         const started = performance.now();
         const fill = el('div', { class: 'sit-timer__fill' });
-        const secs = el('span', { class: 'sit-timer__secs' }, `${LIVE.questionSec} с`);
+        const secs = el('span', { class: 'sit-timer__secs' }, `${questionSec} с`);
         const bar = el('div', { class: 'sit-timer', role: 'timer', 'aria-label': 'Время на ответ' }, el('div', { class: 'sit-timer__bar' }, fill), secs);
         const next = el('button', { class: 'btn btn--primary btn--lg', type: 'button', hidden: true, onclick: requestNext }, i === items.length - 1 ? 'Итоги дуэли' : 'Дальше');
         const qCard = renderQuestionCard(q, (r) => {
@@ -195,13 +199,13 @@ export function runLive(d: LiveDeps): { stop: () => void } {
           next.hidden = false;
         });
         timer = window.setInterval(() => {
-          const left = LIVE.questionSec * 1000 - (performance.now() - started);
-          fill.style.width = `${Math.max(0, (left / (LIVE.questionSec * 1000)) * 100)}%`;
+          const left = questionSec * 1000 - (performance.now() - started);
+          fill.style.width = `${Math.max(0, (left / (questionSec * 1000)) * 100)}%`;
           secs.textContent = `${Math.max(0, Math.ceil(left / 1000))} с`;
           if (left > 0 || mine[i]) return;
           window.clearInterval(timer);
           qCard.classList.add('is-timeout');
-          answer(null, LIVE.questionSec * 1000);
+          answer(null, questionSec * 1000);
           secs.textContent = 'Время вышло';
           next.hidden = false;
         }, 100);

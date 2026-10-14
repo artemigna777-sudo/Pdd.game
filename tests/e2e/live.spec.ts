@@ -52,6 +52,9 @@ async function phone(browser: Browser, name: string | undefined, connect: (p: Pa
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   await page.addInitScript((n) => {
+    // Тест отвечает за обоих по очереди: пока на медленном сервере отвечает один телефон, у второго не должно
+    // кончиться время раунда (12 и 20 с). В игре раунды обычной длины — это только режим разработки.
+    (window as unknown as { __liveSlow: number }).__liveSlow = 10;
     if (sessionStorage.getItem('seeded')) return;
     localStorage.clear();
     localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, rules: false, ...(n ? { name: n } : {}) }));

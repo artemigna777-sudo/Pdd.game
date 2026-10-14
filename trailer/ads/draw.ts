@@ -13,8 +13,8 @@ export interface Pen {
   faceInk?: string;
 }
 
-export type Face = 'happy' | 'neutral' | 'grin' | 'shock' | 'doubt' | 'cool' | 'calm' | 'relaxed' | 'sad' | 'tired' | 'angry' | 'think' | 'smile' | 'sleepy' | 'shout';
-export const FACE_KEYS: Face[] = ['happy', 'neutral', 'grin', 'shock', 'doubt', 'cool', 'calm', 'relaxed', 'sad', 'tired', 'angry', 'think', 'smile', 'sleepy', 'shout'];
+export type Face = 'happy' | 'neutral' | 'grin' | 'shock' | 'doubt' | 'cool' | 'calm' | 'relaxed' | 'sad' | 'tired' | 'angry' | 'think' | 'smile' | 'sleepy' | 'shout' | 'smirk';
+export const FACE_KEYS: Face[] = ['happy', 'neutral', 'grin', 'shock', 'doubt', 'cool', 'calm', 'relaxed', 'sad', 'tired', 'angry', 'think', 'smile', 'sleepy', 'shout', 'smirk'];
 
 /** Глаз: на тёмном фоне — белый с чёрным зрачком, на светлом — обведённый, с тёмным зрачком. */
 function eye(p: Pen, x: number, y: number, r = 10, px = 0, py = 0, pupil = 0.5): string {
@@ -43,6 +43,7 @@ export function faces(p: Pen, f: 1 | -1): Record<Face, string> {
     smile: `${e(-17, -6, 10, 3)}${e(17, -6, 10, 3)}${m('M-15,13 q15,15 30,0')}`,
     sleepy: m('M-27,-4 h19 M8,-4 h19 M-6,22 q6,4 12,0'),
     shout: `${e(-17, -4, 10, 2)}${e(17, -4, 10, 2)}${m('M-30,-26 l22,10 M8,-16 l22,-10')}<ellipse cx="0" cy="25" rx="15" ry="13" fill="${solid}"/>`,
+    smirk: `${e(-17, -3, 10, 3, 1)}${e(17, -3, 10, 3, 1)}${m('M-30,-14 l24,4 M6,-10 l24,-6 M-12,20 q16,6 30,-10')}`,
   };
 }
 

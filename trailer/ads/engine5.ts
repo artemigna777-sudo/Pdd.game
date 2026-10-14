@@ -1,9 +1,11 @@
 /**
  * Ролики «как кино» (33…): по образцу фан-нарезок из фильмов — быстрые кадры, субтитры с выделенным
  * словом, тряска камеры на криках, вспышки на склейках. Сам фильм не используем: все сцены нарисованы
- * светящимися человечками на тёмном фоне. Голоса нет — звук ставится в TikTok.
+ * светящимися человечками на тёмном фоне. Голоса — свои записи (`music/<id>/`, в репозиторий не кладём):
+ * монтаж строится по репликам (`cut`), звук сводится ffmpeg в одну дорожку. Без записей — немой ролик.
  */
-import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import type { Face } from './draw.ts';
 import { C, CSS3, DLG, H, PATTERNS, W, ctaBio, svgLines } from './engine3.ts';
 
@@ -34,6 +36,68 @@ export interface Video5 {
   cta: { lines: string[]; accent: number };
   T: { cta: number[]; ctaOut: number[]; bio: number[]; end: number };
   bioGlyph?: string;
+  /** Звук: голоса из `music/<voiceDir>/<файл>.mp3` и синтезированные удары, хор, фон. */
+  voiceDir?: string;
+  cues?: Cue5[];
+}
+
+/** Звук на дорожке. */
+export interface Cue5 {
+  at: number;
+  /** Голос: файл (без .mp3) и отрезок [от, до], с. */
+  src?: [string, number, number];
+  /** Синтезированный звук: удар, свист склейки, гул зала, пульс, низкий фон. */
+  synth?: 'boom' | 'whoosh' | 'roar' | 'pulse' | 'drone';
+  dur?: number;
+  vol?: number;
+  /** Высота голоса (хор из одной записи). */
+  pitch?: number;
+  /** Эхо зала. */
+  room?: boolean;
+}
+
+/** Реплика: голос — отрезок записи; без голоса — `dur` секунд (только субтитр). */
+export interface Line5 {
+  say?: [string, number, number];
+  dur?: number;
+  /** Пауза перед репликой, с. */
+  gap?: number;
+  room?: boolean;
+  /** Кадры; `at` — сдвиг от начала реплики, с. */
+  shots: (Omit<Shot5, 't'> & { at?: number })[];
+  /** Звуки поверх; `at` — сдвиг от начала реплики. `chorus` — хор зала из записи `say`. */
+  fx?: (Omit<Cue5, 'at'> & { at?: number; chorus?: [string, number, number] })[];
+}
+
+/** Хор: одна запись с разной высотой, задержкой и громкостью — как будто кричит весь зал. */
+const CHORUS: [number, number, number][] = [
+  [1, 0, 0.55],
+  [0.84, 0.05, 0.5],
+  [0.92, 0.09, 0.45],
+  [1.1, 0.03, 0.45],
+  [1.22, 0.12, 0.4],
+  [1.38, 0.07, 0.35],
+  [0.76, 0.15, 0.4],
+];
+
+/** Монтаж по репликам: время кадров и звуков считается по длине записей. */
+export function cut(lines: Line5[], start = 0): { shots: Shot5[]; cues: Cue5[]; end: number } {
+  const shots: Shot5[] = [];
+  const cues: Cue5[] = [];
+  let t = start;
+  for (const l of lines) {
+    t += l.gap ?? 0.25;
+    const t0 = +t.toFixed(3);
+    for (const { at, ...s } of l.shots) shots.push({ ...s, t: +(t0 + (at ?? 0)).toFixed(3) });
+    if (l.say) cues.push({ at: t0, src: l.say, room: l.room });
+    for (const { at, chorus, ...f } of l.fx ?? []) {
+      const ft = +(t0 + (at ?? 0)).toFixed(3);
+      if (chorus) for (const [pitch, d, vol] of CHORUS) cues.push({ at: +(ft + d).toFixed(3), src: chorus, pitch, vol: vol * (f.vol ?? 1), room: true });
+      else cues.push({ ...f, at: ft });
+    }
+    t = t0 + (l.say ? l.say[2] - l.say[1] : (l.dur ?? 1));
+  }
+  return { shots, cues, end: +t.toFixed(3) };
 }
 
 const camAt = ([fx, fy, s]: [number, number, number]) => ({ x: 540 - fx * s, y: 960 - fy * s, scale: s });
@@ -95,6 +159,7 @@ export function buildVideo5(v: Video5): string {
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="${v.T.end}" data-width="${W}" data-height="${H}">
       ${PATTERNS(C.ink)}
+      ${v.cues ? `<audio id="music" src="sound.wav" data-start="0" data-duration="${v.T.end}" data-volume="1"></audio>` : ''}
       <div class="clip scene dlg" id="film" data-start="0" data-duration="${v.end}">
         <div class="spot"></div>
         <div id="shake">
@@ -121,11 +186,63 @@ export function buildVideo5(v: Video5): string {
 `;
 }
 
-/** Собрать композицию в `out/<id>/` (без музыки: звук ставится в TikTok). */
+const SR = 48000;
+/** Синтезированные звуки (ffmpeg lavfi). */
+function synth(kind: NonNullable<Cue5['synth']>, d: number): string {
+  switch (kind) {
+    case 'boom':
+      return `aevalsrc=exprs='0.9*sin(2*PI*(42*t+7*(1-exp(-9*t))))*exp(-3.2*t)':s=${SR}:d=${d}`;
+    case 'whoosh':
+      return `anoisesrc=d=${d}:c=pink:a=0.7:r=${SR},bandpass=f=1400:width_type=q:w=0.7,afade=t=in:d=${(d * 0.6).toFixed(2)}:curve=exp,afade=t=out:st=${(d * 0.6).toFixed(2)}:d=${(d * 0.4).toFixed(2)}`;
+    case 'roar':
+      return `anoisesrc=d=${d}:c=pink:a=0.6:r=${SR},highpass=f=180,lowpass=f=1300,volume='0.65+0.35*sin(2*PI*3.1*t)*sin(2*PI*1.3*t)':eval=frame,afade=t=in:d=0.25,afade=t=out:st=${Math.max(0, d - 1).toFixed(2)}:d=1`;
+    case 'pulse':
+      return `aevalsrc=exprs='0.85*sin(2*PI*(46*mod(t\\,0.8)+4*(1-exp(-25*mod(t\\,0.8)))))*exp(-8*mod(t\\,0.8))':s=${SR}:d=${d}`;
+    case 'drone':
+      return `aevalsrc=exprs='(0.22*sin(2*PI*55*t)+0.16*sin(2*PI*82.41*t)+0.1*sin(2*PI*110.3*t)+0.05*sin(2*PI*164.8*t))*(0.8+0.2*sin(2*PI*0.3*t))':s=${SR}:d=${d},lowpass=f=700,volume='0.35+0.65*t/${d}':eval=frame,afade=t=in:d=1.5,afade=t=out:st=${Math.max(0, d - 0.5).toFixed(2)}:d=0.5`;
+  }
+}
+
+/** Свести звук в `sound.wav`: голоса с эхом зала и хором, удары, фон; громкость как у роликов в соцсетях. */
+function mixSound(v: Video5, out: URL): boolean {
+  const dir = new URL(`./music/${v.voiceDir ?? v.id}/`, import.meta.url);
+  const cues = v.cues ?? [];
+  const missing = [...new Set(cues.filter((c) => c.src && !existsSync(new URL(`${c.src[0]}.mp3`, dir))).map((c) => c.src![0]))];
+  if (missing.length) {
+    console.warn(`Нет записей голоса (${missing.join(', ')}) в ${dir.pathname} — ролик без звука.`);
+    return false;
+  }
+  const args: string[] = ['-v', 'error', '-y'];
+  const chains: string[] = [];
+  cues.forEach((c, i) => {
+    let len: number;
+    if (c.src) {
+      const [file, from, to] = c.src;
+      len = to - from;
+      args.push('-ss', String(from), '-t', len.toFixed(3), '-i', new URL(`${file}.mp3`, dir).pathname);
+    } else {
+      len = c.dur ?? 1.6;
+      args.push('-f', 'lavfi', '-i', synth(c.synth!, len));
+    }
+    const f = [`aformat=sample_rates=${SR}:channel_layouts=stereo`];
+    if (c.pitch && c.pitch !== 1) f.push(`rubberband=pitch=${c.pitch}`);
+    if (c.src) f.push('afade=t=in:d=0.01', `afade=t=out:st=${Math.max(0, len - 0.04).toFixed(3)}:d=0.04`);
+    if (c.room) f.push('aecho=0.85:0.6:45|95:0.2|0.12');
+    f.push(`volume=${c.vol ?? 1}`, `adelay=${Math.round(c.at * 1000)}:all=1`);
+    chains.push(`[${i}:a]${f.join(',')}[a${i}]`);
+  });
+  const mix = `${cues.map((_, i) => `[a${i}]`).join('')}amix=inputs=${cues.length}:normalize=0:dropout_transition=0,apad=whole_dur=${v.T.end},atrim=0:${v.T.end},alimiter=limit=0.9,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR}[out]`;
+  args.push('-filter_complex', [...chains, mix].join(';'), '-map', '[out]', '-ac', '2', new URL('sound.wav', out).pathname);
+  execFileSync('ffmpeg', args, { stdio: 'inherit' });
+  return true;
+}
+
+/** Собрать композицию в `out/<id>/`; со звуком, если есть записи голосов. */
 export function writeVideo5(v: Video5): string {
   const dir = new URL(`./out/${v.id}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(new URL('index.html', dir), buildVideo5(v));
+  const sound = v.cues?.length ? mixSound(v, dir) : false;
+  writeFileSync(new URL('index.html', dir), buildVideo5(sound ? v : { ...v, cues: undefined }));
   copyFileSync(new URL('../video/gsap.min.js', import.meta.url), new URL('gsap.min.js', dir));
   for (const f of readdirSync(new URL('./assets/', import.meta.url))) copyFileSync(new URL(`./assets/${f}`, import.meta.url), new URL(f, dir));
   return dir.pathname;

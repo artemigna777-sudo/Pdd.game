@@ -118,7 +118,7 @@ test("ошибка в билете 1 — видеоразбор в окне на
   await page.getByRole("button", { name: "Дальше", exact: true }).tap();
   await expect(page.locator(".card__meta")).toContainText("Вопрос 3");
 
-  // Билет 4 — видео у Петра нет.
+  // Билет 4 — видео нет, а у курса не указаны билеты: блока нет.
   await page.getByRole("button", { name: "Назад" }).tap();
   await page.getByRole("button", { name: /^Билет 4(,|$)/ }).tap();
   await answer(page, 4, 1, false);
@@ -157,4 +157,36 @@ test('видео Петра: ошибка в вопросе 12 билета 2 �
   await expect(modal.getByRole('link', { name: 'О курсе' })).toHaveAttribute('href', /^https:\/\/vk\.com\/market\/product\/128213-.+-12559646\?utm_source=kurier-pdd&utm_medium=game$/);
   await modal.getByRole('button', { name: 'Вернуться к вопросу' }).tap();
   await expect(page.locator('iframe')).toHaveCount(0);
+});
+
+test('билеты 4–40 Петра: после ошибки — «разбор в курсе» и кнопка на страницу курса; верный ответ — без блока', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true })));
+  await page.route('https://vk.com/**', (r) => r.fulfill({ contentType: 'text/html', body: '<p>курс</p>' }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Билеты' }).tap();
+  await page.getByRole('button', { name: /^Билет 12(,|$)/ }).tap();
+  await answer(page, 12, 1, true);
+  await expect(page.locator('.explanation')).toBeVisible();
+  await expect(page.locator('.partner-video')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).tap();
+
+  await answer(page, 12, 2, false);
+  const block = page.locator('.explanation .partner-video--locked');
+  await expect(block).toContainText('🔒 Видеоразбор этого вопроса');
+  await expect(block).toContainText('Доступ к разбору вопросов билета 12 — в онлайн-курсе «Учимся понимать ПДД через разбор билетов». Автоинструктор Пётр разбирает в нём все 40 билетов. Бесплатные видео — у билетов 1–3.');
+  await expect(block.getByRole('button')).toHaveCount(0);
+  const link = block.getByRole('link', { name: 'Подробнее о курсе' });
+  await expect(link).toHaveAttribute('href', /^https:\/\/vk\.com\/market\/product\/128213-.+-12559646\?utm_source=kurier-pdd&utm_medium=game$/);
+  await expect(link).toHaveAttribute('target', '_blank');
+  const box = (await link.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  if (process.env.PARTNER_SHOT) {
+    await block.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: process.env.PARTNER_SHOT });
+  }
+  // Курс открывается отдельно, игра остаётся на вопросе.
+  const popup = page.waitForEvent('popup');
+  await link.tap();
+  await (await popup).close();
+  await expect(page.locator('.card__meta')).toContainText('Вопрос 2');
 });

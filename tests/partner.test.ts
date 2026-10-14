@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PARTNER, courseUrl, directUrl, embedUrl, formatTime, parseTime, partnerVideo, validatePartner, type PartnerData } from '../src/partner/partner.ts';
+import { PARTNER, courseUrl, directUrl, embedUrl, formatTime, freeTickets, inCourseOnly, parseTime, partnerVideo, validatePartner, type PartnerData } from '../src/partner/partner.ts';
 
 const starts = (first: string, n = 20) => Object.fromEntries([first, ...Array.from({ length: n - 1 }, (_, i) => `${i + 1}:${String((i * 7) % 60).padStart(2, '0')}`)].map((t, i) => [i + 1, t]));
 
@@ -78,10 +78,28 @@ test('видео Петра: билеты 1–3, все 60 вопросов, т�
   );
 });
 
+test('билеты 4–40 Петра: разбор только в курсе; у билетов 1–3 — бесплатное видео', () => {
+  assert.deepEqual(PARTNER.course?.tickets, [1, 40]);
+  assert.equal(freeTickets(PARTNER), '1–3');
+  for (let ticket = 1; ticket <= 40; ticket++)
+    for (const number of [1, 20]) assert.equal(inCourseOnly({ ticket, number }, PARTNER), ticket > 3, `билет ${ticket}, вопрос ${number}`);
+  // Курс без списка билетов или без ссылки — закрытого блока нет.
+  assert.equal(inCourseOnly({ ticket: 4, number: 1 }, DATA), false);
+  assert.equal(inCourseOnly({ ticket: 4, number: 1 }, { ...DATA, course: { title: 'Курс', url: 'http://x', tickets: [1, 40] } }), false);
+  // Билет вне курса и вопрос без видео в билете с видео.
+  const some: PartnerData = { ...DATA, course: { ...DATA.course!, tickets: [1, 10] } };
+  assert.equal(inCourseOnly({ ticket: 11, number: 1 }, some), false);
+  assert.equal(inCourseOnly({ ticket: 2, number: 5 }, some), true);
+  assert.equal(inCourseOnly({ ticket: 2, number: 4 }, some), false);
+  assert.equal(freeTickets({ ...DATA, tickets: { 1: DATA.tickets[1], 2: DATA.tickets[2], 5: DATA.tickets[3], 7: [{ url: 'http://x', starts: {} }] } }), '1–2, 5');
+  assert.equal(freeTickets({ ...DATA, tickets: {} }), '');
+});
+
 test('проверка данных партнёра ловит ошибки', () => {
   assert.deepEqual(validatePartner(DATA), []);
   const bad: PartnerData = {
     ...DATA,
+    course: { ...DATA.course!, tickets: [3, 41] },
     tickets: {
       41: [{ url: 'http://x', starts: { 1: '1:00', 2: '0:30', 3: 'ой', 25: '9:00' } }],
       5: [
@@ -91,5 +109,5 @@ test('проверка данных партнёра ловит ошибки', (
     },
   };
   const errors = validatePartner(bad);
-  for (const part of ['такого билета нет', 'https://', 'по возрастанию', '«ой»', 'вопроса 25', 'в двух видео']) assert.ok(errors.some((e) => e.includes(part)), part);
+  for (const part of ['такого билета нет', 'https://', 'по возрастанию', '«ой»', 'вопроса 25', 'в двух видео', 'билеты 3–41']) assert.ok(errors.some((e) => e.includes(part)), part);
 });

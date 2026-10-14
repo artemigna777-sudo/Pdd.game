@@ -4,7 +4,11 @@
  * У Петра бесплатные видеоразборы первых трёх билетов в VK Видео: у билета 1 одно видео, у билетов
  * 2 и 3 — по два (первая и вторая половина вопросов). После неверного ответа на вопрос такого билета
  * рядом с пояснением появляется кнопка «Смотреть разбор»: видео открывается в окне поверх игры сразу
- * на нужном вопросе (по тайм-коду из описания видео). Билет без видео кнопку не показывает.
+ * на нужном вопросе (по тайм-коду из описания видео).
+ *
+ * Остальные билеты (4–40) Пётр разбирает в платном онлайн-курсе. По его просьбе (14.10.2026) после
+ * неверного ответа на такой вопрос — тот же блок, но закрытый: разбор этого вопроса — в курсе, и
+ * кнопка на страницу курса.
  *
  * Ссылки и тайм-коды — из описаний видео Петра (прислал Артём 13.10.2026). Номера вопросов у Петра
  * совпадают с билетами игры: на превью видны вопросы Б2 В11 и Б3 В11, тексты те же.
@@ -22,7 +26,12 @@ export interface PartnerData {
   author: string;
   role: string;
   /** Полный курс автора — ссылка под видео (необязательно). */
-  course?: { title: string; url: string };
+  course?: {
+    title: string;
+    url: string;
+    /** Какие билеты разобраны в курсе: у них без бесплатного видео — закрытый блок «разбор в курсе». */
+    tickets?: readonly [from: number, to: number];
+  };
   /** Номер билета → видео этого билета (одно или несколько частей). */
   tickets: Readonly<Record<number, readonly PartnerPart[]>>;
 }
@@ -36,6 +45,7 @@ export const PARTNER: PartnerData = {
   course: {
     title: 'Учимся понимать ПДД через разбор билетов',
     url: 'https://vk.com/market/product/128213-onlayn-kurs-quotuchimsya-ponimat-pdd-cherez-razbor-biletovquot-148551566-12559646',
+    tickets: [1, 40],
   },
   tickets: {
     1: [
@@ -150,6 +160,28 @@ export function directUrl(v: PartnerVideo): string {
   return u.toString();
 }
 
+/** Разбор вопроса есть только в курсе: бесплатного видео нет, а билет в курсе разобран. */
+export function inCourseOnly(q: { ticket: number; number: number }, data: PartnerData = partnerData()): boolean {
+  const range = data.course?.tickets;
+  if (!range || !courseUrl(data) || partnerVideo(q, data)) return false;
+  return q.ticket >= range[0] && q.ticket <= range[1];
+}
+
+/** Билеты с бесплатными видео подряд: [1, 2, 3] → «1–3», [1, 2, 5] → «1–2, 5». */
+export function freeTickets(data: PartnerData = partnerData()): string {
+  const nums = Object.entries(data.tickets)
+    .filter(([, parts]) => parts.some((p) => /^https:\/\//.test(p.url)))
+    .map(([k]) => Number(k))
+    .sort((a, b) => a - b);
+  const runs: [number, number][] = [];
+  for (const n of nums) {
+    const last = runs.at(-1);
+    if (last && n === last[1] + 1) last[1] = n;
+    else runs.push([n, n]);
+  }
+  return runs.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ');
+}
+
 /** Ссылка на курс с меткой «из Курьера ПДД». */
 export function courseUrl(data: PartnerData = partnerData()): string | undefined {
   const url = data.course?.url;
@@ -184,5 +216,7 @@ export function validatePartner(data: PartnerData): string[] {
     }
   }
   if (data.course?.url && !/^https:\/\//.test(data.course.url)) errors.push('курс: ссылка должна начинаться с https://');
+  const range = data.course?.tickets;
+  if (range && !(Number.isInteger(range[0]) && Number.isInteger(range[1]) && range[0] >= 1 && range[0] <= range[1] && range[1] <= 40)) errors.push(`курс: билеты ${range[0]}–${range[1]} — таких нет`);
   return errors;
 }

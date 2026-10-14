@@ -5333,6 +5333,17 @@ a.btn {
 .partner-video__open {
   width: 100%;
 }
+.partner-video--locked {
+  border-style: dashed;
+}
+.partner-video__nowrap {
+  white-space: nowrap;
+}
+.partner-video__course {
+  display: flex;
+  justify-content: center;
+  text-decoration: none;
+}
 .partner-modal__frame {
   position: relative;
   width: 100%;

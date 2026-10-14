@@ -2,9 +2,8 @@
  * 33. «Я сдам ПДД!» — по образцу фан-нарезки из фильма: семинар «кто делает, а кто ноет», герой выкрикивает
  * «Я сдам!», зал подхватывает; через месяц герой сам гоняет новичка («Эта боль спасёт тебе права!») и
  * довольно ухмыляется. Фильм не используем: всё нарисовано человечками, реплики свои.
- * Голоса — записи Артёма из Fish Audio в `music/v33/` (в репозиторий не кладём): гуру — guru1–3, герой — hero1–2;
- * музыка — из образца без голосов фильма (`obrazec.wav`, там же).
- * Голоса новичка пока нет: его реплики идут субтитрами (`dur`); когда запись появится — `say: ['novice', от, до]`.
+ * Голоса — записи Артёма из Fish Audio в `music/v33/` (в репозиторий не кладём): гуру — guru1–3, герой — hero1–2,
+ * новичок — novice; музыка — из образца без голосов фильма (`obrazec.wav`, там же).
  */
 import { person, type Arm, type Face, type Hair } from '../draw.ts';
 import { C, DLG } from '../engine3.ts';
@@ -305,8 +304,14 @@ const month: Line5[] = [
     shots: [{ scene: 'gym', cam: GYM_WIDE, to: zoom(GYM_WIDE, 1.06), cap: '{Через месяц}', big: true, flash: true }],
     fx: [{ synth: 'whoosh', dur: 0.6, vol: 0.6, at: -0.45 }, { synth: 'boom', vol: 0.8 }],
   },
-  // Новичок: «Мне больно… Я опять завалил билет.» — пока без голоса.
-  { dur: 2.6, gap: 0.1, shots: [{ scene: 'gym', cam: NOVICE, to: zoom(NOVICE, 1.08), cap: 'Мне больно… Я опять {завалил билет}.', faces: { Lg: 'sad' } }] },
+  {
+    say: ['novice', 0.1, 4.3],
+    gap: 0.1,
+    shots: [
+      { scene: 'gym', cam: NOVICE, to: zoom(NOVICE, 1.08), cap: 'Мне {больно}…', faces: { Lg: 'sad' } },
+      { at: 2.3, scene: 'gym', cam: zoom(NOVICE, 1.08), to: zoom(NOVICE, 1.14), cap: 'Мне больно… Я опять {завалил билет}.' },
+    ],
+  },
   {
     say: ['hero2', 0.11, 3.83],
     gap: 0.3,
@@ -326,8 +331,7 @@ const month: Line5[] = [
     ],
     fx: [{ synth: 'whoosh', at: 1.4, dur: 0.4, vol: 0.4 }],
   },
-  // Новичок: «Я больше не могу…» — пока без голоса.
-  { dur: 1.6, gap: 0.35, shots: [{ scene: 'gym', cam: zoom(NOVICE, 1.15), to: zoom(NOVICE, 1.22), cap: 'Я больше {не могу}…', faces: { Lg: 'tired' } }] },
+  { say: ['novice', 5.77, 7.45], gap: 0.35, shots: [{ scene: 'gym', cam: zoom(NOVICE, 1.15), to: zoom(NOVICE, 1.22), cap: 'Я больше {не могу}…', faces: { Lg: 'tired' } }] },
   {
     say: ['hero2', 9.04, 11.89],
     gap: 0.2,
@@ -345,13 +349,15 @@ const S2 = cut(month, S1.end);
 const END = S2.end;
 
 // Музыка образца (фан-нарезка, ~135 уд/мин, бочка каждые 0,891 с) без голосов фильма. Дроп (56,03 с образца) —
-// на ухмылке; на «Через месяц» — возврат на 4 такта назад (перекрыт вспышкой и ударом), до него — образец с начала.
+// на ухмылке; на «Через месяц» — возврат на 8 тактов назад (перекрыт вспышкой и ударом), до него — образец с начала.
+// Вступление образца (до 13,8 с) — только тихая бочка, поэтому в начале ролика играет кусок с басом
+// (13,84–28,1 с — ровно 8 тактов), дальше образец идёт как есть.
 const R_DROP = 56.03;
 const R_END = 64.4;
 const DROP = S2.shots[S2.shots.length - 1].t;
 const MONTH = S2.shots[0].t;
 const r2 = R_DROP - (DROP - MONTH);
-const r1 = r2 + 8 * 0.891;
+const r1 = r2 + 16 * 0.891;
 const shift = MONTH - r1;
 
 export const v33: Video5 = {
@@ -378,9 +384,10 @@ export const v33: Video5 = {
   music: {
     file: 'obrazec.wav',
     parts: [
-      { from: 0, to: 28.1, at: shift, novox: true, side: 2, vol: 0.55, fadeIn: 1 },
-      { from: 28.1, to: r1, at: shift + 28.1, novox: true, vol: 0.55 },
-      { from: r2, to: R_DROP, at: MONTH, novox: true, vol: 0.55 },
+      { from: 28.1 - (shift + 13.84), to: 28.1, at: 0, novox: true, side: 2, vol: 0.85, fadeIn: 0.3, fadeOut: 0.02 },
+      { from: 13.84, to: 28.1, at: shift + 13.84, novox: true, side: 2, vol: 0.85, fadeIn: 0.02 },
+      { from: 28.1, to: r1, at: shift + 28.1, novox: true, vol: 0.85 },
+      { from: r2, to: R_DROP, at: MONTH, novox: true, vol: 0.85 },
       { from: R_DROP, to: R_END, at: DROP, vol: 0.65, fadeOut: 0.4 },
     ],
   },

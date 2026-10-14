@@ -278,7 +278,7 @@ function mixSound(v: Video5, out: URL): boolean {
       `[vs]apad=whole_dur=${v.T.end}[vsc]`,
       `[fx]asplit[f1][f2]`,
       // Музыка уходит вниз, пока звучат голоса.
-      `[mus][vsc]sidechaincompress=threshold=0.04:ratio=6:attack=15:release=400[md]`,
+      `[mus][vsc]sidechaincompress=threshold=0.06:ratio=3:attack=20:release=400[md]`,
       `[v1][f1][md]amix=inputs=3:normalize=0:dropout_transition=0,${master}[out]`,
       `[v2][f2]amix=inputs=2:normalize=0:dropout_transition=0,${master}[out2]`,
     );

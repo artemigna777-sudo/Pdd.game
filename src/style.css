@@ -1345,6 +1345,32 @@ button {
   animation: cutscene-in 0.22s ease-out;
 }
 
+/* Анимированная сцена над репликами (этап 18): 9:5, не выше трети экрана. Если реплике с кнопками
+   не хватает места, сцена уменьшается (рисунок вписывается в середину), а окно с кнопками — нет. */
+.cutscene__film {
+  flex: 0 1 auto;
+  min-height: 0;
+  width: min(100%, 520px);
+  height: min(34vh, calc(min(100vw - 24px, 520px) / 1.8));
+  margin: 0 auto 10px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #1c2541;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  animation: cutscene-in 0.3s ease-out;
+}
+
+.cutscene__film svg {
+  display: block;
+}
+
+@media (max-height: 640px) {
+  .cutscene__film {
+    height: min(26vh, calc((100vw - 24px) / 1.8));
+    margin-bottom: 8px;
+  }
+}
+
 @keyframes cutscene-in {
   from {
     opacity: 0.2;

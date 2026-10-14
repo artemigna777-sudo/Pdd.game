@@ -1,11 +1,11 @@
 /**
  * «Моя история» (этап 17): характер водителя, команда с сердечками, принятые решения,
- * «Вернуть решение» за монеты и галерея концовок.
+ * сцены больших развилок (этап 18), «Вернуть решение» за монеты и галерея концовок.
  */
 import { playSound } from '../audio/feedback.ts';
 import type { ProgressData } from '../progress/progress.ts';
 import { GENA_DISCOUNT, endingScene, rewind, storyContext } from '../progress/storyProgress.ts';
-import { HEARTS_MAX, HEROES, REWIND_PRICE, TRAITS, TRAIT_IDS, TRAIT_MAX, characterTitle, check, lastBigDecision, type HeroId } from '../story/plot.ts';
+import { HEARTS_MAX, HEROES, REWIND_PRICE, TRAITS, TRAIT_IDS, TRAIT_MAX, characterTitle, check, hasFilm, lastBigDecision, replayLines, type HeroId } from '../story/plot.ts';
 import { CHARACTERS } from '../story/story.ts';
 import { DECISIONS, ENDINGS, PLOT } from '../story/turbo.ts';
 import { catchUpPanel } from './catchUp.ts';
@@ -107,6 +107,30 @@ export function storyView(data: ProgressData, onChange: () => void, openTale: (i
         : el('p', { class: 'panel__note' }, 'Решений пока нет. Они встречаются в сюжетных сценах глав.'),
     );
 
+    // ─── Сцены больших развилок (этап 18): пересмотреть ────────────────────────
+    const filmed = decided.filter(({ d }) => hasFilm(d));
+    const scenes = filmed.length
+      ? el(
+          'section',
+          { class: 'panel story__scenes' },
+          el('h2', { class: 'section-title' }, '🎬 Сцены'),
+          el(
+            'ul',
+            { class: 'endings' },
+            ...filmed.map(({ d, o }) =>
+              el(
+                'li',
+                { class: 'ending is-open', 'data-scene': d.id },
+                el('span', { class: 'ending__icon', 'aria-hidden': 'true' }, '🎬'),
+                el('span', { class: 'ending__body' }, el('b', {}, d.title), el('span', { class: 'ending__hint' }, `Глава ${chapterNumber(d.chapter)} · ${o.summary}`)),
+                el('button', { class: 'btn btn--secondary ending__play', type: 'button', onclick: () => void playCutscene(replayLines(d, o.value, ctx), { last: 'Закрыть' }) }, 'Смотреть'),
+              ),
+            ),
+          ),
+          el('p', { class: 'panel__note' }, 'Сцены больших развилок, которые уже позади. Чтобы выбрать по-другому — «Вернуть решение».'),
+        )
+      : '';
+
     // ─── Вернуть решение ──────────────────────────────────────────────────────
     const last = lastBigDecision(data.story, PLOT);
     const rewindPanel = el('section', { class: 'panel story__rewind' }, el('h2', { class: 'section-title' }, 'Вернуть решение'));
@@ -190,7 +214,7 @@ export function storyView(data: ProgressData, onChange: () => void, openTale: (i
       onChange();
       render();
     });
-    root.replaceChildren(...(catchUp ? [catchUp] : []), character, teamPanel, decisions, rewindPanel, gallery, tales);
+    root.replaceChildren(...(catchUp ? [catchUp] : []), character, teamPanel, decisions, scenes, rewindPanel, gallery, tales);
   };
   render();
   return root;

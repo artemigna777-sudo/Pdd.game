@@ -8,6 +8,7 @@ import { resolveLines } from '../story/plot.ts';
 import { storyContext } from '../progress/storyProgress.ts';
 import { progress } from '../progress/progress.ts';
 import { el } from './dom.ts';
+import { playFilm, type FilmHandle } from './film.ts';
 
 /** Круглый портрет персонажа. */
 export function avatar(id: PortraitId, extra = ''): HTMLSpanElement {
@@ -17,12 +18,20 @@ export function avatar(id: PortraitId, extra = ''): HTMLSpanElement {
 }
 
 let current: HTMLElement | undefined;
+/** Анимированная сцена открытого окна: при закрытии её звуки не должны доиграть. */
+let film: FilmHandle | undefined;
+
+function stopFilm() {
+  film?.stop();
+  film = undefined;
+}
 
 /**
  * Закрыть открытую сцену или окно при уходе с экрана. Промис сцены при этом не выполняется:
  * то, что ждало конца сцены, относится к закрытому экрану и продолжаться не должно.
  */
 export function closeOverlay(): void {
+  stopFilm();
   current?.remove();
   current = undefined;
 }
@@ -67,9 +76,12 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
     const actions = el('div', { class: 'cutscene__actions' }, skip, next);
     const choices = el('div', { class: 'cutscene__choices', role: 'group', 'aria-label': 'Ваш ответ', hidden: true });
     const card = el('div', { class: 'cutscene__card' }, el('div', { class: 'cutscene__head' }, who, count), textEl, actions, choices);
-    const root = el('div', { class: 'cutscene', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Сюжет' }, card);
+    // Анимированная сцена над репликами (этап 18): с реплики, у которой есть `film`, и до конца окна.
+    const screen = el('div', { class: 'cutscene__film', role: 'img', hidden: true });
+    const root = el('div', { class: 'cutscene', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Сюжет' }, screen, card);
 
     const finish = () => {
+      stopFilm();
       unmount(root);
       resolve(chosen);
     };
@@ -81,6 +93,11 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
     };
     const show = () => {
       const line = lines[index];
+      if (line.film && screen.dataset.film !== line.film) {
+        stopFilm();
+        screen.hidden = false;
+        film = playFilm(screen, line.film);
+      }
       const narrator = line.who === 'narrator';
       const c = narrator ? undefined : CHARACTERS[line.who as keyof typeof CHARACTERS];
       who.hidden = narrator;
@@ -133,11 +150,13 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
       index = stop;
       show();
     });
-    // Касание текста — тоже «Далее»: читать и листать одним пальцем.
-    textEl.addEventListener('click', () => {
+    // Касание текста или сцены — тоже «Далее»: читать и листать одним пальцем.
+    const tapNext = () => {
       if (actions.hidden) return;
       next.click();
-    });
+    };
+    textEl.addEventListener('click', tapNext);
+    screen.addEventListener('click', tapNext);
     show();
     mount(root);
   });

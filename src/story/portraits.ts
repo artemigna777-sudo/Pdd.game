@@ -275,3 +275,8 @@ export function portraitSvg(id: PortraitId): string {
 }
 
 export const PORTRAIT_IDS = Object.keys(DRAW) as PortraitId[];
+
+/** Сам рисунок портрета (96×96, без фона и обёртки) — для анимированных сцен (`films.ts`). */
+export function portraitArt(id: PortraitId): string {
+  return DRAW[id]();
+}

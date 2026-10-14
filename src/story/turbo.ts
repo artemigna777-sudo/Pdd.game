@@ -7,9 +7,12 @@
  */
 import { SIDE_QUESTS } from './extras.ts';
 import { HEROES, type Cond, type Decision, type Ending, type HeroId, type PlotSource } from './plot.ts';
+import type { FilmId } from './films.ts';
 import type { CharacterId, Line } from './story.ts';
 
 const say = (who: CharacterId) => (text: string, cond?: Line['if']): Line => ({ who, text, ...(cond ? { if: cond } : {}) });
+/** Реплика, с которой над диалогом начинается анимированная сцена (этап 18). */
+const film = (line: Line, id: FilmId): Line => ({ ...line, film: id });
 const n = say('narrator');
 const victor = say('victor');
 const marina = say('marina');
@@ -144,12 +147,12 @@ export const DECISIONS: Decision[] = [
     big: true,
     title: 'Артёма зовут в «Турбо»',
     lines: [
-      artem('Можно с тобой поговорить? Серьёзно.'),
+      film(artem('Можно с тобой поговорить? Серьёзно.'), 'ch3-offer'),
       artem('Турбин зовёт меня старшим курьером. Зарплата вдвое больше, новый мопед. Только там говорят: «Правила — для медленных».'),
-      artem('Я не знаю, что делать. Что посоветуешь?', { decided: 'ch2.cover', is: 'cover' }),
-      artem('Тогда, с Мариной, без вранья обошлось — значит, и сейчас скажешь честно. Что думаешь?', { decided: 'ch2.cover', is: 'truth' }),
-      artem('Тогда, с твоей помощью, признаться было не страшно. Что скажешь сейчас?', { decided: 'ch2.cover', is: 'confess' }),
-      artem('Что скажешь?', { not: { decided: 'ch2.cover' } }),
+      film(artem('Я не знаю, что делать. Что посоветуешь?', { decided: 'ch2.cover', is: 'cover' }), 'ch3-choice'),
+      film(artem('Тогда, с Мариной, без вранья обошлось — значит, и сейчас скажешь честно. Что думаешь?', { decided: 'ch2.cover', is: 'truth' }), 'ch3-choice'),
+      film(artem('Тогда, с твоей помощью, признаться было не страшно. Что скажешь сейчас?', { decided: 'ch2.cover', is: 'confess' }), 'ch3-choice'),
+      film(artem('Что скажешь?', { not: { decided: 'ch2.cover' } }), 'ch3-choice'),
     ],
     options: [
       {
@@ -157,7 +160,7 @@ export const DECISIONS: Decision[] = [
         label: 'Не уходи: «Стрела» — твоя команда',
         summary: 'Артём остался в «Стреле»',
         effect: { bonds: { artem: 1, marina: 1 }, traits: { kind: 1 } },
-        reply: [artem('Команда… Да. Без вас было бы скучно. Остаюсь!'), marina('Артём остаётся? Сегодня пицца за мой счёт!')],
+        reply: [film(artem('Команда… Да. Без вас было бы скучно. Остаюсь!'), 'ch3-stay'), marina('Артём остаётся? Сегодня пицца за мой счёт!')],
       },
       {
         value: 'study',
@@ -166,7 +169,7 @@ export const DECISIONS: Decision[] = [
         when: { bond: 'artem', min: 1 },
         effect: { bonds: { artem: 2, victor: 1 }, traits: { careful: 1 } },
         reply: [
-          artem('Вместе? Серьёзно? …Давай! Сдам на права — и Турбин мне вообще не нужен.'),
+          film(artem('Вместе? Серьёзно? …Давай! Сдам на права — и Турбин мне вообще не нужен.'), 'ch3-study'),
           victor('Беру обоих учеников. Бесплатно.'),
         ],
       },
@@ -176,7 +179,7 @@ export const DECISIONS: Decision[] = [
         summary: 'Артём ушёл в «Турбо»',
         effect: { bonds: { marina: -1 }, traits: { honest: 1 } },
         reply: [
-          artem('Сам… Ну да. Тогда я попробую. Только не обижайся, ладно?'),
+          film(artem('Сам… Ну да. Тогда я попробую. Только не обижайся, ладно?'), 'ch3-free'),
           n('Вечером в диспетчерской «Стрелы» пустует один стул.'),
           marina('Артём ушёл в «Турбо». Жаль… Хороший был курьер.'),
         ],

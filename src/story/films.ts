@@ -202,7 +202,7 @@ const CHOICE: Film = {
 /** Конфетти: разноцветные полоски падают сверху. */
 const CONFETTI = ['#e63946', '#2a9d8f', '#8e44ad', '#1b2430', '#f77f00', '#457b9d'];
 const confetti = Array.from({ length: 16 }, (_, i) => `<rect class="f-conf${i % 4}" x="${12 + i * 22}" y="${-18 - (i % 3) * 14}" width="7" height="12" rx="2" fill="${CONFETTI[i % CONFETTI.length]}" ${BOX}/>`).join('');
-const fall = (at: number) => ({ at, dur: 1.8, kf: [{ transform: 'translateY(0px) rotate(0deg)' }, { transform: 'translateY(240px) rotate(540deg)' }], ease: 'ease-in' });
+const fall = (at: number) => ({ at, dur: 1.8, kf: [{ transform: 'translateY(0px) rotate(0deg)' }, { transform: 'translateY(290px) rotate(540deg)' }], ease: 'ease-in' });
 
 const STAY: Film = {
   title: 'Артём остаётся в «Стреле»: «Турбо» исчезает, Марина несёт пиццу.',

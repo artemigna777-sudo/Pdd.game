@@ -2,7 +2,8 @@
  * 33. «Я сдам ПДД!» — по образцу фан-нарезки из фильма: семинар «кто делает, а кто ноет», герой выкрикивает
  * «Я сдам!», зал подхватывает; через месяц герой сам гоняет новичка («Эта боль спасёт тебе права!») и
  * довольно ухмыляется. Фильм не используем: всё нарисовано человечками, реплики свои.
- * Голоса — записи Артёма из Fish Audio в `music/v33/` (в репозиторий не кладём): гуру — guru1–3, герой — hero1–2.
+ * Голоса — записи Артёма из Fish Audio в `music/v33/` (в репозиторий не кладём): гуру — guru1–3, герой — hero1–2;
+ * музыка — из образца без голосов фильма (`obrazec.wav`, там же).
  * Голоса новичка пока нет: его реплики идут субтитрами (`dur`); когда запись появится — `say: ['novice', от, до]`.
  */
 import { person, type Arm, type Face, type Hair } from '../draw.ts';
@@ -337,11 +338,21 @@ const month: Line5[] = [
     ],
     fx: [{ synth: 'boom', at: 2.16, vol: 0.7 }],
   },
-  // Без слов: довольная ухмылка.
-  { dur: 1.7, gap: 0.15, shots: [{ scene: 'rise', cam: [838, 1170, 3.0], to: [838, 1170, 3.3], cap: '', faces: { K9: 'smirk' } }] },
+  // Без слов: довольная ухмылка — на дропе музыки.
+  { dur: 2.6, gap: 0.15, shots: [{ scene: 'rise', cam: [838, 1170, 3.0], to: [838, 1170, 3.3], cap: '', faces: { K9: 'smirk' } }] },
 ];
 const S2 = cut(month, S1.end);
 const END = S2.end;
+
+// Музыка образца (фан-нарезка, ~135 уд/мин, бочка каждые 0,891 с) без голосов фильма. Дроп (56,03 с образца) —
+// на ухмылке; на «Через месяц» — возврат на 4 такта назад (перекрыт вспышкой и ударом), до него — образец с начала.
+const R_DROP = 56.03;
+const R_END = 64.4;
+const DROP = S2.shots[S2.shots.length - 1].t;
+const MONTH = S2.shots[0].t;
+const r2 = R_DROP - (DROP - MONTH);
+const r1 = r2 + 8 * 0.891;
+const shift = MONTH - r1;
 
 export const v33: Video5 = {
   id: '33-sdam',
@@ -360,15 +371,17 @@ export const v33: Video5 = {
   shots: [...S1.shots, ...S2.shots],
   end: END,
   cta: { lines: ['Хватит читать —', 'начни делать'], accent: 1 },
-  T: { cta: [END, END + 0.5], ctaOut: [END + 1.8, END + 2.1], bio: [END + 2.1, END + 4.5], end: +(END + 4.5).toFixed(3) },
+  // Вывод и «Решение в био» — до конца музыки образца.
+  T: { cta: [END, END + 0.5], ctaOut: [END + 2.0, END + 2.3], bio: [END + 2.3, +(DROP + R_END - R_DROP).toFixed(3)], end: +(DROP + R_END - R_DROP).toFixed(3) },
   voiceDir: 'v33',
-  cues: [
-    ...S1.cues,
-    ...S2.cues,
-    // Низкий фон семинара нарастает к крику зала; через месяц — пульс тренировки; удар на выводе.
-    { at: 0, synth: 'drone', dur: S1.end, vol: 0.35 },
-    { at: S1.end + 0.5, synth: 'pulse', dur: +(END - S1.end - 2.3).toFixed(2), vol: 0.35 },
-    { at: END, synth: 'boom', vol: 0.9 },
-    { at: END, synth: 'drone', dur: 4.5, vol: 0.25 },
-  ],
+  cues: [...S1.cues, ...S2.cues],
+  music: {
+    file: 'obrazec.wav',
+    parts: [
+      { from: 0, to: 28.1, at: shift, novox: true, side: 2, vol: 0.55, fadeIn: 1 },
+      { from: 28.1, to: r1, at: shift + 28.1, novox: true, vol: 0.55 },
+      { from: r2, to: R_DROP, at: MONTH, novox: true, vol: 0.55 },
+      { from: R_DROP, to: R_END, at: DROP, vol: 0.65, fadeOut: 0.4 },
+    ],
+  },
 };

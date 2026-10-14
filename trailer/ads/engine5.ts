@@ -39,6 +39,15 @@ export interface Video5 {
   /** Звук: голоса из `music/<voiceDir>/<файл>.mp3` и синтезированные удары, хор, фон. */
   voiceDir?: string;
   cues?: Cue5[];
+  /** Музыка из образца (там же, в репозиторий не кладём). */
+  music?: Music5;
+}
+
+/** Музыка образца: куски `[from, to]` записи → в ролик с `at`. `novox` — убрать голоса фильма: речь там по
+ * центру, поэтому берутся боковой канал (усиленный в `side` раз) и низ (бочка, бас). */
+export interface Music5 {
+  file: string;
+  parts: { from: number; to: number; at: number; novox?: boolean; side?: number; vol?: number; fadeIn?: number; fadeOut?: number }[];
 }
 
 /** Звук на дорожке. */
@@ -203,26 +212,34 @@ function synth(kind: NonNullable<Cue5['synth']>, d: number): string {
   }
 }
 
-/** Свести звук в `sound.wav`: голоса с эхом зала и хором, удары, фон; громкость как у роликов в соцсетях. */
+/** Свести звук: голоса с эхом зала и хором, удары, музыка образца (приглушается под голосами); громкость
+ * как у роликов в соцсетях. `sound.wav` — со всем, `voice.wav` — без музыки образца (если она есть). */
 function mixSound(v: Video5, out: URL): boolean {
   const dir = new URL(`./music/${v.voiceDir ?? v.id}/`, import.meta.url);
   const cues = v.cues ?? [];
-  const missing = [...new Set(cues.filter((c) => c.src && !existsSync(new URL(`${c.src[0]}.mp3`, dir))).map((c) => c.src![0]))];
+  const files = [...cues.filter((c) => c.src).map((c) => `${c.src![0]}.mp3`), ...(v.music ? [v.music.file] : [])];
+  const missing = [...new Set(files.filter((f) => !existsSync(new URL(f, dir))))];
   if (missing.length) {
-    console.warn(`Нет записей голоса (${missing.join(', ')}) в ${dir.pathname} — ролик без звука.`);
+    console.warn(`Нет записей (${missing.join(', ')}) в ${dir.pathname} — ролик без звука.`);
     return false;
   }
   const args: string[] = ['-v', 'error', '-y'];
   const chains: string[] = [];
-  cues.forEach((c, i) => {
+  const voice: string[] = [];
+  const fx: string[] = [];
+  const music: string[] = [];
+  let n = 0;
+  const input = (a: string[]) => (args.push(...a), n++);
+  for (const c of cues) {
     let len: number;
+    let i: number;
     if (c.src) {
       const [file, from, to] = c.src;
       len = to - from;
-      args.push('-ss', String(from), '-t', len.toFixed(3), '-i', new URL(`${file}.mp3`, dir).pathname);
+      i = input(['-ss', String(from), '-t', len.toFixed(3), '-i', new URL(`${file}.mp3`, dir).pathname]);
     } else {
       len = c.dur ?? 1.6;
-      args.push('-f', 'lavfi', '-i', synth(c.synth!, len));
+      i = input(['-f', 'lavfi', '-i', synth(c.synth!, len)]);
     }
     const f = [`aformat=sample_rates=${SR}:channel_layouts=stereo`];
     if (c.pitch && c.pitch !== 1) f.push(`rubberband=pitch=${c.pitch}`);
@@ -230,9 +247,44 @@ function mixSound(v: Video5, out: URL): boolean {
     if (c.room) f.push('aecho=0.85:0.6:45|95:0.2|0.12');
     f.push(`volume=${c.vol ?? 1}`, `adelay=${Math.round(c.at * 1000)}:all=1`);
     chains.push(`[${i}:a]${f.join(',')}[a${i}]`);
-  });
-  const mix = `${cues.map((_, i) => `[a${i}]`).join('')}amix=inputs=${cues.length}:normalize=0:dropout_transition=0,apad=whole_dur=${v.T.end},atrim=0:${v.T.end},alimiter=limit=0.9,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR}[out]`;
-  args.push('-filter_complex', [...chains, mix].join(';'), '-map', '[out]', '-ac', '2', new URL('sound.wav', out).pathname);
+    (c.src ? voice : fx).push(`[a${i}]`);
+  }
+  for (const p of v.music?.parts ?? []) {
+    const len = p.to - p.from;
+    const i = input(['-ss', String(p.from), '-t', len.toFixed(3), '-i', new URL(v.music!.file, dir).pathname]);
+    const fade = `afade=t=in:d=${p.fadeIn ?? 0.04},afade=t=out:st=${Math.max(0, len - (p.fadeOut ?? 0.04)).toFixed(3)}:d=${p.fadeOut ?? 0.04}`;
+    const tail = `${fade},volume=${p.vol ?? 1},adelay=${Math.round(p.at * 1000)}:all=1`;
+    if (p.novox)
+      // Речь в фильме — по центру: боковой канал (L − R) и низ средних (бочка, бас) — музыка почти без голосов.
+      chains.push(
+        `[${i}:a]aformat=sample_rates=${SR}:channel_layouts=stereo,asplit[s${i}][l${i}]`,
+        `[s${i}]pan=mono|c0=0.5*c0-0.5*c1,highpass=f=120,volume=${p.side ?? 4}[ss${i}]`,
+        `[l${i}]pan=mono|c0=0.5*c0+0.5*c1,lowpass=f=110,lowpass=f=110[ll${i}]`,
+        `[ss${i}][ll${i}]amix=inputs=2:normalize=0,pan=stereo|c0=c0|c1=c0,${tail}[m${i}]`,
+      );
+    else chains.push(`[${i}:a]aformat=sample_rates=${SR}:channel_layouts=stereo,${tail}[m${i}]`);
+    music.push(`[m${i}]`);
+  }
+  const bus = (name: string, list: string[]) => chains.push(list.length ? `${list.join('')}amix=inputs=${list.length}:normalize=0:dropout_transition=0[${name}]` : `anullsrc=r=${SR}:cl=stereo,atrim=0:0.1[${name}]`);
+  bus('vox', voice);
+  bus('fx', fx);
+  const master = `apad=whole_dur=${v.T.end},atrim=0:${v.T.end},alimiter=limit=0.9,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR}`;
+  const outs = ['-map', '[out]', '-ac', '2', new URL('sound.wav', out).pathname];
+  if (music.length) {
+    bus('mus', music);
+    chains.push(
+      `[vox]asplit=3[v1][v2][vs]`,
+      // Компрессор кончается вместе с голосами — продлеваем их тишиной до конца ролика.
+      `[vs]apad=whole_dur=${v.T.end}[vsc]`,
+      `[fx]asplit[f1][f2]`,
+      // Музыка уходит вниз, пока звучат голоса.
+      `[mus][vsc]sidechaincompress=threshold=0.04:ratio=6:attack=15:release=400[md]`,
+      `[v1][f1][md]amix=inputs=3:normalize=0:dropout_transition=0,${master}[out]`,
+      `[v2][f2]amix=inputs=2:normalize=0:dropout_transition=0,${master}[out2]`,
+    );
+    outs.push('-map', '[out2]', '-ac', '2', new URL('voice.wav', out).pathname);
+  } else chains.push(`[vox][fx]amix=inputs=2:normalize=0:dropout_transition=0,${master}[out]`);
+  args.push('-filter_complex', chains.join(';'), ...outs);
   execFileSync('ffmpeg', args, { stdio: 'inherit' });
   return true;
 }

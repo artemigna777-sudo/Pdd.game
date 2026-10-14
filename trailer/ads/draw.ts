@@ -13,8 +13,8 @@ export interface Pen {
   faceInk?: string;
 }
 
-export type Face = 'happy' | 'neutral' | 'grin' | 'shock' | 'doubt' | 'cool' | 'calm' | 'relaxed' | 'sad' | 'tired' | 'angry' | 'think' | 'smile' | 'sleepy';
-export const FACE_KEYS: Face[] = ['happy', 'neutral', 'grin', 'shock', 'doubt', 'cool', 'calm', 'relaxed', 'sad', 'tired', 'angry', 'think', 'smile', 'sleepy'];
+export type Face = 'happy' | 'neutral' | 'grin' | 'shock' | 'doubt' | 'cool' | 'calm' | 'relaxed' | 'sad' | 'tired' | 'angry' | 'think' | 'smile' | 'sleepy' | 'shout' | 'smirk';
+export const FACE_KEYS: Face[] = ['happy', 'neutral', 'grin', 'shock', 'doubt', 'cool', 'calm', 'relaxed', 'sad', 'tired', 'angry', 'think', 'smile', 'sleepy', 'shout', 'smirk'];
 
 /** Глаз: на тёмном фоне — белый с чёрным зрачком, на светлом — обведённый, с тёмным зрачком. */
 function eye(p: Pen, x: number, y: number, r = 10, px = 0, py = 0, pupil = 0.5): string {
@@ -42,11 +42,13 @@ export function faces(p: Pen, f: 1 | -1): Record<Face, string> {
     think: `${e(-17, -6, 10, 4, -5)}${e(17, -6, 10, 4, -5)}${m('M-6,22 q8,-4 14,2 M14,-30 l14,-4')}`,
     smile: `${e(-17, -6, 10, 3)}${e(17, -6, 10, 3)}${m('M-15,13 q15,15 30,0')}`,
     sleepy: m('M-27,-4 h19 M8,-4 h19 M-6,22 q6,4 12,0'),
+    shout: `${e(-17, -4, 10, 2)}${e(17, -4, 10, 2)}${m('M-30,-26 l22,10 M8,-16 l22,-10')}<ellipse cx="0" cy="25" rx="15" ry="13" fill="${solid}"/>`,
+    smirk: `${e(-17, -3, 10, 3, 1)}${e(17, -3, 10, 3, 1)}${m('M-30,-14 l24,4 M6,-10 l24,-6 M-12,20 q16,6 30,-10')}`,
   };
 }
 
 export type Hair = 'none' | 'bun' | 'ponytail' | 'spiky' | 'cap' | 'scarf' | 'long' | 'curly' | 'helmet' | 'bald';
-export type Arm = 'down' | 'hip' | 'point' | 'up' | 'phone' | 'front' | 'lap' | 'table' | 'wheel' | 'wave' | 'chin';
+export type Arm = 'down' | 'hip' | 'point' | 'up' | 'phone' | 'front' | 'lap' | 'table' | 'wheel' | 'wave' | 'chin' | 'cheer';
 export type Hold = 'none' | 'phone' | 'gamepad' | 'book' | 'cup' | 'paper' | 'cards';
 
 export interface PersonOpts {
@@ -173,6 +175,8 @@ export function person(p: Pen, o: PersonOpts): { svg: string; head: { x: number;
         return `<path d="M${sx},${sy} L${sx + 40 * F},${tableY - 30} L${sx + 104 * F},${tableY - 6}"/>${back ? '' : held(p, o.hold ?? 'none', sx + 118 * F, tableY - 24, F)}`;
       case 'wheel':
         return `<path d="M${sx},${sy} L${sx + 48 * F},${sy + 50} L${sx + 92 * F},${sy + 14}"/>`;
+      case 'cheer':
+        return `<path d="M${sx},${sy} L${sx + 40 * F * (back ? -1 : 1)},${sy - 58} L${sx + 66 * F * (back ? -1 : 1)},${sy - 138}"/>`;
       case 'chin':
         return `<path d="M${sx},${sy} L${sx + 34 * F},${sy + 50} L${sx + 30 * F},${sy - 30}"/>`;
       default:

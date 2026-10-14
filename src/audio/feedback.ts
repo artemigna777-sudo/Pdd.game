@@ -8,7 +8,7 @@
  */
 import { getSettings } from '../settings.ts';
 
-export type SoundName = 'correct' | 'wrong' | 'reward' | 'pass' | 'fail' | 'tick' | 'start';
+export type SoundName = 'correct' | 'wrong' | 'reward' | 'pass' | 'fail' | 'tick' | 'start' | 'rev' | 'stamp' | 'away' | 'coins';
 
 type Wave = OscillatorType;
 interface Note {
@@ -57,6 +57,20 @@ const SOUNDS: Record<SoundName, Note[]> = {
     { f: 660, t: 0, d: 0.1 },
     { f: 660, t: 0.18, d: 0.1 },
     { f: 990, t: 0.36, d: 0.2 },
+  ],
+  // Анимированные сцены сюжета (этап 18): мотор, печать, уезжающий мопед, звон монет.
+  rev: [
+    { f: 70, t: 0, d: 0.55, wave: 'sawtooth', gain: 0.07, to: 160 },
+    { f: 160, t: 0.5, d: 0.7, wave: 'sawtooth', gain: 0.06, to: 85 },
+  ],
+  stamp: [
+    { f: 140, t: 0, d: 0.22, wave: 'triangle', gain: 0.3, to: 50 },
+    { f: 70, t: 0, d: 0.3, gain: 0.25, to: 38 },
+  ],
+  away: [{ f: 210, t: 0, d: 2.2, wave: 'sawtooth', gain: 0.05, to: 70 }],
+  coins: [
+    { f: 1568, t: 0, d: 0.12, gain: 0.06 },
+    { f: 2093, t: 0.08, d: 0.2, gain: 0.06 },
   ],
 };
 

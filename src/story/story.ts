@@ -9,6 +9,7 @@
  *
  * В тексте можно подставить `{percent}` (доля верных ответов главы) и `{goal}` (адрес доставки).
  */
+import type { FilmId } from './films.ts';
 import type { Cond } from './plot.ts';
 
 export type CharacterId = 'narrator' | 'victor' | 'marina' | 'sokolov' | 'galina' | 'artem' | 'semyon' | 'anya' | 'gena' | 'turbin';
@@ -41,6 +42,8 @@ export interface Line {
   if?: Cond;
   /** Выбор в этой реплике — развилка сюжета с таким id: он записывается в сохранение. */
   decision?: string;
+  /** С этой реплики над диалогом идёт анимированная сцена (этап 18, `films.ts`); следующие реплики её не меняют. */
+  film?: FilmId;
 }
 
 /** Вариант ответа в диалоге: что сказать и что ответят. */

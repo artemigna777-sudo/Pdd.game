@@ -8,7 +8,7 @@
  * Пока картинок нет, вместо них — серые заглушки с номером: так видно монтаж и подписи.
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { CSS3, PATTERNS, C, H, W, ctaBio, dialogue, type Line3 } from './engine3.ts';
+import { CSS3, ETCH, PATTERNS, C, H, W, ctaBio, dialogue, svgLines, type Line3 } from './engine3.ts';
 
 /** Склейки образца «Обломов» (с): реплики, вспышка, кадры истории, вывод, «Решение в био». */
 export const PLAN = {
@@ -47,6 +47,8 @@ export interface Video4 {
   lines: Line3[];
   /** Картинки истории по порядку: что на них (для заглушек), файл — `trailer/ads/pics/<id>/<n>.png`. */
   pics: string[];
+  /** Или картинки, нарисованные кодом «под гравюру» (`etch.ts`): тело SVG 1080×1920 на каждую. Тогда файлы не нужны. */
+  art?: string[];
   shots: Shot[];
   cta: { lines: string[]; accent: number };
   bioGlyph?: string;
@@ -82,7 +84,9 @@ function story(v: Video4, T: typeof PLAN, files: string[]): { html: string; twee
   tw.push(`tl.to('#white', { opacity: 0, duration: 0.35, ease: 'power1.out' }, ${T.white[1]});`);
   for (const t of T.story.slice(1, -1)) tw.push(`tl.set('#flash', { opacity: 0.25 }, ${t}); tl.set('#flash', { opacity: 0 }, ${(t + 0.034).toFixed(3)});`);
   const t0 = T.story[0];
-  const imgs = files.map((f, i) => `<img class="gimg" id="g${i + 1}" src="${f}" alt="" />`).join('\n          ');
+  const imgs = v.art
+    ? v.art.map((a, i) => `<div class="gimg" id="g${i + 1}">${svgLines(ETCH, a, 3)}</div>`).join('\n          ')
+    : files.map((f, i) => `<img class="gimg" id="g${i + 1}" src="${f}" alt="" />`).join('\n          ');
   const html = `<div class="clip scene etch" id="story" data-start="${t0}" data-duration="${(T.story[T.story.length - 1] - t0).toFixed(3)}">
         <div class="cam" id="scam">
           ${imgs}
@@ -139,7 +143,7 @@ export function buildVideo4(v: Video4, files: string[]): string {
 export function writeVideo4(v: Video4): string {
   const dir = new URL(`./out/${v.id}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });
-  const files = v.pics.map((what, i) => {
+  const files = v.art ? [] : v.pics.map((what, i) => {
     for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
       const src = new URL(`./pics/${v.id}/${i + 1}.${ext}`, import.meta.url);
       if (existsSync(src)) {

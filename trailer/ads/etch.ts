@@ -156,7 +156,7 @@ export function wing(a: Pt, b: Pt, down: number, n = 9, len = 150, spread = -18)
 
 // ─── Люди ──────────────────────────────────────────────────────────────────────
 
-export type Hair = 'short' | 'curly' | 'long' | 'bald' | 'helmet' | 'crown' | 'hat' | 'kerchief' | 'braids' | 'cap';
+export type Hair = 'short' | 'curly' | 'long' | 'bald' | 'helmet' | 'crown' | 'hat' | 'kerchief' | 'braids' | 'cap' | 'turban';
 export interface FigOpts {
   /** Точка таза. */
   x: number;
@@ -269,6 +269,7 @@ function head(hair: Hair, beard: boolean, face: 'calm' | 'sad' | 'shout' | 'clos
     hat: `${sh('M-26,-24 C-24,-60 22,-64 26,-28 Z', 'b120')}<path d="M-44,-22 Q0,-34 46,-24" stroke-width="7"/><path d="M-10,-56 q-20,-34 -50,-30" stroke-width="3"/>`,
     kerchief: sh('M-36,10 C-42,-30 -12,-48 10,-44 C32,-40 40,-22 36,-8 L30,-14 C14,-30 -12,-26 -18,0 L-12,34 L-30,30 Z', 'hd'),
     cap: `${sh('M-32,-8 C-34,-40 24,-46 32,-14 Z', 'b0')}<path d="M24,-14 L52,-8" stroke-width="7"/>`,
+    turban: `${sh('M-36,-2 C-46,-34 -24,-62 6,-62 C34,-62 46,-42 38,-16 C28,-22 16,-24 4,-23 C-10,-22 -22,-14 -30,4 Z', 'c30')}<path d="M-38,-18 Q0,-38 40,-26 M-34,-36 Q2,-54 36,-42 M-22,-52 Q6,-64 26,-54" stroke-width="2.5"/>${wh('M-8,-60 q8,-14 18,-4 q-6,8 -18,4 Z', 'stroke-width="2.5"')}`,
   };
   const beardSvg = beard ? sh('M32,12 C32,30 22,50 4,52 C-12,52 -22,38 -24,22 C-12,30 0,32 12,26 C22,22 28,18 32,12 Z', 'b120') : '';
   return `${wh(skull)}<path d="M-6,-4 q-9,0 -9,9 q0,9 9,9" stroke-width="2.5"/>${hairs[hair]}${eyes}${beard ? '' : mouth}${beardSvg}`;

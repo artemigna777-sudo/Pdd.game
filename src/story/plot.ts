@@ -230,6 +230,17 @@ export function decisionLines(d: Decision, ctx: PlotContext): Line[] {
   return [...lines.slice(0, -1), { ...ask, choices, decision: d.id }];
 }
 
+/** Есть ли у развилки анимированная сцена (этап 18). */
+export function hasFilm(d: Decision): boolean {
+  return d.lines.some((l) => l.film) || d.options.some((o) => o.reply?.some((l) => l.film));
+}
+
+/** Пересмотреть принятую развилку: реплики, вопрос (уже без кнопок) и ответ на сделанный выбор. */
+export function replayLines(d: Decision, value: string, ctx: PlotContext): Line[] {
+  const option = d.options.find((o) => o.value === value);
+  return [...resolveLines(d.lines, ctx), ...resolveLines(option?.reply ?? [], ctx)];
+}
+
 /** Развилки сцены, которые ещё не решены и условия которых выполнены. */
 export function pendingDecisions(chapter: string, scene: StoryScene, ctx: PlotContext, source: PlotSource): Decision[] {
   return source.decisions.filter((d) => d.chapter === chapter && d.scene === scene && ctx.decisions[d.id] === undefined && check(d.when, ctx));

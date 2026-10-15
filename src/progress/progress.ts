@@ -63,6 +63,9 @@ export const LEVELS = [
   { title: 'Легенда «Стрелы»', xp: 11500 },
 ] as const;
 
+/** После последнего уровня опыт копится дальше: новый уровень «Легенды «Стрелы»» — каждые 3000 опыта. */
+export const LEGEND_STEP = 3000;
+
 /** Сколько монет за что (монеты тратятся только на внешний вид машины). */
 export const COINS = {
   /** Верный ответ. */
@@ -226,6 +229,11 @@ export interface ModesState {
 export interface ProgressData {
   xp: number;
   coins: number;
+  /**
+   * Сколько монет потрачено в магазине (для таблицы лидеров: заработано = монеты + потрачено).
+   * Нет у сохранений до таблицы лидеров — тогда потраченное оценивается по покупкам (`progress/earned.ts`).
+   */
+  coinsSpent?: number;
   daily?: DailyState;
   /** Серия дней подряд с выполненной целью дня. */
   streak: { count: number; best: number; /** Начало последнего дня, когда цель выполнена. */ last?: number };
@@ -254,6 +262,7 @@ export function emptyProgress(): ProgressData {
   return {
     xp: 0,
     coins: 0,
+    coinsSpent: 0,
     streak: { count: 0, best: 0 },
     garage: { paint: DEFAULT_PAINT, sticker: DEFAULT_STICKER, owned: [DEFAULT_PAINT, DEFAULT_STICKER] },
     questions: {},
@@ -281,6 +290,8 @@ export function sanitizeProgress(raw: unknown): ProgressData {
   if (!isObj(raw)) return data;
   if (isInt(raw.xp)) data.xp = raw.xp;
   if (isInt(raw.coins)) data.coins = raw.coins;
+  if (isInt(raw.coinsSpent)) data.coinsSpent = raw.coinsSpent;
+  else delete data.coinsSpent;
   const d = raw.daily;
   if (isObj(d) && isInt(d.day) && GOAL_KINDS.includes(d.kind as GoalKind) && isInt(d.target, 1) && isInt(d.count) && typeof d.done === 'boolean') {
     data.daily = { day: d.day, kind: d.kind as GoalKind, target: d.target, count: d.count, done: d.done };
@@ -391,14 +402,18 @@ export interface LevelInfo {
   title: string;
   /** Опыт, с которого начинается уровень. */
   from: number;
-  /** Опыт следующего уровня (нет у последнего). */
+  /** Опыт следующего уровня. */
   to?: number;
 }
 
+/** Уровень по опыту. Последний уровень бесконечный: дальше 11-й, 12-й… каждые `LEGEND_STEP` опыта. */
 export function levelOf(xp: number): LevelInfo {
   let i = 0;
   while (i + 1 < LEVELS.length && xp >= LEVELS[i + 1].xp) i++;
-  return { number: i + 1, title: LEVELS[i].title, from: LEVELS[i].xp, to: LEVELS[i + 1]?.xp };
+  if (i + 1 < LEVELS.length) return { number: i + 1, title: LEVELS[i].title, from: LEVELS[i].xp, to: LEVELS[i + 1].xp };
+  const extra = Math.floor((xp - LEVELS[i].xp) / LEGEND_STEP);
+  const from = LEVELS[i].xp + extra * LEGEND_STEP;
+  return { number: LEVELS.length + extra, title: LEVELS[i].title, from, to: from + LEGEND_STEP };
 }
 
 /** Прибавить опыт; вернуть новый уровень, если он сменился. */
@@ -673,6 +688,7 @@ export function currentStreak(data: ProgressData, now: number): number {
 export function spendCoins(data: ProgressData, price: number): boolean {
   if (data.coins < price) return false;
   data.coins -= price;
+  if (data.coinsSpent !== undefined) data.coinsSpent += price;
   return true;
 }
 

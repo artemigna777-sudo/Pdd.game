@@ -252,9 +252,18 @@ test('загрузка посредника: номер хранилища ду�
   assert.equal(config.name, 'kurier-pdd-stats');
   assert.equal(config.keep_vars, true, 'загрузка не стирает переменные, заданные в Cloudflare руками');
   assert.deepEqual(config.kv_namespaces, [{ binding: 'DUELS', id: 'ddd' }]);
-  // Комнаты дуэли в реальном времени — Durable Object LiveRoom; без них загрузка тоже возможна.
-  assert.deepEqual(config.durable_objects, { bindings: [{ name: 'LIVE', class_name: 'LiveRoom' }] });
-  assert.deepEqual(config.migrations, [{ tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] }]);
+  // Комнаты дуэли в реальном времени и игроки для таблицы лидеров — Durable Objects LiveRoom и Players;
+  // старая миграция остаётся первой, без них загрузка тоже возможна.
+  assert.deepEqual(config.durable_objects, {
+    bindings: [
+      { name: 'LIVE', class_name: 'LiveRoom' },
+      { name: 'PLAYERS', class_name: 'Players' },
+    ],
+  });
+  assert.deepEqual(config.migrations, [
+    { tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] },
+    { tag: 'players-v1', new_sqlite_classes: ['Players'] },
+  ]);
   const plain = deployConfig(readFileSync('stats-worker/wrangler.jsonc', 'utf8'), undefined, false);
   assert.equal(plain.durable_objects, undefined);
   assert.equal(plain.kv_namespaces, undefined);

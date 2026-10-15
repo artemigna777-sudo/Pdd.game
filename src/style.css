@@ -5705,3 +5705,153 @@ a.btn {
   border: 2px dashed var(--accent);
   border-radius: var(--radius);
 }
+
+/* ---------- Таблица лидеров ---------- */
+
+.menu__board {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board__tabs {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 0;
+}
+
+.board__note,
+.board__hint,
+.board__total {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.board__total {
+  text-align: center;
+}
+
+.board__join .btn,
+.board__mine .btn {
+  width: 100%;
+}
+
+.board__place-line {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.board__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.board__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board__empty {
+  margin: 8px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.board__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.board__row.is-me {
+  outline: 2px solid var(--accent);
+  background: var(--choice-on);
+}
+
+.board__place {
+  flex: none;
+  width: 32px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.board__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__you {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.board__level {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.board__value {
+  flex: none;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.board__gap {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.stats-ready__tabs {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 4px 0;
+}
+
+.menu__icons {
+  display: flex;
+  gap: 10px;
+}
+
+/* На узком экране кнопки 🏆 и настроек — друг над другом, чтобы уровню хватило места. */
+@media (max-width: 360px) {
+  .menu__icons {
+    flex-direction: column;
+  }
+
+  .menu__icons .menu__settings {
+    flex: 1;
+    min-height: 48px;
+  }
+}
+
+.board__mine .btn--secondary,
+.board__join .btn--secondary {
+  border: 2px solid var(--line);
+}

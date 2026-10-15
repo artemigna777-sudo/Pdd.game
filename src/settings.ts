@@ -35,6 +35,12 @@ export interface Settings {
   installTip: boolean;
   /** Праздничные оформления вопросов включаются сами в дни праздника (`progress/qthemes.ts`). */
   holidays: boolean;
+  /** Игрок в общей таблице лидеров (`board/board.ts`): видно имя, опыт и заработанные монеты. */
+  board: boolean;
+  /** Имя в таблице лидеров. */
+  boardName: string;
+  /** Случайный номер этой игры у посредника (ни с чем не связан), создаётся при первой отправке. */
+  playerId: string;
   /**
    * Длительность смен в режимах (этапы 12–13), доля от обычной. В настройках её нет: смены
    * укорачивают только автотесты.
@@ -45,7 +51,7 @@ export interface Settings {
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, voice: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true, holidays: true };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, voice: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true, holidays: true, board: false, boardName: '', playerId: '' };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
@@ -54,6 +60,9 @@ if (typeof current.stats !== 'boolean') current.stats = DEFAULTS.stats;
 if (typeof current.installTip !== 'boolean') current.installTip = DEFAULTS.installTip;
 if (typeof current.voice !== 'boolean') current.voice = DEFAULTS.voice;
 if (typeof current.holidays !== 'boolean') current.holidays = DEFAULTS.holidays;
+if (typeof current.board !== 'boolean') current.board = DEFAULTS.board;
+if (typeof current.boardName !== 'string') current.boardName = '';
+if (typeof current.playerId !== 'string') current.playerId = '';
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

@@ -74,6 +74,11 @@ test('отчёт через посредника одним запросом: к
   assert.deepEqual(r.systems, [{ name: 'iOS', count: 9 }]);
   assert.deepEqual(r.locations, [{ name: 'Russia', count: 9 }]);
   assert.deepEqual(parseReport('не json').counts, {});
+  // Готовность игроков: по 10 чисел за 7 и 30 дней; испорченная — не показывается.
+  const ten = [1, 0, 0, 2, 0, 0, 0, 0, 0, 3];
+  assert.deepEqual(parseReport({ ready: { d7: ten, d30: ten } }).ready, { d7: ten, d30: ten });
+  assert.equal(parseReport({ ready: { d7: [1, 2], d30: ten } }).ready, undefined);
+  assert.equal(parseReport({}).ready, undefined);
 });
 
 test('посредник старой версии (без отчёта одним запросом): семь запросов, как раньше', async () => {

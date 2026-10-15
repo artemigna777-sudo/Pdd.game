@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   CONTROL_TICKETS,
+  LEGEND_STEP,
   LEVELS,
   XP,
   canDeliver,
@@ -83,7 +84,15 @@ test('опыт: первый верный ответ, повтор, знаком
   assert.deepEqual(levelOf(0), { number: 1, title: LEVELS[0].title, from: 0, to: LEVELS[1].xp });
   assert.equal(levelOf(LEVELS[1].xp).number, 2);
   assert.equal(levelOf(LEVELS[1].xp - 1).number, 1);
-  assert.equal(levelOf(1e9).to, undefined);
+  // После 10-го уровня опыт копится бесконечно: новый уровень каждые 3000 опыта.
+  const last = LEVELS[LEVELS.length - 1];
+  assert.deepEqual(levelOf(last.xp), { number: 10, title: last.title, from: last.xp, to: last.xp + LEGEND_STEP });
+  assert.equal(levelOf(last.xp + LEGEND_STEP - 1).number, 10);
+  assert.deepEqual(levelOf(last.xp + LEGEND_STEP), { number: 11, title: last.title, from: last.xp + LEGEND_STEP, to: last.xp + 2 * LEGEND_STEP });
+  assert.equal(levelOf(last.xp + 40 * LEGEND_STEP + 5).number, 50);
+  const legend = emptyProgress();
+  legend.xp = last.xp + 2 * LEGEND_STEP - 3;
+  assert.equal(recordAnswer(legend, 'A', true, day(0)).levelUp?.number, 12, 'новый уровень после 10-го тоже празднуется');
 
   const d2 = emptyProgress();
   d2.xp = LEVELS[1].xp - 5;

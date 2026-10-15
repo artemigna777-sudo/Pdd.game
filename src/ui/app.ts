@@ -51,6 +51,8 @@ import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
 import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
+import { boardView, syncMe } from './boardView.ts';
+import { ensureCoinsSpent } from '../progress/earned.ts';
 import { dailyCard, designsView, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { storyView } from './storyView.ts';
 import { catchUpPanel } from './catchUp.ts';
@@ -145,7 +147,9 @@ type Route =
   | { name: 'situations' }
   | { name: 'situations-run'; stage: StageId }
   /** Статистика игры для автора (секретный вход из настроек). */
-  | { name: 'stats' };
+  | { name: 'stats' }
+  /** Таблица лидеров — общая для всех игроков. */
+  | { name: 'board' };
 type RouteName = Route['name'];
 type TicketRoute = Extract<Route, { name: 'ticket' }>;
 type AttemptRoute = Extract<Route, { name: 'attempt' }>;
@@ -197,6 +201,7 @@ const DEPTH: Record<RouteName, number> = {
   situations: 2,
   'situations-run': 3,
   stats: 2,
+  board: 1,
 };
 
 // Результат билета заменяет в истории браузера сам билет, поэтому у него глубина билета,
@@ -260,6 +265,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         plan: 'Мой экзамен',
         garage: 'Магазин',
         designs: 'Оформление вопросов',
+        board: 'Таблица лидеров',
         finale: 'Финал',
         story: 'Моя история',
         tale: 'Дополнительный сюжет',
@@ -314,6 +320,12 @@ export class App {
     // Статистика: новый игрок и вход с главного экрана — по разу, затем экраны по мере открытия.
     startStats();
     trackOnce('new-player', 'Новый игрок');
+    // Таблица лидеров и готовность для статистики автора: сообщить свои числа, если пора.
+    if (ensureCoinsSpent(progress())) saveProgress();
+    window.setTimeout(() => void syncMe(), 4000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void syncMe();
+    });
     if (isStandalone()) trackOncePerDay('home-screen', 'Открыли игру с главного экрана');
     this.render({ name: 'menu' });
     unlockAudioOnFirstTouch();
@@ -436,6 +448,9 @@ export class App {
         break;
       case 'stats':
         screen = this.statsScreen();
+        break;
+      case 'board':
+        screen = this.page('Таблица лидеров', boardView(), { back: 'menu' });
         break;
       case 'tickets':
         screen = this.ticketsScreen();
@@ -609,6 +624,7 @@ export class App {
     const level = el('button', { class: 'menu__level', type: 'button', onclick: () => this.open({ name: 'progress' }) }, levelMeter(levelOf(data.xp), data.xp, true));
     const settingsButton = el('button', { class: 'menu__settings', type: 'button', 'aria-label': 'Настройки', onclick: () => this.open({ name: 'settings' }) });
     settingsButton.innerHTML = ICONS.settings;
+    const boardButton = el('button', { class: 'menu__settings menu__board', type: 'button', 'aria-label': 'Таблица лидеров', onclick: () => this.open({ name: 'board' }) }, '🏆');
     const reviewButton = el(
       'button',
       { class: 'btn btn--secondary', type: 'button', 'aria-label': due ? `Разбор ошибок, пора повторить: ${due}` : 'Разбор ошибок', onclick: () => this.open({ name: 'review' }) },
@@ -638,7 +654,7 @@ export class App {
       el(
         'div',
         { class: 'menu' },
-        el('div', { class: 'menu__top' }, level, settingsButton),
+        el('div', { class: 'menu__top' }, level, el('div', { class: 'menu__icons' }, boardButton, settingsButton)),
         story,
         el(
           'div',

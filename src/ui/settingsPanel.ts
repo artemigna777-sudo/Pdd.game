@@ -34,7 +34,7 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
     updateSettings({ control: mode });
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(OPTIONS[i].mode === mode)));
   }
-  const toggle = (key: 'sound' | 'vibration' | 'voice' | 'bigText' | 'events' | 'stats', title: string, hint: string) => {
+  const toggle = (key: 'sound' | 'vibration' | 'voice' | 'bigText' | 'events' | 'stats' | 'holidays', title: string, hint: string) => {
     const button = el(
       'button',
       { class: 'choice choice--toggle', type: 'button', 'aria-pressed': String(getSettings()[key]), onclick: () => flip() },
@@ -77,7 +77,13 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
     ),
     ...(full ? soundSection() : []),
     el('h2', { class: 'settings__title settings__title--next' }, 'Вид'),
-    el('div', { class: 'choices' }, themeChoice(), toggle('bigText', 'Крупный шрифт', 'Вопросы, варианты ответов, пояснения и реплики — крупнее.')),
+    el(
+      'div',
+      { class: 'choices' },
+      themeChoice(),
+      toggle('bigText', 'Крупный шрифт', 'Вопросы, варианты ответов, пояснения и реплики — крупнее.'),
+      toggle('holidays', 'Праздничные оформления', 'В дни праздников вопросы сами в праздничном оформлении: Новый год, 8 Марта, День автомобилиста и другие. Если в магазине выбрано своё оформление, показывается оно.'),
+    ),
     el('h2', { class: 'settings__title settings__title--next' }, 'Обучение'),
     tutorial,
     full ? backupSection() : null,

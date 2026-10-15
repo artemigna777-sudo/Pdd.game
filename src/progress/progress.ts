@@ -190,6 +190,10 @@ export interface GarageState {
   model?: string;
   horn?: string;
   plate?: string;
+  /** Оформление вопросов, выбранное игроком; нет — «Авто» (`progress/qthemes.ts`). */
+  qtheme?: string;
+  /** Сколько верных ответов подряд в серии оформления. */
+  qstreak?: number;
   /** Купленные покраски и наклейки. */
   owned: string[];
 }
@@ -292,6 +296,9 @@ export function sanitizeProgress(raw: unknown): ProgressData {
     if (typeof raw.garage.model === 'string' && owned.includes(`model:${raw.garage.model}`)) data.garage.model = raw.garage.model;
     if (typeof raw.garage.horn === 'string' && owned.includes(`horn:${raw.garage.horn}`)) data.garage.horn = raw.garage.horn;
     if (typeof raw.garage.plate === 'string' && owned.includes('plate') && /^[A-ZА-Я0-9 -]{1,8}$/.test(raw.garage.plate)) data.garage.plate = raw.garage.plate;
+    // Есть ли выбранное оформление у игрока, проверяет `activeQTheme` при показе.
+    if (typeof raw.garage.qtheme === 'string' && /^[a-z0-9]{1,20}$/.test(raw.garage.qtheme)) data.garage.qtheme = raw.garage.qtheme;
+    if (isInt(raw.garage.qstreak) && raw.garage.qstreak < 10) data.garage.qstreak = raw.garage.qstreak;
   }
   const dr = raw.drive;
   if (isObj(dr) && isNum(dr.clean) && isNum(dr.best) && isNum(dr.total) && isInt(dr.violations)) {

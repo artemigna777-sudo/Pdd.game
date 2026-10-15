@@ -28,15 +28,28 @@ function seed(page: Page, site?: string, proxy?: string) {
 
 const PROXY = 'https://proxy.test';
 
-/** Посредник (Cloudflare Worker), как настоящий: CORS для заголовка с ключом, API GoatCounter. `state.fail` — ответить ошибкой. */
-async function mockProxy(page: Page, state: { fail?: number; auths: string[] }) {
+/**
+ * Посредник (Cloudflare Worker), как настоящий: CORS для заголовка с ключом, отчёт одним запросом и API
+ * GoatCounter. `state.fail` — ответить ошибкой, `state.old` — посредник старой версии (без отчёта),
+ * `state.silent` — не отвечать (связь обрывается).
+ */
+async function mockProxy(page: Page, state: { fail?: number; old?: boolean; silent?: boolean; auths: string[] }) {
   await page.route(`${PROXY}/**`, async (route) => {
     const req = route.request();
     const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization' };
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     state.auths.push((await req.headerValue('authorization')) ?? '');
+    if (state.silent) return;
     if (state.fail) return route.fulfill({ status: state.fail, json: { error: 'key' }, headers: cors });
-    const kind = new URL(req.url()).pathname.replace('/api/v0/stats/', '');
+    const path = new URL(req.url()).pathname;
+    if (path === '/api/report') {
+      if (state.old) return route.fulfill({ status: 404, json: { error: 'path' }, headers: cors });
+      return route.fulfill({
+        json: { today: 21, week: 21, month: 21, days: [], counts: { '/city/ch1': 15, 'chapter-done/ch1': 6, 'exam-pass': 4 }, refs: [['tiktok', 12]], systems: [['iOS', 18]], locations: [['Russia', 20]] },
+        headers: cors,
+      });
+    }
+    const kind = path.replace('/api/v0/stats/', '');
     const body =
       kind === 'total'
         ? { total: 21, stats: [] }
@@ -230,7 +243,7 @@ test('через посредника: ключ автора из пароля, 
   await seed(page, 'test-site', PROXY);
   const counter = { requests: [] as { method: string; auth: string | null; url: URL }[] };
   await mockCounter(page, counter);
-  const proxy = { fail: 0, auths: [] as string[] };
+  const proxy = { fail: 0, old: false, auths: [] as string[] };
   await mockProxy(page, proxy);
   await openSettings(page);
   await secretTaps(page);
@@ -244,8 +257,15 @@ test('через посредника: ключ автора из пароля, 
   await expect(page.getByRole('link', { name: 'Открыть на сайте ↗' })).toHaveCount(0);
   const key = (await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!))).key as string;
   expect(key).toMatch(/^[0-9a-f]{64}$/);
-  expect(proxy.auths).toHaveLength(7);
+  expect(proxy.auths).toHaveLength(1);
   expect(proxy.auths.every((a) => a === `Bearer ${key}`)).toBe(true);
+  expect(counter.requests).toHaveLength(0);
+
+  // Посредник старой версии: те же числа семью запросами.
+  proxy.old = true;
+  await page.getByRole('button', { name: 'Обновить' }).tap();
+  await expect(page.locator('.stats')).toContainText('Russia');
+  expect(proxy.auths).toHaveLength(1 + 8);
   expect(counter.requests).toHaveLength(0);
 
   proxy.fail = 401;
@@ -273,4 +293,34 @@ test('вход до посредника: без ключа автора — о�
   await login(page);
   await expect(page.locator('.stat-tile').nth(0)).toContainText('21');
   await expect(page.locator('.stats')).not.toContainText('Введи пароль ещё раз');
+});
+
+test('связь с посредником и счётчиком обрывается — не висим на «Загружаю»: через 15 и 12 секунд понятная причина', async ({ page }) => {
+  await page.clock.install();
+  await seed(page, 'test-site', PROXY);
+  await page.addInitScript((verified) => {
+    if (!sessionStorage.getItem('admin-seeded')) localStorage.setItem('pdd-game:admin', JSON.stringify({ unlocked: true, verified, key: 'd'.repeat(64), selfIgnore: true }));
+    sessionStorage.setItem('admin-seeded', '1');
+  }, VERIFIER.hash.slice(0, 16));
+  const counter = { requests: [] as { method: string; auth: string | null; url: URL }[] };
+  // Ни посредник, ни счётчик не отвечают — как при обрыве связи у оператора.
+  await page.route('https://test-site.goatcounter.com/**', async (route) => {
+    counter.requests.push({ method: route.request().method(), auth: null, url: new URL(route.request().url()) });
+  });
+  const proxy = { silent: true, auths: [] as string[] };
+  await mockProxy(page, proxy);
+  await openSettings(page);
+  await page.getByRole('button', { name: 'Статистика игры' }).tap();
+  await expect(page.locator('.loading')).toHaveText('Загружаю статистику…');
+  await expect.poll(() => proxy.auths.length).toBe(1);
+
+  await page.clock.fastForward(15_500);
+  await expect(page.locator('.loading')).toHaveText('Посредник не ответил. Пробую открытый счётчик…');
+  await expect.poll(() => counter.requests.length).toBe(1);
+  await page.clock.fastForward(12_500);
+  await expect(page.locator('.banner--bad').first()).toContainText('Посредник не ответил за 15 секунд');
+  await expect(page.locator('.banner--bad').first()).toContainText('Wi-Fi вместо мобильного');
+  await expect(page.locator('.stats')).toContainText('Счётчик GoatCounter не ответил');
+  await expect(page.getByRole('button', { name: 'Попробовать ещё раз' })).toBeVisible();
+  expect(counter.requests).toHaveLength(1);
 });

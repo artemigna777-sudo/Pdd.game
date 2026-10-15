@@ -1,4 +1,7 @@
 import './style.css';
+// Оформления вопросов: стили и шрифты (лежат в игре, работают без интернета).
+import './ui/qthemes/fonts.css';
+import './ui/qthemes/qthemes.css';
 import { startGame } from './game/game.ts';
 import { setupPwa } from './pwa.ts';
 import { applyLook, onSettingsChange } from './settings.ts';

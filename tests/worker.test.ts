@@ -91,6 +91,92 @@ test('ошибки GoatCounter: неверный ключ GoatCounter, сбой,
   assert.deepEqual(await down.json(), { error: 'gc-network' });
 });
 
+test('отчёт одним ответом: посредник сам спрашивает GoatCounter и отдаёт игре только числа', async () => {
+  const asked: URL[] = [];
+  const big = 'x'.repeat(2000);
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    asked.push(url);
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer gc-secret');
+    const page = url.pathname.replace('/api/v0/stats/', '');
+    const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+    if (page === 'total') {
+      const start = url.searchParams.get('start');
+      if (start === '2026-10-14T21:00:00Z') return json({ total: 4, stats: [{ day: '2026-10-15', daily: 4, hourly: Array(24).fill(0) }] });
+      if (start === '2026-10-08T21:00:00Z') return json({ total: 11, stats: [] });
+      return json({ total: 30, stats: [{ day: '2026-10-14', daily: 7, hourly: Array(24).fill(1) }, { day: '2026-10-15', daily: 3, hourly: Array(24).fill(0) }] });
+    }
+    // Настоящие ответы GoatCounter большие: по каждому адресу — дни и часы.
+    if (page === 'hits') return json({ hits: [{ path: '/city/ch1', count: 6, stats: [{ day: '2026-10-15', hourly: Array(24).fill(0) }], title: big }, { path: 'exam-pass', event: true, count: 2 }, { path: '/city/ch1', count: 1 }], more: false });
+    if (page === 'toprefs') return json({ stats: [{ name: 'tiktok', count: 5 }, { id: '', name: '', count: 2 }, { name: 'пусто', count: 0 }] });
+    if (page === 'systems') return json({ stats: [{ id: 'iOS', count: 9 }] });
+    return json({ stats: [{ name: 'Russia', count: 9 }] });
+  }) as typeof fetch;
+  const period = 'today=2026-10-14T21:00:00Z&week=2026-10-08T21:00:00Z&month=2026-09-15T21:00:00Z&end=2026-10-15T05:43:00Z';
+  const res = await call(`/api/report?${period}`, { key: ENV.STATS_KEY });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), GAME);
+  const text = await res.text();
+  assert.ok(text.length < 1000, `ответ маленький: ${text.length} знаков`);
+  assert.deepEqual(JSON.parse(text), {
+    today: 4,
+    week: 11,
+    month: 30,
+    days: [
+      ['2026-10-14', 7],
+      ['2026-10-15', 3],
+    ],
+    counts: { '/city/ch1': 7, 'exam-pass': 2 },
+    refs: [
+      ['tiktok', 5],
+      ['', 2],
+    ],
+    systems: [['iOS', 9]],
+    locations: [['Russia', 9]],
+  });
+  assert.deepEqual(
+    asked.map((u) => `${u.pathname.replace('/api/v0/stats/', '')} ${u.searchParams.get('start')} ${u.searchParams.get('end')}`),
+    [
+      'total 2026-10-14T21:00:00Z 2026-10-15T05:43:00Z',
+      'total 2026-10-08T21:00:00Z 2026-10-15T05:43:00Z',
+      'total 2026-09-15T21:00:00Z 2026-10-15T05:43:00Z',
+      'hits 2026-09-15T21:00:00Z 2026-10-15T05:43:00Z',
+      'toprefs 2026-09-15T21:00:00Z 2026-10-15T05:43:00Z',
+      'systems 2026-09-15T21:00:00Z 2026-10-15T05:43:00Z',
+      'locations 2026-09-15T21:00:00Z 2026-10-15T05:43:00Z',
+    ],
+  );
+  assert.ok(asked.every((u) => u.origin === 'https://kurier-pdd.goatcounter.com'));
+  // Без ключа автора, с испорченным периодом — отказ; GoatCounter больше не спрашивается.
+  asked.length = 0;
+  assert.equal((await call(`/api/report?${period}`)).status, 401);
+  assert.deepEqual(await (await call('/api/report?today=вчера&week=1&month=2&end=3', { key: ENV.STATS_KEY })).json(), { error: 'period' });
+  assert.equal(asked.length, 0);
+});
+
+test('отчёт одним ответом: «слишком часто» — пауза и повтор; ошибки GoatCounter понятны игре', async () => {
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    if (calls === 2) return new Response('{"error":"rate limited"}', { status: 429, headers: { 'X-Rate-Limit-Reset': '0' } });
+    return new Response(JSON.stringify({ total: 1, stats: [], hits: [] }), { headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+  const period = 'today=2026-10-14T21:00:00Z&week=2026-10-08T21:00:00Z&month=2026-09-15T21:00:00Z&end=2026-10-15T05:43:00Z';
+  const ok = await call(`/api/report?${period}`, { key: ENV.STATS_KEY });
+  assert.equal(ok.status, 200);
+  assert.equal(calls, 8, 'семь запросов и один повтор после 429');
+  globalThis.fetch = (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
+  assert.deepEqual(await (await call(`/api/report?${period}`, { key: ENV.STATS_KEY })).json(), { error: 'gc-token' });
+  globalThis.fetch = (async () => new Response('{}', { status: 500 })) as unknown as typeof fetch;
+  assert.deepEqual(await (await call(`/api/report?${period}`, { key: ENV.STATS_KEY })).json(), { error: 'gc-error', status: 500 });
+  globalThis.fetch = (async () => {
+    throw new TypeError('fetch failed');
+  }) as typeof fetch;
+  const down = await call(`/api/report?${period}`, { key: ENV.STATS_KEY });
+  assert.equal(down.status, 502);
+  assert.deepEqual(await down.json(), { error: 'gc-network' });
+});
+
 // ─── Итог дуэли (этап 14) ────────────────────────────────────────────────────────
 
 /** Workers KV в памяти: значения и срок хранения. */
@@ -164,6 +250,7 @@ test('загрузка посредника: номер хранилища ду�
   const { readFileSync } = await import('node:fs');
   const config = deployConfig(readFileSync('stats-worker/wrangler.jsonc', 'utf8'), 'ddd');
   assert.equal(config.name, 'kurier-pdd-stats');
+  assert.equal(config.keep_vars, true, 'загрузка не стирает переменные, заданные в Cloudflare руками');
   assert.deepEqual(config.kv_namespaces, [{ binding: 'DUELS', id: 'ddd' }]);
   // Комнаты дуэли в реальном времени — Durable Object LiveRoom; без них загрузка тоже возможна.
   assert.deepEqual(config.durable_objects, { bindings: [{ name: 'LIVE', class_name: 'LiveRoom' }] });

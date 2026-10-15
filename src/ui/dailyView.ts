@@ -3,12 +3,15 @@
  */
 import { playHorn, playSound } from '../audio/feedback.ts';
 import { CITY_THEMES, HORNS, MODELS, PAINTS, PLATE, STICKERS, buyOrSelect, buyOrSelectExtra, buyOrSelectTheme, carLook, hornOf, setPlate, type CarLook, type ModelId, type StickerId } from '../progress/garage.ts';
+import { QTHEMES, QTHEME_CLASSIC, buyOrSelectQTheme, ownsQTheme, qtheme } from '../progress/qthemes.ts';
 import { shopDiscount, shopPrice } from '../progress/storyProgress.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
 import { SIGN_GROUPS } from '../signs/signs.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
+import { autoQTheme, miniCard } from './qthemes/index.ts';
+import { LOOKS } from './qthemes/looks.ts';
 import { showToast } from './toast.ts';
 
 const days = (n: number) => `${n} ${plural(n, ['день', 'дня', 'дней'])}`;
@@ -137,6 +140,8 @@ export function garageView(data: ProgressData, onChange: () => void, /** Кар�
   const root = el('div', { class: 'garage' });
   /** Клаксон, который уже прослушан: следующее касание его покупает. */
   let armedHorn: string | undefined;
+  /** Оформление вопросов, которое уже показано: следующее касание его покупает. */
+  let armedDesign: string | undefined;
   const render = () => {
     const look = carLook(data);
     const preview = el('div', { class: 'garage__car' });
@@ -286,6 +291,59 @@ export function garageView(data: ProgressData, onChange: () => void, /** Кар�
       plateInput,
       plateButton,
     );
+    // ─── Оформление вопросов ────────────────────────────────────────────────────
+    const designCard = (id: string | undefined) => {
+      const info = id && id !== QTHEME_CLASSIC ? qtheme(id) : undefined;
+      const free = id === undefined || id === QTHEME_CLASSIC;
+      const owned = free || ownsQTheme(data, id!);
+      const selected = data.garage.qtheme === id;
+      const price = info ? shopPrice(data, info.price) : 0;
+      const name = id === undefined ? '✨ Авто' : id === QTHEME_CLASSIC ? 'Обычное' : `${info!.icon} ${info!.name}`;
+      const city = info?.city ? CITY_THEMES.find((c) => c.id === info.city) : undefined;
+      const auto = id === undefined ? autoQTheme() : undefined;
+      const hint = id === undefined ? (auto === QTHEME_CLASSIC ? 'праздники и тема города' : `сейчас: ${qtheme(auto!)?.name ?? ''}`) : info?.when ?? '';
+      const status = selected ? 'выбрано' : free ? 'бесплатно' : owned ? 'куплено' : city ? '🔒 тема города' : `🪙 ${price}`;
+      return el(
+        'button',
+        {
+          class: `garage__item design-item${selected ? ' is-selected' : ''}${armedDesign === id && id ? ' is-armed' : ''}`,
+          type: 'button',
+          'aria-pressed': String(selected),
+          'data-design': id ?? 'auto',
+          title: id && LOOKS[id] ? LOOKS[id].idea : undefined,
+          onclick: () => {
+            if (!owned && city) {
+              showToast(`Это оформление идёт вместе с темой города «${city.name}».`);
+              return;
+            }
+            // Сначала касание показывает цену, второе — покупает.
+            if (!owned && armedDesign !== id) {
+              armedDesign = id;
+              showToast(`Коснись ещё раз, чтобы купить оформление «${info!.name}» за ${price}.`);
+              render();
+              return;
+            }
+            const result = buyOrSelectQTheme(data, id);
+            if (result === 'no-coins') {
+              showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
+              return;
+            }
+            armedDesign = undefined;
+            if (result === 'bought') {
+              playSound('reward');
+              showToast(`${info!.icon} Оформление «${info!.name}» — уже в вопросах.`);
+            }
+            onChange();
+            render();
+          },
+        },
+        miniCard(auto ?? id!),
+        el('span', { class: 'garage__name' }, name),
+        hint ? el('span', { class: 'design-item__hint' }, hint) : '',
+        el('span', { class: 'garage__price' }, status),
+      );
+    };
+    const designs = (group: string) => QTHEMES.filter((t) => t.group === group).map((t) => designCard(t.id));
     const themes = [themeCard(undefined, 'Обычный', '🏙', 0, ['#5b9a4f', '#40454e', '#eef0f2', '#c8553d'], 'Светофорск как есть.'), ...CITY_THEMES.map((t) => themeCard(t.id, t.name, t.icon, t.price, t.preview, t.about))];
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
@@ -293,8 +351,15 @@ export function garageView(data: ProgressData, onChange: () => void, /** Кар�
       shopDiscount(data) ? el('p', { class: 'panel__note garage__discount' }, `🔧 Скидка дяди Гены: −${Math.round(shopDiscount(data) * 100)}% — за дружбу.`) : '',
       tales ? el('h2', { class: 'section-title' }, 'Дополнительные сюжеты') : '',
       tales ? tales() : '',
+      el('h2', { class: 'section-title' }, 'Оформление вопросов'),
+      el('p', { class: 'panel__note' }, 'Форма карточки и ответов, номера, серия верных ответов, звуки и эффекты. Текст вопроса и ответы — как в билете. За полную серию — +5 монет. Праздничные оформления в свои дни включаются сами.'),
+      el('div', { class: 'garage__grid garage__grid--designs' }, designCard(undefined), designCard(QTHEME_CLASSIC), ...designs('new')),
+      el('h3', { class: 'garage__subtitle' }, 'Праздники'),
+      el('div', { class: 'garage__grid garage__grid--designs' }, ...designs('holiday')),
+      el('h3', { class: 'garage__subtitle' }, 'Вместе с темой города'),
+      el('div', { class: 'garage__grid garage__grid--designs' }, ...designs('city')),
       el('h2', { class: 'section-title' }, 'Темы города'),
-      el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню.'),
+      el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню, а в режиме «Авто» — и вопросы.'),
       el('div', { class: 'garage__grid' }, ...themes),
       el('h2', { class: 'section-title' }, 'Модель машины'),
       el('div', { class: 'garage__grid' }, ...models),

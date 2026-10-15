@@ -147,11 +147,13 @@ const PROXY_FAILURE: Record<ProxyFailure, string> = {
   'gc-token': 'GoatCounter не принял ключ посредника: создай в GoatCounter новый ключ API с правом «Read statistics» и замени им секрет GC_TOKEN в Cloudflare.',
   server: 'Посредник ответил ошибкой.',
   network: 'Посредник не ответил: нет интернета или Cloudflare недоступен.',
+  timeout: 'Посредник не ответил за 15 секунд: связь с Cloudflare через этот интернет не проходит. У российских операторов так бывает с зарубежными сервисами. Попробуй другой интернет (Wi-Fi вместо мобильного или наоборот) или VPN.',
 };
 
 const FAILURE: Record<StatsError['kind'], string> = {
   disabled: `Счётчик не отдал числа. На сайте счётчика открой Settings, отметь ${SETTING} и нажми Save.`,
   network: `Не получилось загрузить. Проверь интернет. Если интернет есть — на сайте счётчика открой Settings, отметь ${SETTING} и нажми Save.`,
+  timeout: 'Счётчик GoatCounter не ответил: связь с ним через этот интернет не проходит. Попробуй другой интернет (Wi-Fi вместо мобильного или наоборот) или VPN.',
 };
 
 /** Экран статистики. `chapters` — главы по порядку (для «Сюжета»). */
@@ -233,6 +235,7 @@ export function statsView(chapters: { id: string; title: string }[], onChange: (
             return await loadProxyReport(proxy, admin.key);
           } catch (e) {
             proxyFailure = e instanceof ProxyError ? e.kind : 'network';
+            if (out.isConnected) out.replaceChildren(el('p', { class: 'loading' }, 'Посредник не ответил. Пробую открытый счётчик…'));
           }
         }
         return loadReport(site, trackedPaths(chapters.map((c) => c.id)));

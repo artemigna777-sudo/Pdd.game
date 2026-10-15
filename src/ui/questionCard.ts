@@ -1,9 +1,10 @@
-import { answerFeedback } from '../audio/feedback.ts';
+import { answerFeedback, vibrateError } from '../audio/feedback.ts';
 import { EXPLANATIONS_SOURCE } from '../config.ts';
 import { imageUrl } from '../data/questions.ts';
 import type { Question } from '../data/types.ts';
 import { el } from './dom.ts';
 import { partnerBlock } from './partnerVideo.ts';
+import { answerThemed, currentQTheme, dressCard, revealThemed } from './qthemes/index.ts';
 
 export interface AnswerResult {
   question: Question;
@@ -18,8 +19,11 @@ export interface AnswerResult {
  *
  * С `review` карточка сразу показывает уже данный ответ — для разбора пройденного билета.
  */
-/** Оригинальный вопрос билета: номер, тема, картинка, текст и варианты. */
-function cardShell(question: Question, onOption: (index: number) => void, extra: Node[] = []) {
+/**
+ * Оригинальный вопрос билета: номер, тема, картинка, текст и варианты. Если выбрано оформление
+ * вопросов (магазин, праздник, тема города) — карточка в нём; `streak` — показать серию.
+ */
+function cardShell(question: Question, onOption: (index: number) => void, extra: Node[] = [], streak = false) {
   const src = imageUrl(question);
   const buttons = question.options.map((text, index) =>
     el(
@@ -31,7 +35,7 @@ function cardShell(question: Question, onOption: (index: number) => void, extra:
   );
   const card = el(
     'article',
-    { class: 'card', 'aria-label': `Билет ${question.ticket}, вопрос ${question.number}` },
+    { class: 'card', 'aria-label': `Билет ${question.ticket}, вопрос ${question.number}`, 'data-ticket': question.ticket, 'data-number': question.number },
     el(
       'div',
       { class: 'card__meta' },
@@ -49,7 +53,8 @@ function cardShell(question: Question, onOption: (index: number) => void, extra:
     el('ol', { class: 'options' }, ...buttons.map((b) => el('li', {}, b))),
     ...extra,
   );
-  return { card, buttons };
+  const theme = dressCard(card, currentQTheme(), { streak });
+  return { card, buttons, theme };
 }
 
 /**
@@ -74,13 +79,18 @@ export function renderQuestionCard(
 ): HTMLElement {
   const feedback = el('div', { class: 'feedback', role: 'status', 'aria-live': 'polite' });
   const explanation = el('section', { class: 'explanation', 'aria-label': 'Пояснение', hidden: true });
-  const { card, buttons } = cardShell(question, (index) => choose(index), [feedback, explanation]);
+  const { card, buttons, theme } = cardShell(question, (index) => choose(index), [feedback, explanation], !review);
 
   let answered = false;
   function choose(index: number) {
     if (answered) return;
     reveal(index);
-    answerFeedback(index === question.correct);
+    const ok = index === question.correct;
+    // В оформлении — его звук, серия и эффекты; вибрация при ошибке — как обычно.
+    if (theme) {
+      answerThemed(card, theme, ok, buttons[index]);
+      if (!ok) vibrateError();
+    } else answerFeedback(ok);
 
     // Результат может оказаться ниже края экрана — показываем его, не уводя вопрос дальше, чем нужно.
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -109,6 +119,7 @@ export function renderQuestionCard(
         : `Неверно. Правильный ответ — ${question.correct + 1}.`;
     feedback.className = `feedback ${isCorrect ? 'feedback--ok' : 'feedback--bad'}`;
     feedback.replaceChildren(el('strong', {}, verdict));
+    if (theme) revealThemed(card, theme, isCorrect);
 
     if (question.explanation) {
       explanation.replaceChildren(

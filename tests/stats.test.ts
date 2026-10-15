@@ -80,6 +80,24 @@ test('отчёт: счётчик выключен или нет сети — п�
   await assert.rejects(loadReport('s', [], NOW, offline), (e: unknown) => e instanceof StatsError && e.kind === 'network');
 });
 
+test('отчёт: счётчик не отвечает (связь обрывается) — не висим, остальные запросы не ждём', async () => {
+  const never = ((_input: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))) as typeof fetch;
+  await assert.rejects(loadReport('s', [], NOW, never, 30), (e: unknown) => e instanceof StatsError && e.kind === 'timeout');
+  // Первый ответ пришёл, потом связь оборвалась: один запрос ждём до конца, остальные — нули без ожидания.
+  let calls = 0;
+  const first = ((input: string, init?: RequestInit) => {
+    calls++;
+    return calls === 1 ? Promise.resolve(new Response(JSON.stringify({ count: '3' }))) : never(input, init);
+  }) as typeof fetch;
+  const started = Date.now();
+  const r = await loadReport('s', ['/menu', '/exam'], NOW, first, 30);
+  assert.equal(r.today, 3);
+  assert.equal(r.failed, CHART_DAYS + 3);
+  assert.ok(calls <= 5, `после обрыва новых запросов нет: ${calls}`);
+  assert.ok(Date.now() - started < 1000);
+});
+
 test('«Сюжет»: открыли и прошли каждую главу, финал, экзамен-босс', () => {
   const rows = storyFunnel({ '/city/ch1': 12, [chapterDone('ch1')]: 5, '/city/ch2': 3, '/finale': 1, 'boss-pass': 1 }, [
     { id: 'ch1', title: 'Первый день' },

@@ -38,7 +38,7 @@ export default defineConfig({
       },
       workbox: {
         // Всё, включая картинки билетов (~9 МБ), кладём в кэш сразу: игра должна работать без интернета.
-        globPatterns: ['**/*.{js,css,html,svg,png,jpg,webp}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,webp,woff2}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
       },

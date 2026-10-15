@@ -63,6 +63,7 @@ import { dayLabel, plural } from './format.ts';
 import { ICONS } from './icons.ts';
 import { dueLabel, levelMeter, progressView, reviewView, starsText } from './progressView.ts';
 import { renderExamCard, renderQuestionCard, type AnswerResult } from './questionCard.ts';
+import { dressNextFor } from './qthemes/index.ts';
 import { settingsPanel } from './settingsPanel.ts';
 import { attemptView, historyView, scoreBadge, ticketQuestions } from './ticketHistoryView.ts';
 import { shareResult } from './share.ts';
@@ -2053,8 +2054,7 @@ export class App {
 
       const show = (question: Question) => {
         footer.hidden = true;
-        body.replaceChildren(
-          renderQuestionCard(question, (result) => {
+        const card: HTMLElement = renderQuestionCard(question, (result) => {
             results.push(result);
             const data = progress();
             const out = recordAnswer(data, question.id, result.isCorrect, Date.now());
@@ -2064,10 +2064,12 @@ export class App {
             note.textContent = reviewNote(out, data.questions[question.id].review?.due);
             note.hidden = !note.textContent;
             updateStatus();
-            next.textContent = index === list.length - 1 ? 'Показать результат' : 'Дальше';
+            // В оформлении вопросов — своя кнопка: «Следующий подход», «Мотор!»…
+            const label = dressNextFor(next, card);
+            next.textContent = index === list.length - 1 ? 'Показать результат' : (label ?? 'Дальше');
             footer.hidden = false;
-          }),
-        );
+          });
+        body.replaceChildren(card);
         scroller.scrollTop = 0;
       };
 

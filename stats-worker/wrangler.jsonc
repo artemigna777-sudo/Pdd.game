@@ -4,5 +4,8 @@
   "name": "kurier-pdd-stats",
   "main": "worker.js",
   "compatibility_date": "2025-09-01",
-  "workers_dev": true
+  "workers_dev": true,
+  // Переменные, заданные в Cloudflare руками (если GC_TOKEN или STATS_KEY добавлены типом «Text», а не
+  // «Secret»), загрузка не стирает.
+  "keep_vars": true
 }

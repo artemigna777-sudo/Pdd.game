@@ -162,3 +162,52 @@ test('«Моя история» → «Сцены»: пройденную раз�
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:progress')!));
   expect(saved.story.choices.map((c: { id: string; value: string }) => `${c.id}=${c.value}`)).toEqual(['ch2.cover=truth', 'ch3.artem=free']);
 });
+
+for (const [id, value, title, films] of [
+  ['ch6.bakery', 'save', '«Калач» на грани закрытия', ['ch6-call', 'ch6-choice', 'ch6-save']],
+  ['ch6.bakery', 'own', '«Калач» на грани закрытия', ['ch6-call', 'ch6-choice', 'ch6-own']],
+  ['ch6.bakery', 'sell', '«Калач» на грани закрытия', ['ch6-call', 'ch6-choice', 'ch6-sell']],
+  ['ch9.video', 'give', 'Запись видеорегистратора', ['ch9-video', 'ch9-choice', 'ch9-give']],
+  ['ch9.video', 'talk', 'Запись видеорегистратора', ['ch9-video', 'ch9-choice', 'ch9-talk']],
+  ['ch9.video', 'erase', 'Запись видеорегистратора', ['ch9-video', 'ch9-choice', 'ch9-erase']],
+] as const) {
+  test(`«Сцены»: развилка «${title}», выбор «${value}» — сцены разговора, выбора и ответа`, async ({ page }) => {
+    await page.addInitScript((choice) => {
+      if (sessionStorage.getItem('seeded')) return;
+      const story = { choices: [{ id: 'ch3.artem', value: 'stay', at: 1 }, choice], endings: {}, rewinds: 0 };
+      localStorage.setItem('pdd-game:progress', JSON.stringify({ xp: 900, questions: {}, chapters: {}, story, finale: { control: [], seen: [] } }));
+      localStorage.setItem('pdd-game:settings', JSON.stringify({ tutorial: true, events: false, rules: false }));
+      sessionStorage.setItem('seeded', '1');
+    }, { id, value, at: 2 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Главы', exact: true }).tap();
+    await page.getByRole('button', { name: /Моя история/ }).tap();
+    const scene = page.locator(`[data-scene="${id}"]`);
+    await expect(scene).toContainText(title);
+    await scene.getByRole('button', { name: 'Смотреть' }).tap();
+
+    const dialog = page.locator('.cutscene:not(.cutscene--modal)');
+    const screen = dialog.locator('.cutscene__film');
+    await expect(dialog).toHaveClass(/cutscene--full/);
+    const seen: string[] = [];
+    for (let i = 0; i < 12 && (await dialog.count()); i++) {
+      const film = await screen.getAttribute('data-film');
+      if (film && seen.at(-1) !== film) {
+        seen.push(film);
+        // Кадры загрузились, сцена идёт.
+        await expect.poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>('.cutscene__film img')].every((im) => im.complete && im.naturalWidth > 0))).toBe(true);
+        expect(await running(page)).toBeGreaterThan(0);
+        if (SHOTS) {
+          const t0 = Date.now();
+          for (const t of [1.2, 2.6, 4.4, 7, 9.6]) {
+            await page.waitForTimeout(Math.max(0, t * 1000 - (Date.now() - t0)));
+            await shot(page, `${film}-${value}-${t}`);
+          }
+        }
+      }
+      await dialog.locator('.btn--primary:visible').first().tap();
+      await page.waitForTimeout(150);
+    }
+    expect(seen).toEqual([...films]);
+  });
+}

@@ -162,8 +162,10 @@ export function playCutscene(source: readonly Line[], opts: { last?: string; /**
     };
     textEl.addEventListener('click', tapNext);
     screen.addEventListener('click', tapNext);
-    show();
+    // Сначала окно, потом первая реплика: `mount` закрывает прошлое окно вместе с его сценой, и если
+    // сцена начинается с первой же реплики, она не должна остановиться.
     mount(root);
+    show();
   });
 }
 

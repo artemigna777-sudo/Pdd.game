@@ -13,8 +13,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-KEYED = {'artem-moped', 'suv'}
+KEYED = {'artem-moped', 'suv', 'moped'}
 MAX_W = 1080
+# Вырезанные слои, которые в сцене занимают меньше половины ширины кадра, — меньше и легче.
+SMALL = {'moped': 640}
 
 
 def key_green(img: Image.Image) -> Image.Image:
@@ -40,8 +42,9 @@ def main(src: str, chapter: str) -> None:
         img = Image.open(f)
         if f.stem in KEYED:
             img = key_green(img)
-        if img.width > MAX_W:
-            img = img.resize((MAX_W, round(img.height * MAX_W / img.width)), Image.LANCZOS)
+        max_w = SMALL.get(f.stem, MAX_W)
+        if img.width > max_w:
+            img = img.resize((max_w, round(img.height * max_w / img.width)), Image.LANCZOS)
         dst = out / f'{f.stem}.webp'
         img.save(dst, 'WEBP', quality=80, method=6, alpha_quality=90)
         print(f'{dst.name}: {img.width}×{img.height}, {dst.stat().st_size // 1024} КБ')

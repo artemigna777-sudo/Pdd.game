@@ -3,8 +3,6 @@
  * ответа (серия, подпись, звук, эффекты). Текст вопроса, картинка билета и варианты ответа
  * остаются оригинальными (правило 3): меняются только рамки, цвета, номера и украшения.
  */
-import './fonts.css';
-import './qthemes.css';
 import { QTHEME_CLASSIC, activeQTheme, bumpQStreak, qStreakNow } from '../../progress/qthemes.ts';
 import { progress, saveProgress } from '../../progress/progress.ts';
 import { getSettings } from '../../settings.ts';
@@ -20,7 +18,9 @@ import { playThemeSfx } from './sfx.ts';
 function holidaysAllowed(): boolean {
   if (!getSettings().holidays) return false;
   if (!navigator.webdriver) return true;
-  return import.meta.env.DEV && Boolean((window as unknown as { __holidays?: boolean }).__holidays);
+  // `import.meta.env` — у Vite; модуль подключают и скрипты трейлера без него.
+  const dev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  return dev && Boolean((window as unknown as { __holidays?: boolean }).__holidays);
 }
 
 /** Что показал бы «Авто»: праздник, тема города или обычная карточка. */

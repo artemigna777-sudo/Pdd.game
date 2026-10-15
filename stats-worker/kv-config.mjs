@@ -4,7 +4,7 @@
  *
  *   node kv-config.mjs id < вывод «wrangler kv namespace list»   — напечатать номер хранилища или ничего
  *   DUELS_KV_ID=… node kv-config.mjs config [--no-live]            — записать wrangler.deploy.json
- *                                                                    (с комнатами дуэли LIVE или без них)
+ *                                                                    (с комнатами дуэли LIVE и игроками PLAYERS или без них)
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -26,13 +26,25 @@ export function findKvId(text) {
   return hit && typeof hit.id === 'string' ? hit.id : undefined;
 }
 
-/** Комнаты дуэли в реальном времени (этап 16): Durable Object `LiveRoom`, привязка `LIVE`. */
+/**
+ * Durable Objects: комнаты дуэли в реальном времени (этап 16, `LiveRoom`, привязка `LIVE`) и игроки —
+ * таблица лидеров и готовность (`Players`, привязка `PLAYERS`). Старые миграции не трогать: Cloudflare
+ * применяет только новые.
+ */
 export const LIVE_ROOMS = {
-  durable_objects: { bindings: [{ name: 'LIVE', class_name: 'LiveRoom' }] },
-  migrations: [{ tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] }],
+  durable_objects: {
+    bindings: [
+      { name: 'LIVE', class_name: 'LiveRoom' },
+      { name: 'PLAYERS', class_name: 'Players' },
+    ],
+  },
+  migrations: [
+    { tag: 'live-v1', new_sqlite_classes: ['LiveRoom'] },
+    { tag: 'players-v1', new_sqlite_classes: ['Players'] },
+  ],
 };
 
-/** Настройки wrangler: привязка хранилища (если есть номер) и комнаты дуэли (если `live`). */
+/** Настройки wrangler: привязка хранилища (если есть номер), комнаты дуэли и игроки (если `live`). */
 export function deployConfig(jsonc, id, live = true) {
   const config = JSON.parse(jsonc.replace(/^\s*\/\/.*$/gm, ''));
   return { ...config, ...(id ? { kv_namespaces: [{ binding: 'DUELS', id }] } : {}), ...(live ? LIVE_ROOMS : {}) };
@@ -43,7 +55,7 @@ if (cmd === 'id') {
   const id = findKvId(readFileSync(0, 'utf8'));
   if (id) process.stdout.write(id);
 } else if (cmd === 'config') {
-  // `config` — с комнатами дуэли, `config --no-live` — без них (если Cloudflare их не принял).
+  // `config` — с комнатами дуэли и игроками, `config --no-live` — без них (если Cloudflare их не принял).
   const live = !process.argv.includes('--no-live');
   const here = new URL('.', import.meta.url);
   writeFileSync(new URL('wrangler.deploy.json', here), JSON.stringify(deployConfig(readFileSync(new URL('wrangler.jsonc', here), 'utf8'), process.env.DUELS_KV_ID, live), null, 2) + '\n');

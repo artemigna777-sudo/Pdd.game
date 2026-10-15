@@ -21,6 +21,12 @@ export interface Named {
   name: string;
   count: number;
 }
+/** Игроки по готовности к экзамену: 10 чисел — 0–10%, 10–20%, … 90–100%. */
+export interface ReadyCounts {
+  d7: number[];
+  d30: number[];
+}
+
 export interface StatsReport {
   /** Посетители по дням, от старых к новым; последний — сегодня. */
   days: DayCount[];
@@ -34,6 +40,11 @@ export interface StatsReport {
   refs?: Named[];
   systems?: Named[];
   locations?: Named[];
+  /**
+   * Готовность игроков к экзамену (таблица лидеров у посредника): сколько игроков в каждом десятке
+   * процентов (0–10, 10–20, … 90–100) среди заходивших за 7 и 30 дней. Только через посредника.
+   */
+  ready?: ReadyCounts;
   /** Сколько чисел не загрузилось (вместо них нули). */
   failed: number;
   /** Когда загружено. */

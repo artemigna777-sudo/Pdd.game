@@ -1515,6 +1515,243 @@ button {
   pointer-events: none;
 }
 
+/* Главы 6 и 9: мопед «Турбо» со шлейфом скорости (едет влево — шлейф справа). */
+.f-moped .f-trail {
+  position: absolute;
+  left: 62%;
+  top: 30%;
+  width: 110%;
+  height: 46%;
+  background: repeating-linear-gradient(to bottom, rgba(255, 150, 60, 0.38) 0 7%, rgba(255, 150, 60, 0) 7% 16%);
+  -webkit-mask-image: linear-gradient(to right, #000, transparent);
+  mask-image: linear-gradient(to right, #000, transparent);
+  pointer-events: none;
+}
+
+/* Слой в ночном кадре — темнее. */
+.f-night {
+  filter: brightness(0.62) saturate(0.85);
+}
+
+/* Пар над пирожками. */
+.f-puff {
+  position: absolute;
+  width: 7%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Табличка «Продаётся» на двери «Калача». */
+.f-sign {
+  position: absolute;
+  translate: -50% 0;
+  transform-origin: 50% 0;
+  pointer-events: none;
+}
+
+.f-sign::before {
+  content: '';
+  display: block;
+  width: 56%;
+  height: 2.6vh;
+  margin: 0 auto;
+  border: 0.3vh solid #3b2a20;
+  border-bottom: 0;
+  border-radius: 50% 50% 0 0;
+}
+
+.f-sign span {
+  display: block;
+  padding: 0.8vh 0.6vh;
+  border: 0.4vh solid #c1121f;
+  border-radius: 0.7vh;
+  background: #fff8ec;
+  box-shadow: 0 0.6vh 1.2vh rgba(0, 0, 0, 0.45);
+  color: #c1121f;
+  font-size: 1.7vh;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Вспышка: молния, стоп-кадр. */
+.f-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Рассвет: небо светлеет сверху. */
+.f-dawn {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 196, 150, 0.5), rgba(255, 196, 150, 0) 55%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Запись регистратора: REC, время, уголки рамки и строки развёртки. Отступы от краёв сцены —
+   с запасом: на узком экране края сцены обрезаются. */
+.f-dashui {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  text-shadow: 0 0 0.5vh rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.f-dashui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0 2px, rgba(0, 0, 0, 0.14) 2px 4px);
+}
+
+.f-rec,
+.f-time,
+.f-pause {
+  position: absolute;
+  top: calc(var(--safe-top) + 5%);
+  font-size: 2.1vh;
+  font-weight: 700;
+}
+
+.f-rec {
+  left: 16%;
+}
+
+.f-recdot {
+  display: inline-block;
+  width: 1.5vh;
+  height: 1.5vh;
+  margin-right: 0.8vh;
+  border-radius: 50%;
+  background: #ff2d2d;
+  vertical-align: -0.1vh;
+}
+
+.f-time {
+  right: 16%;
+}
+
+.f-pause {
+  left: 50%;
+  top: calc(var(--safe-top) + 10%);
+  translate: -50% 0;
+  padding: 0.5vh 1.2vh;
+  border-radius: 0.6vh;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffd24a;
+  white-space: nowrap;
+}
+
+.f-cn {
+  position: absolute;
+  width: 8%;
+  aspect-ratio: 1;
+  border: 0 solid rgba(255, 255, 255, 0.75);
+}
+
+.f-cn1 {
+  left: 15%;
+  top: calc(var(--safe-top) + 3%);
+  border-width: 0.4vh 0 0 0.4vh;
+}
+
+.f-cn2 {
+  right: 15%;
+  top: calc(var(--safe-top) + 3%);
+  border-width: 0.4vh 0.4vh 0 0;
+}
+
+.f-cn3 {
+  left: 15%;
+  bottom: 31%;
+  border-width: 0 0 0.4vh 0.4vh;
+}
+
+.f-cn4 {
+  right: 15%;
+  bottom: 31%;
+  border-width: 0 0.4vh 0.4vh 0;
+}
+
+/* Рамка увеличения на стоп-кадре. */
+.f-focus {
+  position: absolute;
+  border: 0.45vh solid #ff3b3b;
+  border-radius: 0.6vh;
+  box-shadow: 0 0 1.4vh rgba(255, 59, 59, 0.8), inset 0 0 1.4vh rgba(255, 59, 59, 0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Экран регистратора: удаление записи. */
+.f-screen {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 0.5vh;
+  background: #0d1622;
+  color: #d6e6ff;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 1.15vh;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.f-scr {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7vh;
+  padding: 0 6%;
+  text-align: center;
+  opacity: 0;
+}
+
+.f-scr-q {
+  opacity: 1;
+}
+
+.f-bar {
+  width: 88%;
+  height: 0.9vh;
+  border: 0.15vh solid #d6e6ff;
+  border-radius: 0.4vh;
+}
+
+.f-barfill {
+  height: 100%;
+  background: #ff5a5a;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+
+.f-scr-done {
+  color: #ff8a8a;
+}
+
+.f-scr-noise {
+  background: repeating-linear-gradient(to bottom, #9aa 0 1px, #222 1px 3px, #ccc 3px 4px, #333 4px 6px);
+}
+
+.f-scr-off {
+  background: #050608;
+}
+
 .f-vignette {
   position: absolute;
   inset: 0;
@@ -5467,4 +5704,148 @@ a.btn {
   padding: 2px 12px 12px;
   border: 2px dashed var(--accent);
   border-radius: var(--radius);
+}
+
+/* ---------- Таблица лидеров ---------- */
+
+.menu__board {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board__tabs {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 0;
+}
+
+.board__note,
+.board__hint,
+.board__total {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.board__total {
+  text-align: center;
+}
+
+.board__join .btn,
+.board__mine .btn {
+  width: 100%;
+}
+
+.board__place-line {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.board__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board__empty {
+  margin: 8px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.board__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.board__row.is-me {
+  outline: 2px solid var(--accent);
+  background: var(--choice-on);
+}
+
+.board__place {
+  flex: none;
+  width: 32px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.board__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__you {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.board__level {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.board__value {
+  flex: none;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.board__gap {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.stats-ready__tabs {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 4px 0;
+}
+
+.menu__icons {
+  display: flex;
+  gap: 10px;
+}
+
+/* На узком экране кнопки 🏆 и настроек — друг над другом, чтобы уровню хватило места. */
+@media (max-width: 360px) {
+  .menu__icons {
+    flex-direction: column;
+  }
+
+  .menu__icons .menu__settings {
+    flex: 1;
+    min-height: 48px;
+  }
+}
+
+.board__mine .btn--secondary,
+.board__join .btn--secondary {
+  border: 2px solid var(--line);
 }

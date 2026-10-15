@@ -18,6 +18,10 @@
  * Durable Object `LiveRoom` (привязка `LIVE`). Правила комнаты — room.js. Комната ничего не хранит после
  * того, как оба игрока ушли.
  *
+ * Таблица лидеров по опыту и монетам и готовность игроков к экзамену — Durable Object `Players`
+ * (привязка `PLAYERS`, правила и SQL — players.js): игра присылает о себе `PUT /player`, таблицу берёт
+ * `GET /board`, а готовность по десяткам процентов попадает в отчёт для автора.
+ *
  * Код загружает GitHub (.github/workflows/stats-worker.yml) при изменениях в main.
  *
  * Отчёт для экрана статистики — одним запросом (`GET /api/report`): посредник сам спрашивает GoatCounter
@@ -26,6 +30,7 @@
  * в ограничение частоты запросов API GoatCounter.
  */
 import { RoomCore } from './room.js';
+import { board, cleanUpdate, readyCounts, savePlayer, setup } from './players.js';
 
 const GOATCOUNTER = 'https://kurier-pdd.goatcounter.com';
 /** Откуда можно спрашивать из браузера: игра на GitHub Pages и запуск на компьютере разработчика. */
@@ -47,6 +52,8 @@ const DUEL_TTL = 30 * 24 * 60 * 60;
 const DUEL_QUESTIONS = 10;
 const DUEL_NAME_MAX = 20;
 const DUEL_MAX_MS = 36_000_000;
+/** Все игроки — в одном Durable Object. */
+const PLAYERS_ID = 'all';
 
 export default {
   async fetch(request, env) {
@@ -72,6 +79,7 @@ export default {
       if (!env.LIVE) return reply(503, { error: 'live' });
       return env.LIVE.get(env.LIVE.idFromName(live[1])).fetch(request);
     }
+    if (url.pathname === '/player' || url.pathname === '/board') return playersRoute(request, env, url, origin, reply);
     if (request.method !== 'GET') return reply(405, { error: 'method' });
 
     // Секреты вставляют с телефона: лишние пробелы и переводы строки по краям не мешают.
@@ -91,7 +99,7 @@ export default {
     }
     if (!gcToken || !keyOk) return reply(500, { error: 'setup' });
     if (!(await same(request.headers.get('Authorization') || '', `Bearer ${statsKey}`))) return reply(401, { error: 'key' });
-    if (url.pathname === '/api/report') return reportRoute(url, gcToken, reply);
+    if (url.pathname === '/api/report') return reportRoute(url, gcToken, env, reply);
     if (!ALLOWED.test(url.pathname)) return reply(404, { error: 'path' });
 
     let res;
@@ -119,9 +127,10 @@ async function gcFetch(gcToken, pathAndQuery) {
 /**
  * Отчёт для экрана статистики одним ответом: посетители сегодня, за 7 и 30 дней (`today`, `week`,
  * `month` — начала периодов, `end` — конец, как считает игра по часам телефона), по дням, по экранам
- * и событиям, откуда пришли, телефоны и страны. Только числа и названия — несколько килобайт.
+ * и событиям, откуда пришли, телефоны и страны, сколько игроков на какой готовности к экзамену (`ready`,
+ * если подключены игроки). Только числа и названия — несколько килобайт.
  */
-async function reportRoute(url, gcToken, reply) {
+async function reportRoute(url, gcToken, env, reply) {
   const [today, week, month, end] = ['today', 'week', 'month', 'end'].map((k) => url.searchParams.get(k) || '');
   if (![today, week, month, end].every((t) => API_TIME.test(t))) return reply(400, { error: 'period' });
   const get = async (page, params) => {
@@ -154,6 +163,7 @@ async function reportRoute(url, gcToken, reply) {
     const refs = await get('toprefs', { ...month30, limit: '10' });
     const systems = await get('systems', { ...month30, limit: '10' });
     const locations = await get('locations', { ...month30, limit: '10' });
+    const ready = await playersReady(env);
     const counts = {};
     for (const h of list(hits && hits.hits)) if (h && typeof h.path === 'string' && h.path) counts[h.path] = (counts[h.path] || 0) + num(h.count);
     return reply(200, {
@@ -165,10 +175,55 @@ async function reportRoute(url, gcToken, reply) {
       refs: named(refs),
       systems: named(systems),
       locations: named(locations),
+      ...(ready ? { ready } : {}),
     });
   } catch (e) {
     return reply(502, e && e.error ? e : { error: 'gc-error' });
   }
+}
+
+/** Готовность игроков по десяткам процентов за 7 и 30 дней — или undefined, если игроки не подключены. */
+async function playersReady(env) {
+  if (!env.PLAYERS) return undefined;
+  try {
+    const res = await playersStub(env).fetch('https://players/ready');
+    return res.ok ? await res.json() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const playersStub = (env) => env.PLAYERS.get(env.PLAYERS.idFromName(PLAYERS_ID));
+
+/**
+ * Игроки. `PUT /player` — игра присылает о себе: номер (случайный), показывать ли в таблице, своё имя
+ * (если введено), опыт, заработанные монеты, готовность; в ответе — имя в таблице (своё или ник). `GET /board?by=xp|coins&id=…` — таблица лидеров и своё место.
+ */
+async function playersRoute(request, env, url, origin, reply) {
+  if (!ORIGINS.includes(origin)) return reply(403, { error: 'origin' });
+  if (!env.PLAYERS) return reply(503, { error: 'players' });
+  if (url.pathname === '/board') {
+    if (request.method !== 'GET') return reply(405, { error: 'method' });
+    const by = url.searchParams.get('by') === 'coins' ? 'coins' : 'xp';
+    const id = url.searchParams.get('id') || '';
+    const res = await playersStub(env).fetch(`https://players/board?${new URLSearchParams({ by, id })}`);
+    // Ответ Durable Object — без заголовков CORS: браузер игры его не пропустит, поэтому — через `reply`.
+    return res.ok ? reply(200, await res.json()) : reply(502, { error: 'players' });
+  }
+  if (request.method !== 'PUT') return reply(405, { error: 'method' });
+  const text = await request.text();
+  if (text.length > 1024) return reply(413, { error: 'size' });
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return reply(400, { error: 'bad' });
+  }
+  const upd = cleanUpdate(raw);
+  if (upd.error) return reply(400, { error: upd.error });
+  const res = await playersStub(env).fetch('https://players/player', { method: 'PUT', body: JSON.stringify(upd) });
+  // В ответе — имя игрока в таблице: своё или ник, который посредник выдал при первом заходе.
+  return res.ok ? reply(200, await res.json()) : reply(502, { error: 'players' });
 }
 
 /**
@@ -274,5 +329,30 @@ export class LiveRoom {
         }
       }
     }
+  }
+}
+
+/**
+ * Игроки — Durable Object с SQLite: таблица лидеров и готовность. Отвечает только самому посреднику
+ * (адреса `https://players/…`), всё уже проверено в `playersRoute`.
+ */
+export class Players {
+  constructor(ctx) {
+    this.sql = ctx.storage.sql;
+    setup(this.sql);
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const json = (body) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+    const now = Date.now();
+    if (url.pathname === '/player' && request.method === 'PUT') {
+      const upd = cleanUpdate(await request.json());
+      if (upd.error) return new Response(JSON.stringify(upd), { status: 400 });
+      return json({ ok: true, name: savePlayer(this.sql, upd, now) });
+    }
+    if (url.pathname === '/board') return json(board(this.sql, url.searchParams.get('by'), url.searchParams.get('id')));
+    if (url.pathname === '/ready') return json(readyCounts(this.sql, now));
+    return new Response('path', { status: 404 });
   }
 }

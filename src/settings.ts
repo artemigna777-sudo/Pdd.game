@@ -35,6 +35,12 @@ export interface Settings {
   installTip: boolean;
   /** Праздничные оформления вопросов включаются сами в дни праздника (`progress/qthemes.ts`). */
   holidays: boolean;
+  /** Своё имя в таблице лидеров (`board/board.ts`); пустое — ник от посредника (`boardNick`). */
+  boardName: string;
+  /** Ник в таблице лидеров вроде «user_4821»: его выдаёт посредник, случайный и ни у кого не повторяется. */
+  boardNick: string;
+  /** Случайный номер этой игры у посредника (ни с чем не связан), создаётся при первой отправке. */
+  playerId: string;
   /**
    * Длительность смен в режимах (этапы 12–13), доля от обычной. В настройках её нет: смены
    * укорачивают только автотесты.
@@ -45,7 +51,7 @@ export interface Settings {
 export type Theme = 'auto' | 'light' | 'dark';
 
 const KEY = 'pdd-game:settings';
-const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, voice: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true, holidays: true };
+const DEFAULTS: Settings = { control: 'tap', sound: true, vibration: true, voice: true, tutorial: false, theme: 'auto', bigText: false, events: true, difficulty: 'novice', rules: true, name: '', stats: true, installTip: true, holidays: true, boardName: '', boardNick: '', playerId: '' };
 
 let current: Settings = { ...DEFAULTS, ...load<Partial<Settings>>(KEY, {}) };
 if (current.difficulty !== 'novice' && current.difficulty !== 'expert') current.difficulty = DEFAULTS.difficulty;
@@ -54,6 +60,9 @@ if (typeof current.stats !== 'boolean') current.stats = DEFAULTS.stats;
 if (typeof current.installTip !== 'boolean') current.installTip = DEFAULTS.installTip;
 if (typeof current.voice !== 'boolean') current.voice = DEFAULTS.voice;
 if (typeof current.holidays !== 'boolean') current.holidays = DEFAULTS.holidays;
+if (typeof current.boardName !== 'string') current.boardName = '';
+if (typeof current.boardNick !== 'string') current.boardNick = '';
+if (typeof current.playerId !== 'string') current.playerId = '';
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Settings {

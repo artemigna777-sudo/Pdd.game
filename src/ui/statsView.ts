@@ -6,7 +6,7 @@
  */
 import { adminState, updateAdmin } from '../stats/admin.ts';
 import { EVENTS, FINALE, SCREENS, chapterDone, chapterPath, trackedPaths } from '../stats/catalog.ts';
-import { StatsError, loadReport, type Named, type StatsReport } from '../stats/goatcounter.ts';
+import { StatsError, loadReport, type Named, type ReadyCounts, type StatsReport } from '../stats/goatcounter.ts';
 import { ProxyError, loadProxyReport, type ProxyFailure } from '../stats/proxy.ts';
 import { statsProxy, statsSite } from '../stats/track.ts';
 import { askAuthorPassword } from './authorLogin.ts';
@@ -89,6 +89,34 @@ function section(title: string, note: string, body: HTMLElement): HTMLElement {
   return el('section', { class: 'panel' }, el('h2', { class: 'panel__title' }, title), note ? el('p', { class: 'panel__note' }, note) : null, body);
 }
 
+/** Десятки процентов готовности — как их назвал Артём: «0–10%», «10–20%»… */
+export const READY_BANDS = Array.from({ length: 10 }, (_, i) => `${i * 10}–${i * 10 + 10}%`);
+
+/** Готовность игроков к экзамену: сколько человек в каждом десятке процентов, за 7 или 30 дней. */
+function readySection(ready: ReadyCounts): HTMLElement {
+  let days: 7 | 30 = 30;
+  const body = el('div', {});
+  const draw = () => {
+    const counts = days === 7 ? ready.d7 : ready.d30;
+    const total = counts.reduce((a, b) => a + b, 0);
+    body.replaceChildren(
+      el('p', { class: 'panel__note' }, total ? `Игроков: ${total.toLocaleString('ru-RU')}, из них готовы на 90–100%: ${counts[9].toLocaleString('ru-RU')}.` : ''),
+      barList(READY_BANDS.map((name, i) => ({ name, count: counts[i] })), `За ${days} дней игроки ещё не прислали готовность.`),
+    );
+    buttons.forEach((b, i) => b.setAttribute('aria-pressed', String([7, 30][i] === days)));
+  };
+  const buttons = ([7, 30] as const).map((d) => el('button', { class: 'segment__btn', type: 'button', onclick: () => ((days = d), draw()) }, `${d} дней`));
+  draw();
+  return el(
+    'section',
+    { class: 'panel stats-ready' },
+    el('h2', { class: 'panel__title' }, 'Готовность к экзамену'),
+    el('p', { class: 'panel__note' }, 'Сколько игроков на какой готовности — по последнему заходу каждого за 7 или 30 дней. Только у тех, кто не выключил анонимную статистику; имён здесь нет. 10% попадает в «10–20%».'),
+    el('div', { class: 'segment stats-ready__tabs', role: 'group', 'aria-label': 'За сколько дней' }, ...buttons),
+    body,
+  );
+}
+
 /** Сюжет: сколько людей открывали каждую главу и прошли её, финал и экзамен-босс. */
 export function storyFunnel(counts: Record<string, number>, chapters: { id: string; title: string }[]): Row[] {
   const count = (path: string) => counts[path] ?? 0;
@@ -113,6 +141,7 @@ function report(r: StatsReport, chapters: { id: string; title: string }[], refre
       el('p', { class: 'panel__note' }, 'Человек за период: кто зашёл несколько раз за этот срок, считается один раз. Имён и телефонов счётчик не знает.'),
       dayChart(r.days),
     ),
+    ...(r.ready ? [readySection(r.ready)] : []),
     section('Сюжет: докуда дошли', 'Сколько человек за 30 дней открывали главу в городе и сколько её прошли.', barList(storyFunnel(r.counts, chapters), 'Пока никто не играл в сюжет.')),
     section('Что открывают', 'Экраны игры за 30 дней, кроме глав.', barList(ranked(SCREENS, r.counts), 'Пока пусто.')),
     section('Что сделали', 'События за 30 дней.', barList(ranked(EVENTS, r.counts), 'Событий пока не было.')),

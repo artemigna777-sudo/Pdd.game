@@ -25,6 +25,7 @@ export const SCREENS: readonly (readonly [path: string, title: string])[] = [
   ['/courier', 'Смена курьера'],
   ['/garage', 'Магазин'],
   ['/designs', 'Оформление вопросов'],
+  ['/board', 'Таблица лидеров'],
   ['/settings', 'Настройки'],
 ];
 
@@ -45,6 +46,7 @@ export const EVENTS: readonly (readonly [name: string, title: string])[] = [
   ['partner-video', 'Видеоразбор партнёра: открыли'],
   ['partner-course', 'Курс партнёра: перешли'],
   ['partner-locked', 'Закрытый разбор: перешли к курсу'],
+  ['board-name', 'Таблица лидеров: ввели своё имя'],
 ];
 
 /** Глава в городе и событие «глава пройдена». */

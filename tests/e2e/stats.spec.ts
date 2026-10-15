@@ -45,7 +45,7 @@ async function mockProxy(page: Page, state: { fail?: number; old?: boolean; sile
     if (path === '/api/report') {
       if (state.old) return route.fulfill({ status: 404, json: { error: 'path' }, headers: cors });
       return route.fulfill({
-        json: { today: 21, week: 21, month: 21, days: [], counts: { '/city/ch1': 15, 'chapter-done/ch1': 6, 'exam-pass': 4 }, refs: [['tiktok', 12]], systems: [['iOS', 18]], locations: [['Russia', 20]] },
+        json: { today: 21, week: 21, month: 21, days: [], counts: { '/city/ch1': 15, 'chapter-done/ch1': 6, 'exam-pass': 4 }, refs: [['tiktok', 12]], systems: [['iOS', 18]], locations: [['Russia', 20]], ready: { d7: [3, 1, 0, 0, 2, 0, 0, 0, 0, 1], d30: [5, 2, 1, 0, 2, 0, 0, 0, 3, 4] } },
         headers: cors,
       });
     }
@@ -254,6 +254,15 @@ test('через посредника: ключ автора из пароля, 
   await expect(page.locator('.stats')).toContainText('tiktok');
   await expect(page.locator('.stats')).toContainText('iOS');
   await expect(page.locator('.stats')).toContainText('Russia');
+  // Готовность игроков по десяткам процентов — только здесь, у автора.
+  const ready = page.locator('.stats-ready');
+  await expect(ready.locator('.bar-list__row')).toHaveCount(10);
+  await expect(ready.locator('.bar-list__row').first()).toContainText('0–10%');
+  await expect(ready.locator('.bar-list__row').first()).toContainText('5');
+  await expect(ready.locator('.bar-list__row').last()).toContainText('90–100%');
+  await expect(ready).toContainText('Игроков: 17, из них готовы на 90–100%: 4.');
+  await ready.getByRole('button', { name: '7 дней' }).tap();
+  await expect(ready).toContainText('Игроков: 7, из них готовы на 90–100%: 1.');
   await expect(page.getByRole('link', { name: 'Открыть на сайте ↗' })).toHaveCount(0);
   const key = (await page.evaluate(() => JSON.parse(localStorage.getItem('pdd-game:admin')!))).key as string;
   expect(key).toMatch(/^[0-9a-f]{64}$/);

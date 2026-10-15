@@ -9,7 +9,7 @@
  * килобайт, и экран висел на «Загружаю статистику…» (15.10.2026). Каждый запрос ждёт не дольше
  * `PROXY_TIMEOUT_MS` — потом экран говорит, что связь не проходит.
  */
-import { CHART_DAYS, FetchTimeout, fetchWithin, isoDay, type DayCount, type Named, type StatsReport } from './goatcounter.ts';
+import { CHART_DAYS, FetchTimeout, fetchWithin, isoDay, type DayCount, type Named, type ReadyCounts, type StatsReport } from './goatcounter.ts';
 
 /**
  * `key` — посредник не принял ключ автора, `setup` — у посредника не заданы секреты,
@@ -87,8 +87,17 @@ const pairs = (v: unknown): Named[] =>
     .filter((x) => x.count > 0)
     .sort((a, b) => b.count - a.count);
 
-/** Отчёт посредника (`/api/report`) — те же числа, что дают семь запросов к API GoatCounter. */
-export function parseReport(json: unknown): { today: number; week: number; month: number; days: DayCount[]; counts: Record<string, number>; refs: Named[]; systems: Named[]; locations: Named[] } {
+/** Готовность игроков из отчёта: по 10 чисел за 7 и 30 дней — или undefined, если игроков у посредника нет. */
+export function parseReady(v: unknown): ReadyCounts | undefined {
+  const o = obj(v);
+  const ten = (x: unknown) => (Array.isArray(x) && x.length === 10 ? x.map((n) => Math.max(0, Math.floor(num(n)))) : undefined);
+  const d7 = ten(o.d7);
+  const d30 = ten(o.d30);
+  return d7 && d30 ? { d7, d30 } : undefined;
+}
+
+/** Отчёт посредника (`/api/report`) — те же числа, что дают семь запросов к API GoatCounter, и готовность игроков. */
+export function parseReport(json: unknown): { today: number; week: number; month: number; days: DayCount[]; counts: Record<string, number>; refs: Named[]; systems: Named[]; locations: Named[]; ready?: ReadyCounts } {
   const o = obj(json);
   const counts: Record<string, number> = {};
   for (const [path, n] of Object.entries(obj(o.counts))) if (path) counts[path] = num(n);
@@ -97,7 +106,8 @@ export function parseReport(json: unknown): { today: number; week: number; month
     .map((x) => ({ day: str(x[0]).slice(0, 10), count: num(x[1]) }))
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.day))
     .sort((a, b) => a.day.localeCompare(b.day));
-  return { today: num(o.today), week: num(o.week), month: num(o.month), days, counts, refs: pairs(o.refs), systems: pairs(o.systems), locations: pairs(o.locations) };
+  const ready = parseReady(o.ready);
+  return { today: num(o.today), week: num(o.week), month: num(o.month), days, counts, refs: pairs(o.refs), systems: pairs(o.systems), locations: pairs(o.locations), ...(ready ? { ready } : {}) };
 }
 
 /**
@@ -148,5 +158,5 @@ export async function loadProxyReport(proxy: string, key: string, now = Date.now
     const day = isoDay(midnight(now, CHART_DAYS - 1 - i));
     return { day, count: i === CHART_DAYS - 1 ? r.today : (byDay.get(day) ?? 0) };
   });
-  return { days, today: r.today, week: r.week, month: r.month, counts: r.counts, refs: r.refs, systems: r.systems, locations: r.locations, failed: 0, at: now, source: 'proxy' };
+  return { days, today: r.today, week: r.week, month: r.month, counts: r.counts, refs: r.refs, systems: r.systems, locations: r.locations, ...(r.ready ? { ready: r.ready } : {}), failed: 0, at: now, source: 'proxy' };
 }

@@ -8,7 +8,7 @@
  */
 import { getSettings } from '../settings.ts';
 
-export type SoundName = 'correct' | 'wrong' | 'reward' | 'pass' | 'fail' | 'tick' | 'start' | 'rev' | 'stamp' | 'away' | 'coins';
+export type SoundName = 'correct' | 'wrong' | 'reward' | 'pass' | 'fail' | 'tick' | 'start' | 'rev' | 'stamp' | 'away' | 'coins' | 'zip' | 'ring' | 'siren' | 'thunder' | 'erase';
 
 type Wave = OscillatorType;
 interface Note {
@@ -72,6 +72,15 @@ const SOUNDS: Record<SoundName, Note[]> = {
     { f: 1568, t: 0, d: 0.12, gain: 0.06 },
     { f: 2093, t: 0.08, d: 0.2, gain: 0.06 },
   ],
+  // Кат-сцены глав 6 и 9: мопед проносится мимо, звонок телефона, мигалка, гром, стирание записи.
+  zip: [{ f: 330, t: 0, d: 0.55, wave: 'sawtooth', gain: 0.05, to: 120 }],
+  ring: [0, 0.12, 0.24, 0.6, 0.72, 0.84].map((t, i) => ({ f: i % 2 ? 1180 : 950, t, d: 0.1, wave: 'square' as const, gain: 0.035 })),
+  siren: [0, 0.35, 0.7, 1.05].map((t, i) => ({ f: i % 2 ? 960 : 720, t, d: 0.33, wave: 'triangle' as const, gain: 0.06 })),
+  thunder: [
+    { f: 62, t: 0, d: 1.3, wave: 'triangle', gain: 0.28, to: 34 },
+    { f: 90, t: 0.05, d: 0.5, wave: 'sawtooth', gain: 0.04, to: 40 },
+  ],
+  erase: [880, 740, 620, 520, 430].map((f, i) => ({ f, t: i * 0.14, d: 0.12, wave: 'square' as const, gain: 0.04 })),
 };
 
 /** Клаксоны из магазина (этап 17) — тоже синтез, без файлов. */

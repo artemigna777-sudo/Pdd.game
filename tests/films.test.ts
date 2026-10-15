@@ -39,10 +39,37 @@ test('сцены: без скриптов и ссылок, картинки на
     }
     for (const snd of f.sounds ?? []) assert.ok(snd.at >= 0 && snd.at <= 10, `${id}: звук ${snd.name}`);
   }
-  // Все кадры главы вместе — около мегабайта: игра хранится на телефоне целиком.
+  // Кадры каждой главы вместе — около мегабайта: игра хранится на телефоне целиком.
   const all = new Set(FILM_IDS.flatMap((id) => FILMS[id].images));
-  const total = [...all].reduce((sum, src) => sum + statSync(`public${src}`).size, 0);
-  assert.ok(total < 1_500_000, `кадры весят ${Math.round(total / 1024)} КБ`);
+  const byChapter = new Map<string, number>();
+  for (const src of all) {
+    const ch = src.split('/')[2];
+    byChapter.set(ch, (byChapter.get(ch) ?? 0) + statSync(`public${src}`).size);
+  }
+  assert.deepEqual([...byChapter.keys()].sort(), ['ch3', 'ch6', 'ch9']);
+  for (const [ch, size] of byChapter) assert.ok(size < 1_300_000, `кадры ${ch} весят ${Math.round(size / 1024)} КБ`);
+});
+
+test('большие развилки глав 6 и 9: сцена разговора, сцена выбора и своя сцена у каждого варианта', () => {
+  for (const [id, talk, choice, replies] of [
+    ['ch6.bakery', 'ch6-call', 'ch6-choice', [['save', 'ch6-save'], ['own', 'ch6-own'], ['sell', 'ch6-sell']]],
+    ['ch9.video', 'ch9-video', 'ch9-choice', [['give', 'ch9-give'], ['talk', 'ch9-talk'], ['erase', 'ch9-erase']]],
+  ] as const) {
+    const d = DECISIONS.find((x) => x.id === id)!;
+    assert.ok(d.big, id);
+    assert.equal(d.lines[0].film, talk, id);
+    // Вопрос перед выбором (все его варианты по условиям) — со сценой выбора.
+    const last = d.lines.at(-1)!;
+    const asks = d.lines.filter((l) => l.text.endsWith('?') && (l === last || (l.if && last.if)));
+    assert.ok(asks.length >= 1, id);
+    for (const l of asks) assert.equal(l.film, choice, `${id}: ${l.text}`);
+    // У каждого варианта — своя сцена на первой реплике (у реплик по условию — на каждой из них).
+    for (const [value, film] of replies) {
+      const o = d.options.find((x) => x.value === value)!;
+      const first = o.reply!.filter((l, i) => i === 0 || (l.if && o.reply![0].if));
+      for (const l of first) assert.equal(l.film, film, `${id}=${value}: ${l.text}`);
+    }
+  }
 });
 
 test('большая развилка главы 3: сцена разговора, сцена выбора и своя сцена у каждого варианта', () => {

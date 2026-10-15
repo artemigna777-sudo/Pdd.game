@@ -196,8 +196,8 @@ async function playersReady(env) {
 const playersStub = (env) => env.PLAYERS.get(env.PLAYERS.idFromName(PLAYERS_ID));
 
 /**
- * Игроки. `PUT /player` — игра присылает о себе: номер (случайный), показывать ли в таблице, имя,
- * опыт, заработанные монеты, готовность. `GET /board?by=xp|coins&id=…` — таблица лидеров и своё место.
+ * Игроки. `PUT /player` — игра присылает о себе: номер (случайный), показывать ли в таблице, своё имя
+ * (если введено), опыт, заработанные монеты, готовность; в ответе — имя в таблице (своё или ник). `GET /board?by=xp|coins&id=…` — таблица лидеров и своё место.
  */
 async function playersRoute(request, env, url, origin, reply) {
   if (!ORIGINS.includes(origin)) return reply(403, { error: 'origin' });
@@ -222,7 +222,8 @@ async function playersRoute(request, env, url, origin, reply) {
   const upd = cleanUpdate(raw);
   if (upd.error) return reply(400, { error: upd.error });
   const res = await playersStub(env).fetch('https://players/player', { method: 'PUT', body: JSON.stringify(upd) });
-  return res.ok ? reply(200, { ok: true }) : reply(502, { error: 'players' });
+  // В ответе — имя игрока в таблице: своё или ник, который посредник выдал при первом заходе.
+  return res.ok ? reply(200, await res.json()) : reply(502, { error: 'players' });
 }
 
 /**
@@ -348,8 +349,7 @@ export class Players {
     if (url.pathname === '/player' && request.method === 'PUT') {
       const upd = cleanUpdate(await request.json());
       if (upd.error) return new Response(JSON.stringify(upd), { status: 400 });
-      savePlayer(this.sql, upd, now);
-      return json({ ok: true });
+      return json({ ok: true, name: savePlayer(this.sql, upd, now) });
     }
     if (url.pathname === '/board') return json(board(this.sql, url.searchParams.get('by'), url.searchParams.get('id')));
     if (url.pathname === '/ready') return json(readyCounts(this.sql, now));

@@ -5747,12 +5747,6 @@ a.btn {
   font-weight: 700;
 }
 
-.board__actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
 .board__list {
   display: flex;
   flex-direction: column;

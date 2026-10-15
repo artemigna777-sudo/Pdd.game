@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, test } from 'node:test';
-import { PLAYER, board, cleanName, cleanUpdate, nameAllowed, readyCounts, savePlayer, setup } from '../stats-worker/players.js';
+import { PLAYER, board, cleanName, cleanUpdate, freeNick, nameAllowed, readyCounts, savePlayer, setup } from '../stats-worker/players.js';
 import worker, { Players } from '../stats-worker/worker.js';
 
 /** Хранилище как у Durable Object: `exec(запрос, ...значения).toArray()`. */
@@ -30,7 +30,10 @@ test('от игры принимается только своё: номер, и
   assert.deepEqual(cleanUpdate({ id: id(1) }), { id: id(1), board: false });
   assert.deepEqual(cleanUpdate({ id: 'короткий', board: false }), { error: 'id' });
   assert.deepEqual(cleanUpdate(null), { error: 'bad' });
-  assert.deepEqual(cleanUpdate({ id: id(1), board: true, xp: 1, coins: 1 }), { error: 'name' }, 'в таблице нужно имя');
+  assert.deepEqual(cleanUpdate({ id: id(1), board: true, xp: 1, coins: 1 }), { id: id(1), board: true, xp: 1, coins: 1 }, 'без своего имени — ник от посредника');
+  // Ники «user_…» выдаёт только посредник: своим именем так назваться нельзя.
+  for (const nick of ['user_1652', 'User 77', 'user-12345']) assert.deepEqual(cleanUpdate({ id: id(1), board: true, name: nick, xp: 1, coins: 1 }), { error: 'name' }, nick);
+  assert.equal(nameAllowed('user_masha'), true);
   assert.deepEqual(cleanUpdate({ id: id(1), board: true, name: 'Маша', xp: -1, coins: 1 }), { error: 'bad' });
   assert.deepEqual(cleanUpdate({ id: id(1), board: true, name: 'Маша', xp: PLAYER.maxValue + 1, coins: 1 }), { error: 'bad' });
   assert.equal(cleanUpdate({ id: id(1), ready: 101 }).ready, undefined);
@@ -41,7 +44,28 @@ test('от игры принимается только своё: номер, и
   assert.deepEqual(cleanUpdate({ id: id(1), board: true, name: 'Пиздюк', xp: 1, coins: 1 }), { error: 'name' });
 });
 
-test('таблица лидеров: по опыту и по монетам, своё место, только те, кто захотел в таблицу', () => {
+test('ник по умолчанию: случайный, выдаётся один раз и ни у кого не повторяется', () => {
+  const sql = sqlStorage();
+  setup(sql);
+  const now = Date.UTC(2026, 9, 15);
+  // Числа подряд: первые занимают 4-значные ники, повторы не выдаются.
+  const nicks = new Set<string>();
+  for (let n = 1; n <= 300; n++) nicks.add(savePlayer(sql, cleanUpdate({ id: id(n), board: true, xp: n, coins: 0 }), now));
+  assert.equal(nicks.size, 300, 'у всех разные');
+  for (const nick of nicks) assert.match(nick, /^user_\d{4}$/);
+  // Тот же игрок — тот же ник, даже после смены своего имени туда и обратно.
+  const mine = savePlayer(sql, cleanUpdate({ id: id(7), board: true, xp: 1, coins: 0 }), now);
+  assert.equal(savePlayer(sql, cleanUpdate({ id: id(7), board: true, name: 'Маша', xp: 1, coins: 0 }), now), 'Маша');
+  assert.equal(savePlayer(sql, cleanUpdate({ id: id(7), board: true, xp: 1, coins: 0 }), now), mine);
+  // Если случайные числа всё время попадают в занятые — ник становится длиннее, но находится.
+  const taken = sql.exec('SELECT nick FROM players WHERE id = ?', id(1)).toArray()[0].nick as string;
+  const stuck = (Number(taken.slice(5)) - 1000) / 9000 + 1e-9;
+  const longer = freeNick(sql, () => stuck);
+  assert.match(longer, /^user_\d{5}$/);
+  assert.equal(freeNick(sql, () => 0.5), freeNick(sql, () => 0.5), 'свободный ник не меняет хранилище');
+});
+
+test('таблица лидеров: по опыту и по монетам, своё место, только те, кто в таблице', () => {
   const sql = sqlStorage();
   setup(sql);
   const now = Date.UTC(2026, 9, 15);
@@ -53,20 +77,20 @@ test('таблица лидеров: по опыту и по монетам, с�
   assert.equal(xp.total, 25);
   assert.equal(xp.top.length, PLAYER.top);
   assert.deepEqual(xp.top[0], { name: 'Игрок 25', value: 25000 });
-  assert.deepEqual(xp.me, { place: 23, value: 3000 });
+  assert.deepEqual(xp.me, { place: 23, value: 3000, name: 'Игрок 3' });
   assert.ok(!xp.top.some((r: { me?: boolean }) => r.me), 'не в первых 20');
   assert.ok(!JSON.stringify(xp).includes('player-'), 'номера игр не отдаются');
 
   const coins = board(sql, 'coins', id(3));
   assert.deepEqual(coins.top[0], { name: 'Игрок 1', value: 2500 });
   assert.deepEqual(coins.top[2], { name: 'Игрок 3', value: 2300, me: true });
-  assert.deepEqual(coins.me, { place: 3, value: 2300 });
+  assert.deepEqual(coins.me, { place: 3, value: 2300, name: 'Игрок 3' });
 
   // Кто не в таблице, своего места не видит.
   assert.equal(board(sql, 'xp', id(99)).me, undefined);
   assert.equal(board(sql, 'xp', 'чужой').me, undefined);
 
-  // Ушёл из таблицы — имя, опыт и монеты стёрты, готовность осталась.
+  // Не в таблице — имя, опыт и монеты стёрты, готовность осталась.
   savePlayer(sql, cleanUpdate({ id: id(25), board: false, ready: 100 }), now + 100);
   assert.equal(board(sql, 'xp', id(25)).total, 24);
   assert.deepEqual(board(sql, 'xp', id(25)).top[0], { name: 'Игрок 24', value: 24000 });
@@ -74,7 +98,7 @@ test('таблица лидеров: по опыту и по монетам, с�
 
   // Обновил опыт — место выросло; при равенстве выше тот, кто раньше.
   savePlayer(sql, cleanUpdate({ id: id(3), board: true, name: 'Игрок 3', xp: 24000, coins: 2300 }), now + 200);
-  assert.deepEqual(board(sql, 'xp', id(3)).me, { place: 1, value: 24000 });
+  assert.deepEqual(board(sql, 'xp', id(3)).me, { place: 1, value: 24000, name: 'Игрок 3' });
   assert.equal(board(sql, 'xp', id(3)).top[1].name, 'Игрок 3');
 });
 
@@ -141,6 +165,11 @@ test('посредник: игра присылает о себе и берёт 
   const first = await put({ id: id(1), board: true, name: 'Маша', xp: 15000, coins: 900, ready: 80 });
   assert.equal(first.status, 200);
   assert.equal(first.headers.get('Access-Control-Allow-Origin'), GAME);
+  assert.deepEqual(await first.json(), { ok: true, name: 'Маша' });
+  // Без своего имени — ник, который посредник выдал этой игре.
+  const anon = await (await put({ id: id(2), board: true, xp: 3000, coins: 1200 })).json();
+  assert.match(anon.name, /^user_\d{4}$/);
+  assert.deepEqual(await (await put({ id: id(2), board: true, xp: 3000, coins: 1200 })).json(), anon, 'ник тот же');
   assert.equal((await put({ id: id(2), board: true, name: 'Петя', xp: 3000, coins: 1200 })).status, 200);
   assert.equal((await put({ id: id(3), board: false, ready: 20 })).status, 200);
   assert.deepEqual(names.every((n) => n === 'all'), true);
@@ -148,7 +177,7 @@ test('посредник: игра присылает о себе и берёт 
   const res = await call(env, `/board?by=xp&id=${id(2)}`);
   assert.equal(res.headers.get('Access-Control-Allow-Origin'), GAME, 'браузер игры пропустит ответ');
   const xp = await res.json();
-  assert.deepEqual(xp, { by: 'xp', top: [{ name: 'Маша', value: 15000 }, { name: 'Петя', value: 3000, me: true }], total: 2, me: { place: 2, value: 3000 } });
+  assert.deepEqual(xp, { by: 'xp', top: [{ name: 'Маша', value: 15000 }, { name: 'Петя', value: 3000, me: true }], total: 2, me: { place: 2, value: 3000, name: 'Петя' } });
   const coins = await (await call(env, '/board?by=coins')).json();
   assert.deepEqual(coins.top.map((r: { name: string }) => r.name), ['Петя', 'Маша']);
   assert.ok(JSON.stringify(coins).length < 2000, 'ответ маленький');

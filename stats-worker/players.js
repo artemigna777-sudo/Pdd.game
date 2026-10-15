@@ -2,8 +2,9 @@
  * Игроки у посредника: таблица лидеров по опыту и монетам и готовность к экзамену для статистики автора.
  *
  * Хранится только то, что игра присылает сама: случайный номер телефона-игры (не связан ни с чем),
- * имя для таблицы (если игрок решил в неё попасть), опыт, заработанные монеты, готовность в процентах
- * и когда игрок был последний раз. Кто не заходил год — удаляется.
+ * своё имя для таблицы (если игрок его ввёл), опыт, заработанные монеты, готовность в процентах и когда
+ * игрок был последний раз. Ещё — ник по умолчанию вроде «user_4821»: его выдаёт посредник при первом
+ * заходе, случайный и ни у кого не повторяется. Кто не заходил год — удаляется.
  *
  * Здесь только правила и SQL — без Cloudflare, чтобы проверять в тестах. `sql` — как у Durable Object:
  * `sql.exec(запрос, ...значения)` возвращает строки (`.toArray()`).
@@ -37,8 +38,12 @@ export function cleanName(raw) {
   return [...raw.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, ' ').replace(/\s+/g, ' ').trim()].slice(0, PLAYER.nameMax).join('').trim();
 }
 
+/** Ники по умолчанию («user_4821») выдаёт только посредник: своё имя таким быть не может. */
+const NICK_LIKE = /^user[\s_-]*\d+$/i;
+
 /** Можно ли показывать имя всем. */
 export function nameAllowed(name) {
+  if (NICK_LIKE.test(name)) return false;
   const low = name.toLowerCase();
   const plain = low.replace(/[^а-яёa-z]/g, '');
   return !(BAD_ANYWHERE.test(low) || BAD_ANYWHERE.test(plain) || BAD_WORD_START.test(low) || BAD_LATIN.test(plain));
@@ -48,8 +53,9 @@ const count = (v) => (Number.isInteger(v) && v >= 0 && v <= PLAYER.maxValue ? v 
 
 /**
  * Что прислала игра → { id, board, name?, xp?, coins?, ready? } или { error }.
- * `board` — показывать ли игрока в таблице: тогда нужны имя, опыт и монеты, иначе они не хранятся.
- * `ready` — готовность 0–100: её игра присылает, только если игрок не выключил анонимную статистику.
+ * `board` — показывать ли игрока в таблице: тогда нужны опыт и монеты, иначе они не хранятся.
+ * `name` — своё имя; без него в таблице ник по умолчанию. `ready` — готовность 0–100: её игра
+ * присылает, только если игрок не выключил анонимную статистику.
  */
 export function cleanUpdate(raw) {
   if (typeof raw !== 'object' || raw === null) return { error: 'bad' };
@@ -58,32 +64,48 @@ export function cleanUpdate(raw) {
   if (Number.isInteger(raw.ready) && raw.ready >= 0 && raw.ready <= 100) out.ready = raw.ready;
   if (!out.board) return out;
   const name = cleanName(raw.name);
-  if (!name || !nameAllowed(name)) return { error: 'name' };
+  if (name && !nameAllowed(name)) return { error: 'name' };
   const xp = count(raw.xp);
   const coins = count(raw.coins);
   if (xp === undefined || coins === undefined) return { error: 'bad' };
-  return { ...out, name, xp, coins };
+  return { ...out, ...(name ? { name } : {}), xp, coins };
 }
 
 /** Таблица в хранилище Durable Object (создаётся один раз). */
 export function setup(sql) {
-  sql.exec('CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT, board INTEGER NOT NULL DEFAULT 0, xp INTEGER, coins INTEGER, ready INTEGER, seen INTEGER NOT NULL)');
+  sql.exec('CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT, nick TEXT NOT NULL, board INTEGER NOT NULL DEFAULT 0, xp INTEGER, coins INTEGER, ready INTEGER, seen INTEGER NOT NULL)');
+  sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS players_nick ON players (nick)');
   sql.exec('CREATE INDEX IF NOT EXISTS players_xp ON players (board, xp)');
   sql.exec('CREATE INDEX IF NOT EXISTS players_coins ON players (board, coins)');
   sql.exec('CREATE INDEX IF NOT EXISTS players_seen ON players (seen)');
 }
 
 /**
- * Сохранить, что прислала игра. Игра каждый раз присылает всё о себе, поэтому запись заменяется
- * целиком: ушёл из таблицы — имя, опыт и монеты стираются, выключил статистику — стирается готовность.
+ * Свободный ник по умолчанию: «user_» и случайные 4 цифры; если подряд попадаются занятые — 5 цифр,
+ * потом 6 и т. д., так что ник всегда находится и ни у кого не повторяется.
  */
-export function savePlayer(sql, upd, now) {
+export function freeNick(sql, rnd = Math.random) {
+  for (let i = 0; ; i++) {
+    const min = 10 ** (3 + Math.floor(i / 10));
+    const nick = `user_${min + Math.floor(rnd() * 9 * min)}`;
+    if (!sql.exec('SELECT 1 FROM players WHERE nick = ?', nick).toArray().length) return nick;
+  }
+}
+
+/**
+ * Сохранить, что прислала игра, и вернуть имя игрока в таблице (своё или ник). Игра каждый раз
+ * присылает всё о себе, поэтому запись заменяется целиком: стёрла своё имя — снова ник, выключила
+ * статистику — стирается готовность. Ник выдаётся при первом заходе и больше не меняется.
+ */
+export function savePlayer(sql, upd, now, rnd = Math.random) {
+  const nick = sql.exec('SELECT nick FROM players WHERE id = ?', upd.id).toArray()[0]?.nick ?? freeNick(sql, rnd);
   sql.exec(
-    `INSERT INTO players (id, name, board, xp, coins, ready, seen) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO players (id, name, nick, board, xp, coins, ready, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, board = excluded.board, xp = excluded.xp,
        coins = excluded.coins, ready = excluded.ready, seen = excluded.seen`,
     upd.id,
-    upd.board ? upd.name : null,
+    upd.board ? (upd.name ?? null) : null,
+    nick,
     upd.board ? 1 : 0,
     upd.board ? upd.xp : null,
     upd.board ? upd.coins : null,
@@ -91,21 +113,22 @@ export function savePlayer(sql, upd, now) {
     now,
   );
   sql.exec('DELETE FROM players WHERE seen < ?', now - PLAYER.keepDays * DAY);
+  return upd.name ?? String(nick);
 }
 
 /**
- * Таблица лидеров по опыту (`xp`) или монетам (`coins`): первые 20, своё место (если игрок в таблице)
- * и сколько всего игроков в таблице. Номера телефонов-игр не отдаются.
+ * Таблица лидеров по опыту (`xp`) или монетам (`coins`): первые 20, своё место и имя (если игрок
+ * в таблице) и сколько всего игроков в таблице. Номера телефонов-игр не отдаются.
  */
 export function board(sql, by, id) {
   const col = by === 'coins' ? 'coins' : 'xp';
-  const rows = sql.exec(`SELECT id, name, ${col} AS value FROM players WHERE board = 1 AND ${col} IS NOT NULL ORDER BY ${col} DESC, seen ASC LIMIT ?`, PLAYER.top).toArray();
+  const rows = sql.exec(`SELECT id, COALESCE(name, nick) AS name, ${col} AS value FROM players WHERE board = 1 AND ${col} IS NOT NULL ORDER BY ${col} DESC, seen ASC LIMIT ?`, PLAYER.top).toArray();
   const total = Number(sql.exec(`SELECT COUNT(*) AS n FROM players WHERE board = 1 AND ${col} IS NOT NULL`).toArray()[0]?.n ?? 0);
   const out = { by: col, top: rows.map((r) => ({ name: String(r.name), value: Number(r.value), ...(r.id === id ? { me: true } : {}) })), total };
-  const mine = typeof id === 'string' && ID.test(id) ? sql.exec(`SELECT ${col} AS value, board FROM players WHERE id = ?`, id).toArray()[0] : undefined;
+  const mine = typeof id === 'string' && ID.test(id) ? sql.exec(`SELECT ${col} AS value, board, COALESCE(name, nick) AS name FROM players WHERE id = ?`, id).toArray()[0] : undefined;
   if (mine && Number(mine.board) === 1 && mine.value !== null) {
     const above = Number(sql.exec(`SELECT COUNT(*) AS n FROM players WHERE board = 1 AND ${col} > ?`, mine.value).toArray()[0]?.n ?? 0);
-    out.me = { place: above + 1, value: Number(mine.value) };
+    out.me = { place: above + 1, value: Number(mine.value), name: String(mine.name) };
   }
   return out;
 }

@@ -1,6 +1,6 @@
 /**
  * Таблица лидеров в игре (src/board/board.ts) вместе с настоящим кодом посредника (stats-worker/worker.js,
- * хранилище Durable Object — SQLite из Node): что игра отправляет о себе, когда, как уходит из таблицы;
+ * хранилище Durable Object — SQLite из Node): что игра отправляет о себе и когда, ник от посредника и своё имя;
  * заработанные монеты (src/progress/earned.ts).
  */
 import assert from 'node:assert/strict';
@@ -18,7 +18,7 @@ const memory = new Map<string, string>();
   },
 };
 
-const { BOARD, cleanBoardName, fetchBoard, newPlayerId, parseBoard, playerId, playerUpdate, syncPlayer } = await import('../src/board/board.ts');
+const { BOARD, boardName, cleanBoardName, fetchBoard, newPlayerId, parseBoard, playerId, playerUpdate, syncPlayer } = await import('../src/board/board.ts');
 const { getSettings, updateSettings } = await import('../src/settings.ts');
 const { coinsEarned, ensureCoinsSpent, spentEstimate } = await import('../src/progress/earned.ts');
 const { emptyProgress, sanitizeProgress, spendCoins } = await import('../src/progress/progress.ts');
@@ -33,7 +33,7 @@ let db: DatabaseSync;
 
 beforeEach(() => {
   memory.clear();
-  updateSettings({ board: false, boardName: '', playerId: '' });
+  updateSettings({ boardName: '', boardNick: '', playerId: '' });
   sent = [];
   db = new DatabaseSync(':memory:');
   const sql = {
@@ -58,37 +58,38 @@ afterEach(() => {
 const sync = (o: { xp?: number; coins?: number; ready?: number; force?: boolean; now?: number } = {}) =>
   syncPlayer({ xp: o.xp ?? 0, coins: o.coins ?? 0, ready: async () => o.ready, force: o.force, now: o.now ?? NOW }, BASE);
 
-test('что игра отправляет о себе: в таблице — имя, опыт и монеты; готовность — только со статистикой', () => {
+test('что игра отправляет о себе: опыт, монеты и своё имя, если есть; готовность — только со статистикой', () => {
   assert.match(newPlayerId(), /^[A-Za-z0-9_-]{22}$/);
   assert.notEqual(newPlayerId(), newPlayerId());
   const id = playerId();
   assert.equal(playerId(), id, 'номер создаётся один раз');
   assert.equal(getSettings().playerId, id);
-  assert.deepEqual(playerUpdate({ id, board: true, name: ' Маша  ', xp: 12000.7, coins: 340, ready: 57.9 }), { id, board: true, name: 'Маша', xp: 12000, coins: 340, ready: 57 });
-  assert.deepEqual(playerUpdate({ id, board: false, name: 'Маша', xp: 1, coins: 1 }), { id, board: false }, 'не в таблице и без статистики — ничего о себе');
-  assert.deepEqual(playerUpdate({ id, board: true, name: '   ', xp: 1, coins: 1, ready: 120 }), { id, board: false, ready: 100 });
+  assert.deepEqual(playerUpdate({ id, name: ' Маша  ', xp: 12000.7, coins: 340, ready: 57.9 }), { id, board: true, name: 'Маша', xp: 12000, coins: 340, ready: 57 });
+  assert.deepEqual(playerUpdate({ id, name: '', xp: 1, coins: 1 }), { id, board: true, xp: 1, coins: 1 }, 'без своего имени — ник от посредника');
+  assert.deepEqual(playerUpdate({ id, name: '   ', xp: 1, coins: 1, ready: 120 }), { id, board: true, xp: 1, coins: 1, ready: 100 });
   assert.equal(cleanBoardName('Очень длинное имя игрока').length, BOARD.nameMax);
-  assert.deepEqual(parseBoard({ by: 'xp', top: [{ name: 'Маша', value: 5 }, { name: '', value: 3 }, { name: 'Петя', value: -1 }, { name: 'Ты', value: 2, me: true }], total: 9, me: { place: 3, value: 2 } }), {
+  assert.deepEqual(parseBoard({ by: 'xp', top: [{ name: 'Маша', value: 5 }, { name: '', value: 3 }, { name: 'Петя', value: -1 }, { name: 'Ты', value: 2, me: true }], total: 9, me: { place: 3, value: 2, name: 'Ты' } }), {
     by: 'xp',
     top: [{ name: 'Маша', value: 5 }, { name: 'Ты', value: 2, me: true }],
     total: 9,
-    me: { place: 3, value: 2 },
+    me: { place: 3, value: 2, name: 'Ты' },
   });
   assert.equal(parseBoard({ by: 'gold', top: [] }), undefined);
   assert.equal(parseBoard(null), undefined);
 });
 
-test('игрок попадает в таблицу, видит своё место и уходит из неё', async () => {
-  // Не в таблице и без статистики — ничего не отправляется.
-  assert.equal(await sync({ force: true }), 'skipped');
-  assert.equal(sent.length, 0);
-
-  updateSettings({ board: true, boardName: 'Маша' });
-  assert.equal(await sync({ xp: 15_000, coins: 900, force: true }), 'ok');
+test('все игроки сразу в таблице: случайный ник от посредника, своё имя по желанию', async () => {
+  // Своё имя игрок не вводил — посредник выдаёт ник, игра его запоминает.
+  assert.equal(boardName(), '');
+  assert.equal(await sync({ xp: 15_000, coins: 900 }), 'ok');
+  assert.deepEqual(sent.at(-1), { id: playerId(), board: true, xp: 15_000, coins: 900 });
+  const nick = getSettings().boardNick;
+  assert.match(nick, /^user_\d{4}$/);
+  assert.equal(boardName(), nick);
   const board = await fetchBoard('xp', playerId(), BASE);
   assert.ok(typeof board === 'object');
-  assert.deepEqual(board.top, [{ name: 'Маша', value: 15_000, me: true }]);
-  assert.deepEqual(board.me, { place: 1, value: 15_000 });
+  assert.deepEqual(board.top, [{ name: nick, value: 15_000, me: true }]);
+  assert.deepEqual(board.me, { place: 1, value: 15_000, name: nick });
   const coins = await fetchBoard('coins', playerId(), BASE);
   assert.ok(typeof coins === 'object' && coins.top[0].value === 900);
 
@@ -96,36 +97,35 @@ test('игрок попадает в таблицу, видит своё мес�
   assert.equal(await sync({ xp: 16_000, now: NOW + HOUR }), 'skipped');
   assert.equal(await sync({ xp: 16_000, now: NOW + BOARD.syncHours * HOUR }), 'ok');
 
-  // Плохое имя посредник не принимает.
+  // Своё имя. Плохое или чужой ник посредник не принимает.
   updateSettings({ boardName: 'Сука' });
   assert.equal(await sync({ force: true }), 'name');
-
-  // Ушёл из таблицы без связи — убрать имя пробуем при каждом случае, не дожидаясь 6 часов.
+  updateSettings({ boardName: 'user_1234' });
+  assert.equal(await sync({ force: true }), 'name');
   updateSettings({ boardName: 'Маша' });
-  assert.equal(await sync({ force: true, now: NOW + BOARD.syncHours * HOUR }), 'ok');
-  updateSettings({ board: false });
-  const online = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    throw new TypeError('нет связи');
-  }) as typeof fetch;
-  assert.equal(await sync({ force: true, now: NOW + BOARD.syncHours * HOUR + 1 }), 'offline');
-  globalThis.fetch = online;
-  assert.equal((await fetchBoard('xp', playerId(), BASE) as { total: number }).total, 1, 'пока имя ещё в таблице');
+  assert.equal(await sync({ xp: 16_000, force: true }), 'ok');
+  assert.equal(boardName(), 'Маша');
+  assert.equal(getSettings().boardNick, nick, 'ник остаётся за игрой');
+  const named = await fetchBoard('xp', playerId(), BASE);
+  assert.ok(typeof named === 'object' && named.top[0].name === 'Маша' && named.me?.name === 'Маша');
 
-  // Связь появилась — имя, опыт и монеты стёрты у посредника.
-  assert.equal(await sync({ now: NOW + BOARD.syncHours * HOUR + 2 }), 'ok', 'сразу, не дожидаясь срока — стереть то, что было');
-  assert.deepEqual(sent.at(-1), { id: playerId(), board: false });
-  const empty = await fetchBoard('xp', playerId(), BASE);
-  assert.ok(typeof empty === 'object');
-  assert.deepEqual([empty.top, empty.total, empty.me], [[], 0, undefined]);
-  assert.equal(await sync({ force: true }), 'skipped', 'больше нечего отправлять');
-  assert.equal(await sync({ now: NOW + 10 * BOARD.syncHours * HOUR }), 'skipped');
+  // Стёрла своё имя — снова тот же ник.
+  updateSettings({ boardName: '' });
+  assert.equal(await sync({ force: true, xp: 16_000 }), 'ok');
+  const again = await fetchBoard('xp', playerId(), BASE);
+  assert.ok(typeof again === 'object' && again.me?.name === nick);
+
+  // Второй игрок получает другой ник.
+  updateSettings({ playerId: '', boardNick: '' });
+  assert.equal(await sync({ force: true, xp: 1 }), 'ok');
+  assert.match(getSettings().boardNick, /^user_\d{4}$/);
+  assert.notEqual(getSettings().boardNick, nick);
 });
 
 test('готовность для статистики автора уходит без имени; без посредника — ничего не ломается', async () => {
   assert.equal(await sync({ ready: 42, force: true }), 'ok');
-  assert.deepEqual(sent.at(-1), { id: playerId(), board: false, ready: 42 });
-  assert.equal(db.prepare('SELECT ready, name FROM players').all().length, 1);
+  assert.deepEqual(sent.at(-1), { id: playerId(), board: true, xp: 0, coins: 0, ready: 42 });
+  assert.equal(db.prepare('SELECT ready FROM players WHERE ready = 42').all().length, 1);
   assert.equal(await syncPlayer({ xp: 1, coins: 1, ready: async () => 5, force: true }, undefined), 'skipped');
   globalThis.fetch = (async () => {
     throw new TypeError('нет связи');

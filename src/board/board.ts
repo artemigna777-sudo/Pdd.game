@@ -1,12 +1,12 @@
 /**
  * Таблица лидеров (общая — её видят все игроки) и готовность к экзамену для статистики автора.
  *
- * Игра отправляет посреднику на Cloudflare (stats-worker/worker.js, `PUT /player`) случайный номер
- * этой игры и:
- * - если игрок вступил в таблицу — имя, опыт и заработанные монеты;
- * - если анонимная статистика включена — готовность к экзамену в процентах. Её видит только автор на
- *   секретном экране статистики, и то лишь как число игроков в каждом десятке процентов.
- * Больше ничего. Таблицу игра берёт там же (`GET /board`). Без интернета или если посредник
+ * В таблице все игроки сразу: игра отправляет посреднику на Cloudflare (stats-worker/worker.js,
+ * `PUT /player`) случайный номер этой игры, опыт, заработанные монеты и своё имя, если игрок его ввёл.
+ * Без своего имени в таблице ник вроде «user_4821»: его выдаёт посредник при первом заходе — случайный
+ * и ни у кого не повторяется. Если анонимная статистика
+ * включена — ещё готовность к экзамену в процентах: её видит только автор на секретном экране
+ * статистики, и то лишь как число игроков в каждом десятке процентов. Больше ничего. Таблицу игра берёт там же (`GET /board`). Без интернета или если посредник
  * недоступен — таблица не открывается, остальная игра работает как раньше.
  */
 import { STATS_PROXY } from '../config.ts';
@@ -37,8 +37,8 @@ export interface BoardResult {
   top: BoardRow[];
   /** Сколько всего игроков в таблице. */
   total: number;
-  /** Своё место — если игрок в таблице. */
-  me?: { place: number; value: number };
+  /** Своё место и имя в таблице (своё или ник) — если игрок в таблице. */
+  me?: { place: number; value: number; name?: string };
 }
 
 /** Что игра присылает о себе. */
@@ -89,11 +89,16 @@ export function playerId(): string {
   return id;
 }
 
-/** Что отправить: в таблице — имя, опыт и монеты; готовность — только если статистика включена. */
-export function playerUpdate(o: { id: string; board: boolean; name: string; xp: number; coins: number; ready?: number }): PlayerUpdate {
+/** Имя игрока в таблице: своё, если введено, иначе ник от посредника; пусто — посредник ещё не ответил. */
+export function boardName(): string {
+  const s = getSettings();
+  return cleanBoardName(s.boardName) || cleanBoardName(s.boardNick);
+}
+
+/** Что отправить: опыт, монеты и своё имя (если есть); готовность — только если статистика включена. */
+export function playerUpdate(o: { id: string; name: string; xp: number; coins: number; ready?: number }): PlayerUpdate {
   const name = cleanBoardName(o.name);
-  const upd: PlayerUpdate = { id: o.id, board: o.board && !!name };
-  if (upd.board) Object.assign(upd, { name, xp: Math.max(0, Math.floor(o.xp)), coins: Math.max(0, Math.floor(o.coins)) });
+  const upd: PlayerUpdate = { id: o.id, board: true, ...(name ? { name } : {}), xp: Math.max(0, Math.floor(o.xp)), coins: Math.max(0, Math.floor(o.coins)) };
   if (o.ready !== undefined && Number.isFinite(o.ready)) upd.ready = Math.min(100, Math.max(0, Math.floor(o.ready)));
   return upd;
 }
@@ -117,7 +122,9 @@ export function parseBoard(raw: unknown): BoardResult | undefined {
   if (typeof r.me === 'object' && r.me !== null) {
     const place = count((r.me as { place?: unknown }).place);
     const value = count((r.me as { value?: unknown }).value);
-    if (place && value !== undefined) out.me = { place, value };
+    const name = (r.me as { name?: unknown }).name;
+    const n = typeof name === 'string' ? cleanBoardName(name) : '';
+    if (place && value !== undefined) out.me = { place, value, ...(n ? { name: n } : {}) };
   }
   return out;
 }
@@ -140,7 +147,16 @@ export async function sendPlayer(upd: PlayerUpdate, base = boardBase(), now = Da
   const res = await call(`${base}/player`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(upd) });
   if (!res) return 'offline';
   if (res.ok) {
-    markSynced(upd, now);
+    markSynced(now);
+    // Без своего имени посредник отвечает ником, который он выдал этой игре, — запомнить его.
+    let name: unknown;
+    try {
+      name = ((await res.json()) as { name?: unknown }).name;
+    } catch {
+      name = undefined;
+    }
+    const nick = typeof name === 'string' ? cleanBoardName(name) : '';
+    if (!upd.name && nick && nick !== getSettings().boardNick) updateSettings({ boardNick: nick });
     return 'ok';
   }
   if (res.status === 400) {
@@ -170,39 +186,24 @@ export async function fetchBoard(by: BoardBy, id: string, base = boardBase()): P
 
 const SYNC_KEY = 'pdd-game:board-sync';
 
-interface SyncState {
-  /** Когда последний раз отправлено. */
-  at: number;
-  /** У посредника есть что-то о нас (имя или готовность): если больше нечего слать — стереть. */
-  kept: boolean;
-  /** У посредника наше имя в таблице. */
-  board: boolean;
+/** Когда последний раз отправлено. */
+function syncedAt(): number {
+  const raw = load<{ at?: unknown } | null>(SYNC_KEY, null);
+  return typeof raw?.at === 'number' ? raw.at : 0;
 }
 
-function syncState(): SyncState {
-  const raw = load<Partial<SyncState> | null>(SYNC_KEY, null);
-  return { at: typeof raw?.at === 'number' ? raw.at : 0, kept: raw?.kept === true, board: raw?.board === true };
-}
-
-function markSynced(upd: PlayerUpdate, now: number): void {
-  save(SYNC_KEY, { at: now, kept: upd.board || upd.ready !== undefined, board: upd.board });
+function markSynced(now: number): void {
+  save(SYNC_KEY, { at: now });
 }
 
 /**
- * Отправить о себе, если пора: раз в `syncHours` или сразу (`force`). Если игрок не в таблице и
- * статистика выключена — ничего (а если у посредника что-то осталось — стереть). Игрок ушёл из таблицы,
- * а убрать имя не получилось (не было связи) — пробовать при каждом случае, не дожидаясь срока.
- * Готовность считается, только когда она нужна.
+ * Отправить о себе, если пора: раз в `syncHours` или сразу (`force`) — при открытии таблицы и смене
+ * имени. Готовность считается, только когда она нужна.
  */
 export async function syncPlayer(o: { xp: number; coins: number; ready: () => Promise<number | undefined>; force?: boolean; now?: number }, base = boardBase()): Promise<SendResult | 'skipped'> {
   if (!base) return 'skipped';
   const now = o.now ?? Date.now();
-  const state = syncState();
-  const s = getSettings();
-  const leaving = state.board && !s.board;
-  if (!o.force && !leaving && now - state.at < BOARD.syncHours * 3_600_000) return 'skipped';
+  if (!o.force && now - syncedAt() < BOARD.syncHours * 3_600_000) return 'skipped';
   const ready = await o.ready();
-  const upd = playerUpdate({ id: playerId(), board: s.board, name: s.boardName, xp: o.xp, coins: o.coins, ready });
-  if (!upd.board && upd.ready === undefined && !state.kept) return 'skipped';
-  return sendPlayer(upd, base, now);
+  return sendPlayer(playerUpdate({ id: playerId(), name: getSettings().boardName, xp: o.xp, coins: o.coins, ready }), base, now);
 }

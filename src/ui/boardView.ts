@@ -1,8 +1,8 @@
 /**
  * Таблица лидеров: по опыту и по заработанным монетам, общая для всех игроков (`board/board.ts`).
- * Чтобы попасть в неё, игрок сам вводит имя; убрать себя можно в любой момент.
+ * В ней все сразу — под ником вроде «user_1652», своё имя можно вписать здесь же.
  */
-import { BOARD, cleanBoardName, fetchBoard, playerId, syncPlayer, type BoardBy, type BoardResult, type SendResult } from '../board/board.ts';
+import { BOARD, boardName, cleanBoardName, fetchBoard, playerId, syncPlayer, type BoardBy, type BoardResult, type SendResult } from '../board/board.ts';
 import { loadQuestions } from '../data/questions.ts';
 import { allExams } from '../exam/examHistory.ts';
 import { coinsEarned } from '../progress/earned.ts';
@@ -76,65 +76,50 @@ export function boardView(): HTMLElement {
       el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => void show() }, 'Попробовать ещё раз'),
     );
 
-  /** Своя карточка: вступить в таблицу или своё место и «Убрать меня». */
+  /** Своя карточка: имя в таблице, место и «Сменить имя». */
   const renderMe = (result?: BoardResult) => {
-    const s = getSettings();
-    if (!s.board) {
-      const input = el('input', {
-        class: 'field__input',
-        type: 'text',
-        maxlength: BOARD.nameMax,
-        autocomplete: 'nickname',
-        placeholder: 'Например, Маша',
-        value: cleanBoardName(s.boardName || s.name),
-        'aria-label': 'Имя в таблице',
-      }) as HTMLInputElement;
-      const join = el('button', { class: 'btn btn--primary', type: 'button' }, 'Попасть в таблицу');
-      join.onclick = () => void enter(input.value, join);
-      me.replaceChildren(
-        el(
-          'div',
-          { class: 'panel board__join' },
-          el('strong', {}, '🏆 Попади в таблицу лидеров'),
-          el('p', { class: 'board__hint' }, 'Все игроки увидят твоё имя, опыт и заработанные монеты. Убрать себя можно в любой момент.'),
-          el('label', { class: 'field' }, el('span', { class: 'field__label' }, 'Имя в таблице'), input),
-          join,
-        ),
-      );
-      return;
-    }
+    const own = cleanBoardName(getSettings().boardName);
     const place = result?.me;
-    const rename = el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => renameForm() }, 'Сменить имя');
-    const leave = el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => void exit() }, 'Убрать меня');
+    const name = place?.name || boardName();
     me.replaceChildren(
       el(
         'div',
         { class: 'panel board__mine' },
-        el('strong', {}, `Ты в таблице как «${s.boardName}»`),
+        el('strong', {}, name ? `Ты в таблице как «${name}»` : 'Ты в таблице'),
         place && result ? el('p', { class: 'board__place-line' }, `${place.place}-е место из ${result.total} · ${num(place.value)} ${result.by === 'xp' ? 'опыта' : plural(place.value, ['монета', 'монеты', 'монет'])}`) : null,
-        el('div', { class: 'board__actions' }, rename, leave),
+        own ? null : el('p', { class: 'board__hint' }, 'Этот ник выдан случайно и ни у кого не повторяется. Можно вписать своё имя — его увидят все игроки.'),
+        el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => renameForm() }, 'Сменить имя'),
       ),
     );
   };
 
   const renameForm = () => {
-    const input = el('input', { class: 'field__input', type: 'text', maxlength: BOARD.nameMax, autocomplete: 'nickname', value: getSettings().boardName, 'aria-label': 'Новое имя в таблице' }) as HTMLInputElement;
+    const input = el('input', {
+      class: 'field__input',
+      type: 'text',
+      maxlength: BOARD.nameMax,
+      autocomplete: 'nickname',
+      placeholder: 'Например, Маша',
+      value: cleanBoardName(getSettings().boardName || getSettings().name),
+      'aria-label': 'Имя в таблице',
+    }) as HTMLInputElement;
     const save = el('button', { class: 'btn btn--primary', type: 'button' }, 'Сохранить имя');
-    save.onclick = () => void enter(input.value, save);
+    save.onclick = () => void rename(input.value, save);
     me.replaceChildren(
       el(
         'div',
         { class: 'panel board__join' },
-        el('label', { class: 'field' }, el('span', { class: 'field__label' }, 'Новое имя в таблице'), input),
+        el('label', { class: 'field' }, el('span', { class: 'field__label' }, 'Имя в таблице'), input),
+        el('p', { class: 'board__hint' }, 'Его увидят все игроки вместе с твоим опытом и монетами.'),
         save,
-        el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => renderMe() }, 'Отмена'),
+        el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => void show() }, 'Отмена'),
       ),
     );
     input.focus();
   };
 
-  /** Вступить в таблицу или сменить имя: имя проверяет посредник, без связи — не получится. */
-  const enter = async (raw: string, button: HTMLButtonElement) => {
+  /** Сменить имя: его проверяет посредник, без связи — не получится. */
+  const rename = async (raw: string, button: HTMLButtonElement) => {
     const name = cleanBoardName(raw);
     if (!name) {
       showToast('Напиши имя — его увидят в таблице.');
@@ -143,29 +128,18 @@ export function boardView(): HTMLElement {
     if (busy) return;
     busy = true;
     button.disabled = true;
-    const before = { board: getSettings().board, boardName: getSettings().boardName };
-    updateSettings({ board: true, boardName: name });
+    const before = getSettings().boardName;
+    updateSettings({ boardName: name });
     const res = await syncMe(true);
     busy = false;
     button.disabled = false;
     if (res !== 'ok') {
-      updateSettings(before);
+      updateSettings({ boardName: before });
       showToast(res === 'name' ? 'Такое имя нельзя показать в таблице — выбери другое.' : 'Нет связи с таблицей лидеров — попробуй позже.');
       return;
     }
-    if (!before.board) trackEvent('board-join', 'Таблица лидеров: вступили');
-    showToast(before.board ? 'Имя в таблице изменено.' : 'Ты в таблице лидеров!');
-    void show();
-  };
-
-  const exit = async () => {
-    if (busy) return;
-    busy = true;
-    updateSettings({ board: false });
-    // Без связи имя сотрётся у посредника, как только связь появится.
-    const res = await syncMe(true);
-    busy = false;
-    showToast(res === 'ok' ? 'Тебя больше нет в таблице лидеров.' : 'Имя уберётся из таблицы, как только появится интернет.');
+    if (!before) trackEvent('board-name', 'Таблица лидеров: ввели своё имя');
+    showToast('Имя в таблице изменено.');
     void show();
   };
 
@@ -175,7 +149,7 @@ export function boardView(): HTMLElement {
     renderMe();
     list.replaceChildren(el('p', { class: 'board__empty' }, 'Загружаю таблицу…'));
     const asked = by;
-    if (getSettings().board) await syncMe(true);
+    await syncMe(true);
     const result = await fetchBoard(asked, playerId());
     if (asked !== by) return;
     if (result === 'offline' || result === 'error') {
@@ -188,7 +162,7 @@ export function boardView(): HTMLElement {
       return;
     }
     const rows = result.top.map((r, i) => row(i + 1, r.name, r.value, by, !!r.me));
-    const mine = result.me && !result.top.some((r) => r.me) ? [el('li', { class: 'board__gap', 'aria-hidden': 'true' }, '…'), row(result.me.place, getSettings().boardName, result.me.value, by, true)] : [];
+    const mine = result.me && !result.top.some((r) => r.me) ? [el('li', { class: 'board__gap', 'aria-hidden': 'true' }, '…'), row(result.me.place, result.me.name || boardName(), result.me.value, by, true)] : [];
     list.replaceChildren(
       el('ol', { class: 'board__rows' }, ...rows, ...mine),
       el('p', { class: 'board__total' }, `В таблице ${result.total} ${plural(result.total, ['игрок', 'игрока', 'игроков'])}`),

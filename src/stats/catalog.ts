@@ -46,7 +46,7 @@ export const EVENTS: readonly (readonly [name: string, title: string])[] = [
   ['partner-video', 'Видеоразбор партнёра: открыли'],
   ['partner-course', 'Курс партнёра: перешли'],
   ['partner-locked', 'Закрытый разбор: перешли к курсу'],
-  ['board-join', 'Таблица лидеров: вступили'],
+  ['board-name', 'Таблица лидеров: ввели своё имя'],
 ];
 
 /** Глава в городе и событие «глава пройдена». */

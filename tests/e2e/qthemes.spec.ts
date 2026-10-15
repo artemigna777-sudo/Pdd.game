@@ -39,7 +39,15 @@ test('GYM: купить в магазине — вопрос в оформлен
   await seed(page, {}, 1000);
   await page.goto('/');
   await page.getByRole('button', { name: 'Монеты: 1000. Магазин' }).tap();
+  // В магазине — одна кнопка, оформления на своём экране.
+  await expect(page.locator('[data-design]')).toHaveCount(0);
+  await expect(page.locator('.designs-entry')).toContainText('Сейчас: обычное');
+  await page.locator('.designs-entry').tap();
+  await expect(page.locator('.topbar__title')).toHaveText('Оформление вопросов');
   await expect(page.locator('[data-design="auto"]')).toHaveClass(/is-selected/);
+  // Не праздник: праздничных оформлений нет и упоминаний о них тоже.
+  await expect(page.locator('[data-design="newyear"], [data-design="halloween"], .designs__holiday')).toHaveCount(0);
+  await expect(page.locator('.designs')).not.toContainText(/Нов\S* год|Хэллоуин|Праздник/);
   // Первое касание — цена, второе — покупка.
   await page.locator('[data-design="gym"]').tap();
   await expect(page.locator('#toast')).toContainText('Коснись ещё раз, чтобы купить оформление «GYM» за 350');
@@ -52,6 +60,8 @@ test('GYM: купить в магазине — вопрос в оформлен
   await page.locator('[data-design="winter"]').tap();
   await expect(page.locator('#toast')).toContainText('идёт вместе с темой города «Зимний город»');
 
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await expect(page.locator('.designs-entry')).toContainText('Сейчас: GYM');
   await page.getByRole('button', { name: 'Назад' }).tap();
   await openTicket(page, 1);
   const card = page.locator('article.card');
@@ -111,8 +121,13 @@ test('полная серия — +5 монет; «Обычное» — карт
   await page.getByRole('button', { name: 'Назад' }).tap();
   await page.getByRole('button', { name: 'Назад' }).tap();
   await page.getByRole('button', { name: /Магазин$/ }).tap();
+  await page.locator('.designs-entry').tap();
+  // Новый год куплен раньше — после праздника он в «Моих праздничных».
+  await expect(page.locator('.designs')).toContainText('Мои праздничные');
+  await expect(page.locator('[data-design="newyear"]')).toHaveClass(/is-selected/);
   await page.locator('[data-design="classic"]').tap();
   await expect(page.locator('[data-design="classic"]')).toHaveClass(/is-selected/);
+  await page.getByRole('button', { name: 'Назад' }).tap();
   await page.getByRole('button', { name: 'Назад' }).tap();
   await openTicket(page, 3);
   await expect(page.locator('article.card')).not.toHaveClass(/qcard/);
@@ -121,13 +136,32 @@ test('полная серия — +5 монет; «Обычное» — карт
   await expect(page.locator('.bottombar .btn').last()).toHaveText('Дальше');
 });
 
-test('праздник по дате: 31 декабря — Новый год сам; выключатель в настройках — обычная карточка', async ({ page }) => {
+test('праздник по дате: 31 декабря — Новый год сам и в магазине только сейчас; выключатель в настройках — обычная карточка', async ({ page }) => {
   await page.clock.setSystemTime(new Date('2026-12-31T12:00:00'));
   await page.addInitScript(() => ((window as Any).__holidays = true));
-  await seed(page);
+  await seed(page, {}, 500);
   await page.goto('/');
   await openTicket(page, 1);
   await expect(page.locator('article.card')).toHaveAttribute('data-qt', 'newyear');
+
+  // В магазине — «Только сейчас», на экране оформлений — сам праздник и до какого дня купить.
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await page.getByRole('button', { name: /Магазин$/ }).tap();
+  await expect(page.locator('.designs-entry__badge')).toContainText('Только сейчас: «Новый год»');
+  await page.locator('.designs-entry').tap();
+  await expect(page.locator('.designs__holiday')).toContainText('можно только до 10 января');
+  await expect(page.locator('[data-design="halloween"], [data-design="mar8"]')).toHaveCount(0);
+  await page.locator('[data-design="newyear"]').tap();
+  await page.locator('[data-design="newyear"]').tap();
+  await expect(page.locator('#toast')).toContainText('Оформление «Новый год» — уже в вопросах');
+  expect(await coins(page)).toBe(200);
+  // Снова «Авто»: дальше проверяем выключатель праздников.
+  await page.locator('[data-design="auto"]').tap();
+  await expect(page.locator('[data-design="auto"]')).toHaveClass(/is-selected/);
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await page.getByRole('button', { name: 'Назад' }).tap();
+  await openTicket(page, 1);
 
   await page.getByRole('button', { name: 'Назад' }).tap();
   await page.getByRole('button', { name: 'Назад' }).tap();

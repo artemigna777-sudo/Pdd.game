@@ -16,7 +16,14 @@ import { playThemeSfx } from './sfx.ts';
  * Тест оформлений включает их явно (`window.__holidays`, только в режиме разработки).
  */
 function holidaysAllowed(): boolean {
-  if (!getSettings().holidays) return false;
+  return getSettings().holidays && holidaysToday();
+}
+
+/**
+ * Есть ли сегодня праздники для игры: в магазине праздничное оформление видно в дни праздника,
+ * даже если сами они в вопросах выключены в настройках.
+ */
+export function holidaysToday(): boolean {
   if (!navigator.webdriver) return true;
   // `import.meta.env` — у Vite; модуль подключают и скрипты трейлера без него.
   const dev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);

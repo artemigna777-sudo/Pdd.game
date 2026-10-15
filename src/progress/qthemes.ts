@@ -6,6 +6,10 @@
  * Как выбирается оформление на экране: если игрок выбрал своё — оно; иначе («Авто») в дни
  * праздника — праздничное (бесплатно, выключается в настройках), иначе — оформление темы
  * города, если она выбрана, иначе — обычная карточка.
+ *
+ * Праздничное оформление появляется в игре только в дни своего праздника (решение Артёма
+ * 15.10.2026): до и после него его не видно, а купить его можно только в эти дни. Купленное
+ * остаётся у игрока навсегда.
  */
 import { spendCoins, type ProgressData } from './progress.ts';
 import { shopPrice } from './storyProgress.ts';
@@ -121,10 +125,19 @@ function holidayRanges(year: number): [string, Date, Date][] {
   ];
 }
 
+function currentHoliday(date: Date): [string, Date, Date] | undefined {
+  const n = dayNumber(date);
+  return holidayRanges(date.getFullYear()).find(([, from, to]) => n >= dayNumber(from) && n <= dayNumber(to));
+}
+
 /** Какой праздник сегодня (по часам телефона); нет — `undefined`. */
 export function holidayOn(date: Date): string | undefined {
-  const n = dayNumber(date);
-  return holidayRanges(date.getFullYear()).find(([, from, to]) => n >= dayNumber(from) && n <= dayNumber(to))?.[0];
+  return currentHoliday(date)?.[0];
+}
+
+/** Последний день сегодняшнего праздника (до него праздничное оформление можно купить). */
+export function holidayUntil(date: Date): Date | undefined {
+  return currentHoliday(date)?.[2];
 }
 
 // ─── Покупка и выбор ─────────────────────────────────────────────────────────────
@@ -141,9 +154,10 @@ export function ownsQTheme(data: ProgressData, id: string): boolean {
 
 /**
  * Купить (если ещё нет и хватает монет) и выбрать оформление. `undefined` — «Авто»: праздник,
- * тема города или обычная карточка. Оформление темы города не продаётся отдельно — `locked`.
+ * тема города или обычная карточка. Оформление темы города не продаётся отдельно — `locked`,
+ * праздничное продаётся только в дни своего праздника — иначе `unavailable`.
  */
-export function buyOrSelectQTheme(data: ProgressData, id: string | undefined): 'selected' | 'bought' | 'no-coins' | 'locked' | 'unknown' {
+export function buyOrSelectQTheme(data: ProgressData, id: string | undefined, now = new Date()): 'selected' | 'bought' | 'no-coins' | 'locked' | 'unavailable' | 'unknown' {
   if (id === undefined) {
     delete data.garage.qtheme;
     return 'selected';
@@ -153,12 +167,28 @@ export function buyOrSelectQTheme(data: ProgressData, id: string | undefined): '
   let result: 'selected' | 'bought' = 'selected';
   if (!ownsQTheme(data, id)) {
     if (t?.city) return 'locked';
+    if (t?.group === 'holiday' && holidayOn(now) !== id) return 'unavailable';
     if (!spendCoins(data, shopPrice(data, t!.price))) return 'no-coins';
     data.garage.owned.push(ownedKey(id));
     result = 'bought';
   }
   data.garage.qtheme = id;
   return result;
+}
+
+/**
+ * Что показать в магазине: новые темы и темы города — всегда; праздничное — только сегодняшнее
+ * (в дни праздника) и уже купленные. `holidays: false` — как будто праздника сегодня нет.
+ */
+export function shopQThemes(data: ProgressData, now: Date, holidays = true): { holidayNow?: QThemeInfo; until?: Date; owned: QThemeInfo[]; fresh: QThemeInfo[]; city: QThemeInfo[] } {
+  const today = holidays ? holidayOn(now) : undefined;
+  const holidayNow = today ? byId.get(today) : undefined;
+  return {
+    ...(holidayNow ? { holidayNow, until: holidayUntil(now) } : {}),
+    owned: QTHEMES.filter((t) => t.group === 'holiday' && t.id !== today && ownsQTheme(data, t.id)),
+    fresh: QTHEMES.filter((t) => t.group === 'new'),
+    city: QTHEMES.filter((t) => t.group === 'city'),
+  };
 }
 
 /** Оформление темы города (если тема выбрана и у неё есть оформление вопросов). */

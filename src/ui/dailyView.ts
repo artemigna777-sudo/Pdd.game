@@ -3,14 +3,14 @@
  */
 import { playHorn, playSound } from '../audio/feedback.ts';
 import { CITY_THEMES, HORNS, MODELS, PAINTS, PLATE, STICKERS, buyOrSelect, buyOrSelectExtra, buyOrSelectTheme, carLook, hornOf, setPlate, type CarLook, type ModelId, type StickerId } from '../progress/garage.ts';
-import { QTHEMES, QTHEME_CLASSIC, buyOrSelectQTheme, ownsQTheme, qtheme } from '../progress/qthemes.ts';
+import { QTHEME_CLASSIC, buyOrSelectQTheme, ownsQTheme, qtheme, shopQThemes, type QThemeInfo } from '../progress/qthemes.ts';
 import { shopDiscount, shopPrice } from '../progress/storyProgress.ts';
 import { COINS, currentStreak, type AnswerOutcome, type DailyState, type ProgressData } from '../progress/progress.ts';
 import type { Readiness, Tip } from '../progress/readiness.ts';
 import { SIGN_GROUPS } from '../signs/signs.ts';
 import { el } from './dom.ts';
 import { plural } from './format.ts';
-import { autoQTheme, miniCard } from './qthemes/index.ts';
+import { autoQTheme, currentQTheme, holidaysToday, miniCard } from './qthemes/index.ts';
 import { LOOKS } from './qthemes/looks.ts';
 import { showToast } from './toast.ts';
 
@@ -136,12 +136,15 @@ export function carSvg(look: CarLook): string {
 }
 
 /** Магазин: темы города, покраска и наклейки за монеты. `onChange` — после покупки или выбора (сохранить прогресс). */
-export function garageView(data: ProgressData, onChange: () => void, /** Карточки дополнительных сюжетов (их строит экран: им нужны данные игры). */ tales?: () => HTMLElement): HTMLElement {
+export function garageView(
+  data: ProgressData,
+  onChange: () => void,
+  /** Карточки дополнительных сюжетов (их строит экран: им нужны данные игры). */ tales?: () => HTMLElement,
+  /** Открыть экран «Оформление вопросов». */ openDesigns?: () => void,
+): HTMLElement {
   const root = el('div', { class: 'garage' });
   /** Клаксон, который уже прослушан: следующее касание его покупает. */
   let armedHorn: string | undefined;
-  /** Оформление вопросов, которое уже показано: следующее касание его покупает. */
-  let armedDesign: string | undefined;
   const render = () => {
     const look = carLook(data);
     const preview = el('div', { class: 'garage__car' });
@@ -291,73 +294,32 @@ export function garageView(data: ProgressData, onChange: () => void, /** Кар�
       plateInput,
       plateButton,
     );
-    // ─── Оформление вопросов ────────────────────────────────────────────────────
-    const designCard = (id: string | undefined) => {
-      const info = id && id !== QTHEME_CLASSIC ? qtheme(id) : undefined;
-      const free = id === undefined || id === QTHEME_CLASSIC;
-      const owned = free || ownsQTheme(data, id!);
-      const selected = data.garage.qtheme === id;
-      const price = info ? shopPrice(data, info.price) : 0;
-      const name = id === undefined ? '✨ Авто' : id === QTHEME_CLASSIC ? 'Обычное' : `${info!.icon} ${info!.name}`;
-      const city = info?.city ? CITY_THEMES.find((c) => c.id === info.city) : undefined;
-      const auto = id === undefined ? autoQTheme() : undefined;
-      const hint = id === undefined ? (auto === QTHEME_CLASSIC ? 'праздники и тема города' : `сейчас: ${qtheme(auto!)?.name ?? ''}`) : info?.when ?? '';
-      const status = selected ? 'выбрано' : free ? 'бесплатно' : owned ? 'куплено' : city ? '🔒 тема города' : `🪙 ${price}`;
-      return el(
-        'button',
-        {
-          class: `garage__item design-item${selected ? ' is-selected' : ''}${armedDesign === id && id ? ' is-armed' : ''}`,
-          type: 'button',
-          'aria-pressed': String(selected),
-          'data-design': id ?? 'auto',
-          title: id && LOOKS[id] ? LOOKS[id].idea : undefined,
-          onclick: () => {
-            if (!owned && city) {
-              showToast(`Это оформление идёт вместе с темой города «${city.name}».`);
-              return;
-            }
-            // Сначала касание показывает цену, второе — покупает.
-            if (!owned && armedDesign !== id) {
-              armedDesign = id;
-              showToast(`Коснись ещё раз, чтобы купить оформление «${info!.name}» за ${price}.`);
-              render();
-              return;
-            }
-            const result = buyOrSelectQTheme(data, id);
-            if (result === 'no-coins') {
-              showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
-              return;
-            }
-            armedDesign = undefined;
-            if (result === 'bought') {
-              playSound('reward');
-              showToast(`${info!.icon} Оформление «${info!.name}» — уже в вопросах.`);
-            }
-            onChange();
-            render();
-          },
-        },
-        miniCard(auto ?? id!),
-        el('span', { class: 'garage__name' }, name),
-        hint ? el('span', { class: 'design-item__hint' }, hint) : '',
-        el('span', { class: 'garage__price' }, status),
-      );
-    };
-    const designs = (group: string) => QTHEMES.filter((t) => t.group === group).map((t) => designCard(t.id));
+    // ─── Оформление вопросов — отдельный экран ──────────────────────────────────
+    const nowQt = currentQTheme();
+    const holiday = shopQThemes(data, new Date(), holidaysToday());
+    const designsEntry = openDesigns
+      ? el(
+          'button',
+          { class: 'designs-entry', type: 'button', onclick: openDesigns },
+          miniCard(nowQt),
+          el(
+            'span',
+            { class: 'designs-entry__text' },
+            el('span', { class: 'designs-entry__title' }, '🎨 Оформление вопросов'),
+            el('span', { class: 'designs-entry__hint' }, `Сейчас: ${nowQt === QTHEME_CLASSIC ? 'обычное' : qtheme(nowQt)?.name ?? ''}`),
+            holiday.holidayNow ? el('span', { class: 'designs-entry__badge' }, `${holiday.holidayNow.icon} Только сейчас: «${holiday.holidayNow.name}»`) : '',
+          ),
+          el('span', { class: 'designs-entry__arrow', 'aria-hidden': 'true' }, '›'),
+        )
+      : '';
     const themes = [themeCard(undefined, 'Обычный', '🏙', 0, ['#5b9a4f', '#40454e', '#eef0f2', '#c8553d'], 'Светофорск как есть.'), ...CITY_THEMES.map((t) => themeCard(t.id, t.name, t.icon, t.price, t.preview, t.about))];
     root.replaceChildren(
       el('div', { class: 'garage__top' }, preview, el('p', { class: 'garage__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет'))),
       el('p', { class: 'panel__note' }, 'Монеты — за верные ответы, цель дня, пройденные главы и экзамены. Всё в магазине меняет только внешний вид: на вопросы и ответы не влияет.'),
       shopDiscount(data) ? el('p', { class: 'panel__note garage__discount' }, `🔧 Скидка дяди Гены: −${Math.round(shopDiscount(data) * 100)}% — за дружбу.`) : '',
+      designsEntry,
       tales ? el('h2', { class: 'section-title' }, 'Дополнительные сюжеты') : '',
       tales ? tales() : '',
-      el('h2', { class: 'section-title' }, 'Оформление вопросов'),
-      el('p', { class: 'panel__note' }, 'Форма карточки и ответов, номера, серия верных ответов, звуки и эффекты. Текст вопроса и ответы — как в билете. За полную серию — +5 монет. Праздничные оформления в свои дни включаются сами.'),
-      el('div', { class: 'garage__grid garage__grid--designs' }, designCard(undefined), designCard(QTHEME_CLASSIC), ...designs('new')),
-      el('h3', { class: 'garage__subtitle' }, 'Праздники'),
-      el('div', { class: 'garage__grid garage__grid--designs' }, ...designs('holiday')),
-      el('h3', { class: 'garage__subtitle' }, 'Вместе с темой города'),
-      el('div', { class: 'garage__grid garage__grid--designs' }, ...designs('city')),
       el('h2', { class: 'section-title' }, 'Темы города'),
       el('p', { class: 'panel__note' }, 'Тема меняет весь город, пост ДПС и улицу в меню, а в режиме «Авто» — и вопросы.'),
       el('div', { class: 'garage__grid' }, ...themes),
@@ -373,6 +335,108 @@ export function garageView(data: ProgressData, onChange: () => void, /** Кар�
       el('h2', { class: 'section-title' }, 'Номер с ником'),
       el('p', { class: 'panel__note' }, plateOwned ? 'Надпись можно менять бесплатно.' : `Свой номер под машиной в меню и в магазине. Один раз за 🪙 ${shopPrice(data, PLATE.price)}, потом надпись меняется бесплатно.`),
       platePanel,
+    );
+  };
+  render();
+  return root;
+}
+
+/**
+ * Экран «Оформление вопросов» (вход из магазина): «Авто», обычное, новые темы, оформления тем
+ * города. Праздничное оформление видно только в дни своего праздника (тогда его и можно купить),
+ * а купленные праздничные — всегда.
+ */
+export function designsView(data: ProgressData, onChange: () => void): HTMLElement {
+  const root = el('div', { class: 'designs' });
+  /** Оформление, которое уже показано: следующее касание его покупает. */
+  let armed: string | undefined;
+  const dayMonth = (d: Date) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const render = () => {
+    const shop = shopQThemes(data, new Date(), holidaysToday());
+    const card = (id: string | undefined) => {
+      const info = id && id !== QTHEME_CLASSIC ? qtheme(id) : undefined;
+      const free = id === undefined || id === QTHEME_CLASSIC;
+      const owned = free || ownsQTheme(data, id!);
+      const selected = data.garage.qtheme === id;
+      const price = info ? shopPrice(data, info.price) : 0;
+      const name = id === undefined ? '✨ Авто' : id === QTHEME_CLASSIC ? 'Обычное' : `${info!.icon} ${info!.name}`;
+      const city = info?.city ? CITY_THEMES.find((c) => c.id === info.city) : undefined;
+      const auto = id === undefined ? autoQTheme() : undefined;
+      const hint =
+        id === undefined
+          ? auto === QTHEME_CLASSIC
+            ? 'праздник или тема города'
+            : `сейчас: ${qtheme(auto!)?.name ?? ''}`
+          : info?.group === 'holiday' && !owned && shop.until
+            ? `только до ${dayMonth(shop.until)}`
+            : '';
+      const status = selected ? 'выбрано' : free ? 'бесплатно' : owned ? 'куплено' : city ? '🔒 тема города' : `🪙 ${price}`;
+      return el(
+        'button',
+        {
+          class: `garage__item design-item${selected ? ' is-selected' : ''}${armed === id && id ? ' is-armed' : ''}`,
+          type: 'button',
+          'aria-pressed': String(selected),
+          'data-design': id ?? 'auto',
+          title: id && LOOKS[id] ? LOOKS[id].idea : undefined,
+          onclick: () => {
+            if (!owned && city) {
+              showToast(`Это оформление идёт вместе с темой города «${city.name}».`);
+              return;
+            }
+            // Сначала касание показывает цену, второе — покупает.
+            if (!owned && armed !== id) {
+              armed = id;
+              showToast(`Коснись ещё раз, чтобы купить оформление «${info!.name}» за ${price}.`);
+              render();
+              return;
+            }
+            const result = buyOrSelectQTheme(data, id);
+            if (result === 'no-coins') {
+              showToast(`Не хватает монет: нужно ${price}, есть ${data.coins}. Монеты — за верные ответы и цель дня.`);
+              return;
+            }
+            if (result === 'unavailable') {
+              showToast('Праздник закончился — это оформление больше не продаётся.');
+              render();
+              return;
+            }
+            armed = undefined;
+            if (result === 'bought') {
+              playSound('reward');
+              showToast(`${info!.icon} Оформление «${info!.name}» — уже в вопросах.`);
+            }
+            onChange();
+            render();
+          },
+        },
+        miniCard(auto ?? id!),
+        el('span', { class: 'garage__name' }, name),
+        hint ? el('span', { class: 'design-item__hint' }, hint) : '',
+        el('span', { class: 'garage__price' }, status),
+      );
+    };
+    const grid = (list: QThemeInfo[]) => el('div', { class: 'garage__grid garage__grid--designs' }, ...list.map((t) => card(t.id)));
+    root.replaceChildren(
+      el('p', { class: 'garage__coins designs__coins' }, `🪙 ${data.coins}`, el('span', {}, 'монет')),
+      el('p', { class: 'panel__note' }, 'Форма карточки и ответов, номера, серия верных ответов, звуки и эффекты. Текст вопроса и ответы — как в билете. За полную серию — +5 монет.'),
+      shop.holidayNow
+        ? el(
+            'section',
+            { class: 'designs__holiday' },
+            el('h2', { class: 'section-title' }, `${shop.holidayNow.icon} Праздник: ${shop.holidayNow.name}`),
+            el('p', { class: 'panel__note' }, `Сейчас вопросы сами в праздничном оформлении. Купить его, чтобы оставить себе навсегда, можно только до ${dayMonth(shop.until!)}.`),
+            grid([shop.holidayNow]),
+          )
+        : '',
+      el('div', { class: 'garage__grid garage__grid--designs' }, card(undefined), card(QTHEME_CLASSIC)),
+      el('h2', { class: 'section-title' }, 'Темы'),
+      grid(shop.fresh),
+      shop.owned.length ? el('h2', { class: 'section-title' }, 'Мои праздничные') : '',
+      shop.owned.length ? grid(shop.owned) : '',
+      el('h2', { class: 'section-title' }, 'Вместе с темой города'),
+      el('p', { class: 'panel__note' }, 'Открываются, когда куплена тема города.'),
+      grid(shop.city),
     );
   };
   render();

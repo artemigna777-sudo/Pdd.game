@@ -5402,3 +5402,69 @@ a.btn {
   font-weight: 800;
   color: var(--text-muted);
 }
+
+/* Вход на экран «Оформление вопросов» в магазине. */
+.designs-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 18px 0 4px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.designs-entry:active {
+  transform: scale(0.99);
+}
+.designs-entry .qcard--mini {
+  flex: 0 0 96px;
+  width: 96px;
+  margin: 0;
+}
+.designs-entry__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.designs-entry__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+.designs-entry__hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.designs-entry__badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+.designs-entry__arrow {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.designs__coins {
+  margin: 4px 0 6px;
+}
+.designs__holiday {
+  margin-bottom: 8px;
+  padding: 2px 12px 12px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+}

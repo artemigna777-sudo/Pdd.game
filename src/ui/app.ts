@@ -51,7 +51,7 @@ import { TEMPLATES } from '../world/templates.ts';
 import { cityScreen, levelUpToast } from './cityScreen.ts';
 import { avatar, closeOverlay, playCutscene, playTutorial, showModal } from './cutscene.ts';
 import { el } from './dom.ts';
-import { dailyCard, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
+import { dailyCard, designsView, garageView, goalToast, readinessCard, statusRow } from './dailyView.ts';
 import { storyView } from './storyView.ts';
 import { catchUpPanel } from './catchUp.ts';
 import { runTale, talesList } from './taleView.ts';
@@ -107,6 +107,7 @@ type Route =
   | { name: 'plan' }
   /** Магазин: темы города, покраска и наклейки машины за монеты. */
   | { name: 'garage' }
+  | { name: 'designs' }
   | { name: 'finale' }
   /** «Моя история» (этап 17): характер, команда, решения, «Вернуть решение», галерея концовок. */
   | { name: 'story' }
@@ -157,7 +158,7 @@ type DuelRunRoute = Extract<Route, { name: 'duel-run' }>;
 type DuelResultRoute = Extract<Route, { name: 'duel-result' }>;
 type LiveRoute = Extract<Route, { name: 'live' }>;
 /** Экраны, на которые ведёт «Назад». */
-type BackTarget = 'menu' | 'story' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier' | 'situations';
+type BackTarget = 'garage' | 'menu' | 'story' | 'chapters' | 'settings' | 'tickets' | 'history' | 'review' | 'progress' | 'finale' | 'exam' | 'plan' | 'modes' | 'duel' | 'signs' | 'patrol' | 'courier' | 'situations';
 
 /** Глубина экрана: «Назад» уходит на экран с меньшей глубиной. */
 const DEPTH: Record<RouteName, number> = {
@@ -178,6 +179,7 @@ const DEPTH: Record<RouteName, number> = {
   control: 3,
   exam: 1,
   garage: 1,
+  designs: 2,
   plan: 1,
   'exam-run': 2,
   'exam-result': 2,
@@ -257,6 +259,7 @@ function screenForStats(route: Route): [string, string] | undefined {
         progress: 'Прогресс',
         plan: 'Мой экзамен',
         garage: 'Магазин',
+        designs: 'Оформление вопросов',
         finale: 'Финал',
         story: 'Моя история',
         tale: 'Дополнительный сюжет',
@@ -477,7 +480,19 @@ export class App {
         screen = this.taleScreen(route);
         break;
       case 'garage':
-        screen = this.page('Магазин', garageView(progress(), () => saveProgress(), () => talesList(progress(), (id) => this.open({ name: 'tale', id }), () => saveProgress())), { back: 'menu' });
+        screen = this.page(
+          'Магазин',
+          garageView(
+            progress(),
+            () => saveProgress(),
+            () => talesList(progress(), (id) => this.open({ name: 'tale', id }), () => saveProgress()),
+            () => this.open({ name: 'designs' }),
+          ),
+          { back: 'menu' },
+        );
+        break;
+      case 'designs':
+        screen = this.page('Оформление вопросов', designsView(progress(), () => saveProgress()), { back: 'garage' });
         break;
       case 'plan':
         screen = this.planScreen();

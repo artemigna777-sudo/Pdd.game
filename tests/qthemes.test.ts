@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buyOrSelectTheme } from '../src/progress/garage.ts';
 import { emptyProgress, sanitizeProgress } from '../src/progress/progress.ts';
-import { QSTREAK_COINS, QTHEMES, QTHEME_CLASSIC, activeQTheme, bumpQStreak, buyOrSelectQTheme, driverDay, holidayOn, orthodoxEaster, ownsQTheme, qStreakNow } from '../src/progress/qthemes.ts';
+import { QSTREAK_COINS, QTHEMES, QTHEME_CLASSIC, activeQTheme, bumpQStreak, buyOrSelectQTheme, driverDay, holidayOn, holidayUntil, orthodoxEaster, ownsQTheme, qStreakNow, shopQThemes } from '../src/progress/qthemes.ts';
 
 const d = (s: string) => new Date(`${s}T12:00:00`);
 
@@ -97,6 +97,44 @@ test('покупка и выбор: за монеты один раз, «Авт�
   const bad = sanitizeProgress({ garage: { qtheme: '<script>', qstreak: 99, owned: [] } });
   assert.equal(bad.garage.qtheme, undefined);
   assert.equal(bad.garage.qstreak, undefined);
+});
+
+test('праздничное оформление: видно и продаётся только в дни своего праздника, купленное — навсегда', () => {
+  const data = emptyProgress();
+  data.coins = 1000;
+  const ids = (list: { id: string }[]) => list.map((t) => t.id);
+  // Не праздник: праздничных в магазине нет, купить нельзя.
+  const plain = shopQThemes(data, d('2026-10-15'));
+  assert.equal(plain.holidayNow, undefined);
+  assert.equal(plain.until, undefined);
+  assert.deepEqual(plain.owned, []);
+  assert.equal(plain.fresh.length, 15);
+  assert.ok(plain.fresh.every((t) => t.group === 'new'));
+  assert.deepEqual(ids(plain.city), ['winter', 'autumn', 'toy', 'neon', 'pixel']);
+  assert.equal(buyOrSelectQTheme(data, 'newyear', d('2026-10-15')), 'unavailable');
+  assert.equal(buyOrSelectQTheme(data, 'halloween', d('2026-12-31')), 'unavailable');
+  assert.equal(data.coins, 1000);
+
+  // Праздник: виден только он, купить можно до последнего дня.
+  const ny = shopQThemes(data, d('2026-12-31'));
+  assert.equal(ny.holidayNow?.id, 'newyear');
+  assert.equal(ny.until?.toDateString(), new Date(2027, 0, 10).toDateString());
+  assert.equal(holidayUntil(d('2026-10-15')), undefined);
+  assert.equal(buyOrSelectQTheme(data, 'newyear', d('2027-01-10')), 'bought');
+  assert.equal(data.coins, 700);
+  assert.equal(data.garage.qtheme, 'newyear');
+  assert.deepEqual(shopQThemes(data, d('2027-01-05')).owned, []);
+
+  // После праздника купленное остаётся: в «Моих праздничных», выбирается бесплатно.
+  assert.deepEqual(ids(shopQThemes(data, d('2027-03-01')).owned), ['newyear']);
+  assert.equal(buyOrSelectQTheme(data, QTHEME_CLASSIC, d('2027-03-01')), 'selected');
+  assert.equal(buyOrSelectQTheme(data, 'newyear', d('2027-03-01')), 'selected');
+  assert.equal(data.coins, 700);
+  assert.equal(activeQTheme(data, { holidays: true, now: d('2027-03-01') }), 'newyear');
+  // В другой праздник: сегодняшний — сверху, купленный — в «Моих праздничных».
+  const mar8 = shopQThemes(data, d('2027-03-08'));
+  assert.equal(mar8.holidayNow?.id, 'mar8');
+  assert.deepEqual(ids(mar8.owned), ['newyear']);
 });
 
 test('«Авто»: свой выбор → праздник → тема города → обычная карточка', () => {

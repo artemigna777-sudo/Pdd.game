@@ -38,10 +38,11 @@ import { v27 } from './videos/v27-ariadna.ts';
 import { v28 } from './videos/v28-damokl.ts';
 import { v29 } from './videos/v29-gretel.ts';
 import { v30 } from './videos/v30-uzel.ts';
+import { v32 } from './videos/v32-kon.ts';
 
 export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20];
 /** Третья серия — формат новых образцов (`engine3.ts`). */
-export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30];
+export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v32];
 
 const only = process.argv.slice(2);
 for (const v of VIDEOS) {

@@ -19,6 +19,11 @@
  * того, как оба игрока ушли.
  *
  * Код загружает GitHub (.github/workflows/stats-worker.yml) при изменениях в main.
+ *
+ * Отчёт для экрана статистики — одним запросом (`GET /api/report`): посредник сам спрашивает GoatCounter
+ * и отдаёт игре только числа, несколько килобайт. Так экран открывается и там, где связь с зарубежными
+ * сервисами обрывается после первых килобайт (у российских операторов, 15.10.2026), и не упирается
+ * в ограничение частоты запросов API GoatCounter.
  */
 import { RoomCore } from './room.js';
 
@@ -27,6 +32,11 @@ const GOATCOUNTER = 'https://kurier-pdd.goatcounter.com';
 const ORIGINS = ['https://artemigna777-sudo.github.io', 'http://localhost:5173', 'http://localhost:4173'];
 /** Что можно спрашивать у GoatCounter: только чтение статистики. */
 const ALLOWED = /^\/api\/v0\/stats\/(total|hits|toprefs|systems|locations|browsers|sizes|campaigns)$/;
+/** Время для API GoatCounter: RFC 3339 в UTC, без долей секунды (как шлёт игра). */
+const API_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+/** Сколько раз повторить запрос, если GoatCounter ответил «слишком часто» (429), и самая долгая пауза. */
+const GC_RETRIES = 3;
+const GC_MAX_WAIT_MS = 3000;
 /** Итог дуэли: номер дуэли, как в игре (src/duel/duel.ts). */
 const DUEL_PATH = /^\/duel\/([0-9a-z]{6,12})$/;
 /** Комната дуэли в реальном времени: код из заглавных латинских букв и цифр, как в игре (src/duel/live.ts). */
@@ -81,11 +91,12 @@ export default {
     }
     if (!gcToken || !keyOk) return reply(500, { error: 'setup' });
     if (!(await same(request.headers.get('Authorization') || '', `Bearer ${statsKey}`))) return reply(401, { error: 'key' });
+    if (url.pathname === '/api/report') return reportRoute(url, gcToken, reply);
     if (!ALLOWED.test(url.pathname)) return reply(404, { error: 'path' });
 
     let res;
     try {
-      res = await fetch(GOATCOUNTER + url.pathname + url.search, { headers: { Authorization: `Bearer ${gcToken}`, Accept: 'application/json' } });
+      res = await gcFetch(gcToken, url.pathname + url.search);
     } catch {
       return reply(502, { error: 'gc-network' });
     }
@@ -94,6 +105,71 @@ export default {
     return new Response(await res.text(), { status: 200, headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
   },
 };
+
+/** Запрос к API GoatCounter с его ключом; на «слишком часто» (429) — пауза и повтор. */
+async function gcFetch(gcToken, pathAndQuery) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(GOATCOUNTER + pathAndQuery, { headers: { Authorization: `Bearer ${gcToken}`, Accept: 'application/json' } });
+    if (res.status !== 429 || attempt >= GC_RETRIES) return res;
+    const reset = Number(res.headers.get('X-Rate-Limit-Reset'));
+    await new Promise((done) => setTimeout(done, Math.min(GC_MAX_WAIT_MS, reset > 0 ? reset * 1000 : 1000)));
+  }
+}
+
+/**
+ * Отчёт для экрана статистики одним ответом: посетители сегодня, за 7 и 30 дней (`today`, `week`,
+ * `month` — начала периодов, `end` — конец, как считает игра по часам телефона), по дням, по экранам
+ * и событиям, откуда пришли, телефоны и страны. Только числа и названия — несколько килобайт.
+ */
+async function reportRoute(url, gcToken, reply) {
+  const [today, week, month, end] = ['today', 'week', 'month', 'end'].map((k) => url.searchParams.get(k) || '');
+  if (![today, week, month, end].every((t) => API_TIME.test(t))) return reply(400, { error: 'period' });
+  const get = async (page, params) => {
+    let res;
+    try {
+      res = await gcFetch(gcToken, `/api/v0/stats/${page}?${new URLSearchParams(params)}`);
+    } catch {
+      throw { error: 'gc-network' };
+    }
+    if (res.status === 401 || res.status === 403) throw { error: 'gc-token' };
+    if (!res.ok) throw { error: 'gc-error', status: res.status };
+    try {
+      return await res.json();
+    } catch {
+      throw { error: 'gc-error', status: res.status };
+    }
+  };
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
+  const list = (v) => (Array.isArray(v) ? v : []);
+  const named = (json) =>
+    list(json && json.stats)
+      .map((s) => [String((s && (s.name || s.id)) || ''), num(s && s.count)])
+      .filter(([, n]) => n > 0);
+  try {
+    const month30 = { start: month, end };
+    const t = await get('total', { start: today, end });
+    const w = await get('total', { start: week, end });
+    const m = await get('total', month30);
+    const hits = await get('hits', { ...month30, limit: '100' });
+    const refs = await get('toprefs', { ...month30, limit: '10' });
+    const systems = await get('systems', { ...month30, limit: '10' });
+    const locations = await get('locations', { ...month30, limit: '10' });
+    const counts = {};
+    for (const h of list(hits && hits.hits)) if (h && typeof h.path === 'string' && h.path) counts[h.path] = (counts[h.path] || 0) + num(h.count);
+    return reply(200, {
+      today: num(t && t.total),
+      week: num(w && w.total),
+      month: num(m && m.total),
+      days: list(m && m.stats).map((d) => [String((d && d.day) || '').slice(0, 10), num(d && d.daily)]),
+      counts,
+      refs: named(refs),
+      systems: named(systems),
+      locations: named(locations),
+    });
+  } catch (e) {
+    return reply(502, e && e.error ? e : { error: 'gc-error' });
+  }
+}
 
 /**
  * Итог дуэли. PUT — друг сохраняет свой результат (один раз: второй ответ на тот же вызов не

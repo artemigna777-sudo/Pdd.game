@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHART_DAYS } from '../src/stats/goatcounter.ts';
-import { ProxyError, apiTime, loadProxyReport, parseHits, parseNamed, parseTotal } from '../src/stats/proxy.ts';
+import { ProxyError, apiTime, loadProxyReport, parseHits, parseNamed, parseReport, parseTotal } from '../src/stats/proxy.ts';
 
 const NOW = new Date(2026, 9, 7, 15, 30).getTime();
 const PROXY = 'https://kurier-pdd-stats.example.workers.dev';
@@ -28,11 +28,60 @@ test('разбор ответов API: всего и по дням, экраны
   assert.deepEqual(parseTotal('не json'), { total: 0, days: [] });
 });
 
-test('отчёт через посредника: ключ автора, периоды от полуночи по часам телефона, источники, телефоны, страны', async () => {
+test('отчёт через посредника одним запросом: ключ автора, периоды от полуночи по часам телефона', async () => {
+  const calls: { url: URL; auth: string | null; credentials?: RequestCredentials }[] = [];
+  const fetcher = (async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    calls.push({ url, auth: new Headers(init?.headers).get('Authorization'), credentials: init?.credentials });
+    return reply({
+      today: 4,
+      week: 11,
+      month: 30,
+      days: [
+        ['2026-10-06', 7],
+        ['2026-10-07', 3],
+      ],
+      counts: { '/city/ch1': 6, 'exam-pass': 2 },
+      refs: [
+        ['tiktok', 5],
+        ['', 2],
+      ],
+      systems: [['iOS', 9]],
+      locations: [['Russia', 9]],
+    });
+  }) as typeof fetch;
+  const r = await loadProxyReport(PROXY, KEY, NOW, fetcher);
+  assert.equal(calls.length, 1, 'один запрос — несколько килобайт');
+  assert.equal(calls[0].url.origin + calls[0].url.pathname, `${PROXY}/api/report`);
+  assert.equal(calls[0].auth, `Bearer ${KEY}`);
+  assert.equal(calls[0].credentials, 'omit');
+  const q = calls[0].url.searchParams;
+  assert.deepEqual([q.get('today'), q.get('week'), q.get('month'), q.get('end')], [
+    apiTime(new Date(2026, 9, 7).getTime()),
+    apiTime(new Date(2026, 9, 1).getTime()),
+    apiTime(new Date(2026, 8, 8).getTime()),
+    apiTime(NOW),
+  ]);
+  assert.equal(r.source, 'proxy');
+  assert.deepEqual([r.today, r.week, r.month], [4, 11, 30]);
+  assert.equal(r.days.length, CHART_DAYS);
+  assert.deepEqual(r.days.slice(-2), [
+    { day: '2026-10-06', count: 7 },
+    { day: '2026-10-07', count: 4 },
+  ]);
+  assert.deepEqual(r.counts, { '/city/ch1': 6, 'exam-pass': 2 });
+  assert.deepEqual(r.refs, [{ name: 'tiktok', count: 5 }, { name: '', count: 2 }]);
+  assert.deepEqual(r.systems, [{ name: 'iOS', count: 9 }]);
+  assert.deepEqual(r.locations, [{ name: 'Russia', count: 9 }]);
+  assert.deepEqual(parseReport('не json').counts, {});
+});
+
+test('посредник старой версии (без отчёта одним запросом): семь запросов, как раньше', async () => {
   const calls: { url: URL; auth: string | null; credentials?: RequestCredentials }[] = [];
   const day0 = apiTime(new Date(2026, 9, 7).getTime());
   const fetcher = (async (input: string, init?: RequestInit) => {
     const url = new URL(input);
+    if (url.pathname === '/api/report') return reply({ error: 'path' }, 404);
     calls.push({ url, auth: new Headers(init?.headers).get('Authorization'), credentials: init?.credentials });
     const page = url.pathname.replace('/api/v0/stats/', '');
     if (page === 'total') {
@@ -86,4 +135,19 @@ test('ошибки посредника: ключ автора, настройк
     }) as typeof fetch),
     'network',
   );
+});
+
+test('посредник не отвечает (связь обрывается) — не висим: через отведённое время ошибка «timeout»', async () => {
+  let aborted = false;
+  const silent = ((_input: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        aborted = true;
+        reject(new DOMException('Aborted', 'AbortError'));
+      });
+    })) as typeof fetch;
+  const started = Date.now();
+  await assert.rejects(loadProxyReport(PROXY, KEY, NOW, silent, 50), (e: unknown) => e instanceof ProxyError && e.kind === 'timeout');
+  assert.ok(aborted, 'запрос отменён');
+  assert.ok(Date.now() - started < 2000);
 });

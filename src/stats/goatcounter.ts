@@ -42,8 +42,11 @@ export interface StatsReport {
   source: 'proxy' | 'counter';
 }
 
-/** `disabled` — счётчик ответил ошибкой (скорее всего, не включена галочка), `network` — запрос не прошёл. */
-export type StatsFailure = 'disabled' | 'network';
+/**
+ * `disabled` — счётчик ответил ошибкой (скорее всего, не включена галочка), `network` — запрос не прошёл,
+ * `timeout` — счётчик не ответил вовремя (связь до него не проходит).
+ */
+export type StatsFailure = 'disabled' | 'network' | 'timeout';
 export class StatsError extends Error {
   constructor(
     readonly kind: StatsFailure,
@@ -57,6 +60,32 @@ export class StatsError extends Error {
 export const CHART_DAYS = 14;
 /** Сколько запросов к счётчику идут одновременно. */
 const PARALLEL = 4;
+/** Сколько ждать ответа счётчика на один запрос. */
+export const COUNTER_TIMEOUT_MS = 12_000;
+
+/** Запрос не дождался ответа за отведённое время. */
+export class FetchTimeout extends Error {}
+
+/**
+ * Запрос, который ждёт не дольше `ms`, потом отменяется и бросает `FetchTimeout`. Без этого экран
+ * статистики висел на «Загружаю…»: у российских операторов связь с зарубежными сервисами обрывается
+ * после первых килобайт, и ответ не приходит никогда (15.10.2026).
+ */
+export async function fetchWithin(fetcher: typeof fetch, url: string, init: RequestInit, ms: number): Promise<Response> {
+  const abort = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort.abort();
+  }, ms);
+  try {
+    return await fetcher(url, { ...init, signal: abort.signal });
+  } catch (e) {
+    throw timedOut ? new FetchTimeout() : e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Ответ счётчика → число. «1,234», «1 234» и 1234 — одно и то же. */
 export function parseCount(json: unknown): number {
@@ -107,7 +136,7 @@ async function pool<T>(tasks: (() => Promise<T>)[], n: number): Promise<T[]> {
  * Поэтому конец периода — следующий день. Дни счётчик считает по UTC, игра — по часам телефона:
  * на графике по дням возможен сдвиг на несколько часов.
  */
-export async function loadReport(site: string, paths: string[], now = Date.now(), fetcher: typeof fetch = fetch): Promise<StatsReport> {
+export async function loadReport(site: string, paths: string[], now = Date.now(), fetcher: typeof fetch = fetch, timeoutMs = COUNTER_TIMEOUT_MS): Promise<StatsReport> {
   const today = isoDay(now);
   const tomorrow = isoDay(daysAgo(now, -1));
   const month = isoDay(daysAgo(now, 29));
@@ -115,12 +144,19 @@ export async function loadReport(site: string, paths: string[], now = Date.now()
   /** Следующий день после «2026-10-07». */
   const nextDay = (day: string) => isoDay(new Date(`${day}T12:00:00`).getTime() + 86_400_000);
   let failed = 0;
+  /** Один запрос не дождался ответа — связь не проходит, остальные не ждём. */
+  let stalled = false;
   const get = async (path: string, start: string, end: string, strict = false): Promise<number> => {
+    if (stalled) {
+      failed++;
+      return 0;
+    }
     let res: Response;
     try {
-      res = await fetcher(counterUrl(site, path, start, end), { credentials: 'omit' });
-    } catch {
-      if (strict) throw new StatsError('network');
+      res = await fetchWithin(fetcher, counterUrl(site, path, start, end), { credentials: 'omit' }, timeoutMs);
+    } catch (e) {
+      if (e instanceof FetchTimeout) stalled = true;
+      if (strict) throw new StatsError(e instanceof FetchTimeout ? 'timeout' : 'network');
       failed++;
       return 0;
     }

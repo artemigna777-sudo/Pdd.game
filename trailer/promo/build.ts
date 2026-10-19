@@ -216,7 +216,6 @@ ${caption('capE', 'Экзамен как в ГИБДД', '20 вопросов ·
       </div>
       <div class="sticker" id="okSticker" style="opacity:0">Верно! ✓</div>
       <div class="sticker" id="badSticker" style="opacity:0">Неверно</div>
-      <div id="timer">20:00</div>
 
       <div id="modeChip">
         ${MODES.map(([a, b], i) => `<div class="mode" id="mode${i}"><b>${a}</b><span>${b}</span></div>`).join('')}
@@ -335,11 +334,8 @@ ${caption('capE', 'Экзамен как в ГИБДД', '20 вопросов ·
       // ─── Экзамен ───
       ${capIn('capE', T.exam)}
       tl.fromTo('#rig', { rotationY: 0, scale: 1 }, { rotationY: -8, rotationX: 3, scale: 0.97, duration: 3.8, ease: 'sine.inOut', immediateRender: false }, ${T.exam});
-      tl.fromTo('#timer', { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' }, ${T.exam + 0.5});
-      ${Array.from({ length: 4 }, (_, i) => `tl.set('#timer', { innerText: '19:${String(59 - i).padStart(2, '0')}' }, ${T.exam + 1 + i});`).join('\n      ')}
       ${capOut('capE', T.ready)}
       tl.to('#rig', { y: 1800, rotationX: 25, duration: 0.45, ease: 'power3.in' }, ${T.ready - 0.45});
-      tl.to('#timer', { opacity: 0, scale: 0.5, duration: 0.3 }, ${T.ready - 0.35});
 
       // ─── Готовность ───
       tl.fromTo('#ring', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.6)' }, ${T.ready});

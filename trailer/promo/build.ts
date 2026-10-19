@@ -26,7 +26,7 @@ const H = 1920;
  * так, чтобы ответ в карточке попадал на звук (`CUES`).
  */
 const SHOTS: { id: string; file: string; from: number; start: number; duration: number }[] = [
-  { id: 'q', file: 'question', from: 2.4, start: T.question, duration: 4 },
+  { id: 'q', file: 'question', from: 0.2, start: T.question, duration: 4 },
   { id: 'w', file: 'wrong', from: 0.2, start: T.wrong, duration: 4 },
   { id: 'm1', file: 'situations', from: 2.6, start: T.modes, duration: 1.5 },
   { id: 'm2', file: 'signs', from: 2.3, start: T.modes + 1.5, duration: 1.5 },
@@ -293,7 +293,7 @@ ${caption('capE', 'Экзамен как в ГИБДД', '20 вопросов ·
       ${capIn('capQ', T.question)}
       tl.fromTo('#tintOk', { opacity: 0.8 }, { opacity: 0, duration: 0.6, immediateRender: false }, ${CUES.right});
       tl.fromTo('#okSticker', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2.5)' }, ${CUES.right});
-      tl.to('#okSticker', { scale: 0.6, opacity: 0, duration: 0.25 }, ${CUES.right + 1.3});
+      tl.to('#okSticker', { scale: 0.6, opacity: 0, duration: 0.25 }, ${Math.min(CUES.right + 1.3, T.wrong - 0.3)});
       ${capOut('capQ', T.wrong)}
       flash(${T.wrong}, 0.35);
       ${capIn('capW', T.wrong)}

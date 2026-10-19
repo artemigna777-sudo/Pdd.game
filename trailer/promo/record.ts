@@ -386,7 +386,7 @@ async function record(name: string, clip: Clip) {
   await page.goto(BASE);
   const rec = new FrameRecorder(page);
   await rec.until(visible(page, '.menu'));
-  await page.addStyleTag({ content: '.toast, #sign-chip, .install-tip { display: none !important; }' });
+  await page.addStyleTag({ content: '.toast, #sign-chip, .install-tip, .city-hint { display: none !important; }' });
   try {
     await clip.run(page, rec);
   } catch (e) {

@@ -31,7 +31,7 @@ export const CUES = {
   /** Верный ответ в вопросе на перекрёстке. */
   right: T.question + 3.2,
   /** Неверный ответ. */
-  wrong: T.wrong + 1.6,
+  wrong: T.wrong + 1.3,
   /** Смена кадров сюжета. */
   story: [T.story, T.story + 1.5, T.story + 3, T.story + 4.5, T.story + 6],
   /** Карточки режимов. */

@@ -33,3 +33,5 @@ stats-worker/wrangler.deploy.json
 # Ролик и фон для RuStore: записи игры, музыка, кадры сюжета и рендер пересобираются (см. trailer/promo/README.md)
 trailer/promo/video/
 trailer/promo/*.mp4
+trailer/promo/.*.hf-transaction-*/
+trailer/promo/work-*/

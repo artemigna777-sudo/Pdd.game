@@ -96,14 +96,14 @@ const html = `<!doctype html>
       #cram { position: absolute; left: 0; right: 0; top: 760px; text-align: center; font-size: 170px; font-weight: 900; letter-spacing: -6px; color: #8a96a8; }
       #cram i { position: absolute; left: 160px; right: 160px; top: 52%; height: 22px; background: #e63946; border-radius: 11px; transform-origin: left center; }
       #or { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-size: 80px; font-weight: 700; color: #b8c2cf; }
-      #drive { position: absolute; left: 0; right: 0; top: 820px; text-align: center; font-size: 200px; font-weight: 900; letter-spacing: -8px; color: #ffb703; line-height: 1; }
+      #drive { position: absolute; left: 0; right: 0; top: 820px; text-align: center; font-size: 168px; font-weight: 900; letter-spacing: -7px; color: #ffb703; line-height: 1; }
       #drive small { display: block; margin-top: 18px; font-size: 92px; letter-spacing: -3px; color: #fff; }
       #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 
       /* Логотип */
       #logo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       #logoCar { width: 300px; height: 470px; filter: drop-shadow(0 40px 50px rgba(0,0,0,.55)); }
-      #logoTitle { margin-top: 70px; font-size: 168px; font-weight: 900; letter-spacing: -6px; line-height: 1; display: flex; gap: 40px; }
+      #logoTitle { margin-top: 70px; font-size: 126px; font-weight: 900; letter-spacing: -4px; line-height: 1; display: flex; gap: 30px; white-space: nowrap; }
       #logoTitle span { display: inline-block; }
       #logoDash { margin-top: 34px; display: flex; gap: 22px; }
       #logoDash i { width: 90px; height: 18px; border-radius: 9px; background: #ffb703; }
@@ -113,7 +113,7 @@ const html = `<!doctype html>
       .cap { position: absolute; left: 90px; right: 90px; top: 150px; text-align: center; }
       .cap .line { overflow: hidden; padding: 4px 0 10px; }
       .l1 { font-size: 86px; font-weight: 900; letter-spacing: -2.5px; line-height: 1.05; }
-      .l2 { position: relative; display: inline-block; font-size: 86px; font-weight: 900; letter-spacing: -2.5px; line-height: 1.05; color: #ffb703; }
+      .l2 { position: relative; display: inline-block; white-space: nowrap; font-size: 86px; font-weight: 900; letter-spacing: -2.5px; line-height: 1.05; color: #ffb703; }
       .l2 span { position: relative; z-index: 1; }
       .bar { position: absolute; left: -10px; right: -10px; bottom: 2px; height: 20px; border-radius: 10px; background: rgba(255,183,3,.28); transform-origin: left center; }
 
@@ -169,7 +169,7 @@ const html = `<!doctype html>
       /* Финал */
       #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 100px; }
       #endCar { width: 210px; height: 330px; filter: drop-shadow(0 30px 40px rgba(0,0,0,.55)); }
-      #endTitle { margin-top: 44px; font-size: 150px; font-weight: 900; letter-spacing: -5px; line-height: 1; }
+      #endTitle { margin-top: 44px; font-size: 118px; font-weight: 900; letter-spacing: -5px; line-height: 1; white-space: nowrap; }
       #endTag { margin-top: 30px; font-size: 56px; font-weight: 800; line-height: 1.2; }
       #badges { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; width: 880px; }
       .badge { padding: 28px 20px; border-radius: 30px; background: rgba(255,255,255,.08); border: 3px solid rgba(255,255,255,.14); font-size: 40px; font-weight: 800; line-height: 1.15; }
@@ -253,6 +253,18 @@ ${caption('capE', 'Экзамен как в ГИБДД', '20 вопросов ·
       <div id="flash"></div>
     </div>
     <script>
+      // Подписи в ширину кадра: длинные строки чуть мельче.
+      const fit = () => {
+        for (const e of document.querySelectorAll('.l1, .l2, .mode b, .mode span')) {
+          e.style.whiteSpace = 'nowrap';
+          e.style.display = 'inline-block';
+          e.style.fontSize = '';
+          let size = parseFloat(getComputedStyle(e).fontSize);
+          while (e.getBoundingClientRect().width > 900 && size > 40) e.style.fontSize = (size -= 2) + 'px';
+        }
+      };
+      fit();
+      document.fonts.ready.then(fit);
       const tl = gsap.timeline({ paused: true });
       const flash = (t, a = 0.7) => { tl.fromTo('#flash', { opacity: a }, { opacity: 0, duration: 0.35, ease: 'power2.out', immediateRender: false }, t); };
       const shake = (t, s = 18) => { tl.fromTo('#root', { x: s, y: -s * 0.6 }, { x: 0, y: 0, duration: 0.4, ease: 'elastic.out(1.2, 0.3)', immediateRender: false }, t); };

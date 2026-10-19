@@ -28,7 +28,7 @@ const H = 1920;
 const SHOTS: { id: string; file: string; from: number; start: number; duration: number }[] = [
   { id: 'q', file: 'question', from: 0.2, start: T.question, duration: 4 },
   { id: 'w', file: 'wrong', from: 0.2, start: T.wrong, duration: 4 },
-  { id: 'm1', file: 'situations', from: 2.6, start: T.modes, duration: 1.5 },
+  { id: 'm1', file: 'situations', from: 3.4, start: T.modes, duration: 1.5 },
   { id: 'm2', file: 'signs', from: 2.3, start: T.modes + 1.5, duration: 1.5 },
   { id: 'm3', file: 'duel', from: 0.6, start: T.modes + 3, duration: 1.5 },
   { id: 'm4a', file: 'theme-neon', from: 1, start: T.modes + 4.5, duration: 0.5 },

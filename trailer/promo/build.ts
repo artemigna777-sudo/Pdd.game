@@ -26,7 +26,7 @@ const H = 1920;
  * так, чтобы ответ в карточке попадал на звук (`CUES`).
  */
 const SHOTS: { id: string; file: string; from: number; start: number; duration: number }[] = [
-  { id: 'q', file: 'question', from: 0.2, start: T.question, duration: 4 },
+  { id: 'q', file: 'question', from: 1.0, start: T.question, duration: 4 },
   { id: 'w', file: 'wrong', from: 0.2, start: T.wrong, duration: 4 },
   { id: 'm1', file: 'situations', from: 3.4, start: T.modes, duration: 1.5 },
   { id: 'm2', file: 'signs', from: 2.6, start: T.modes + 1.5, duration: 1.5 },

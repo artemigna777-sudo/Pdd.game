@@ -70,9 +70,13 @@ function cruiser(page: Page, seed: number, zoom = 0) {
     await city(
       page,
       (s, [k, z]) => {
-        if (z) {
-          s.cameras.main.setZoom(z);
-          for (const p of s.pois) p.marker.setVisible(false);
+        // Камера ближе и без отметок точек: после обновления сцены, до отрисовки — каждый кадр.
+        if (z && !s.__beauty) {
+          s.__beauty = true;
+          s.events.on('postupdate', () => {
+            s.cameras.main.setZoom(z);
+            for (const p of s.pois) p.marker.setVisible(false);
+          });
         }
         if (!s.player.arrived && s.destination) return;
         const p = s.player.position;

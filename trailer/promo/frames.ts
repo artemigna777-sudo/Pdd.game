@@ -42,6 +42,8 @@ export class FrameRecorder {
 
   /** Записать `ms` миллисекунд. */
   async record(ms: number, each?: () => Promise<void>): Promise<void> {
+    // Для пробы: PROMO_MAX_MS=500 — короткие записи.
+    ms = Math.min(ms, Number(process.env.PROMO_MAX_MS ?? Infinity));
     for (let i = 0; i < Math.round(ms / DT); i++) {
       if (each) await each();
       await this.tick(true);

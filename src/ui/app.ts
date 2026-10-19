@@ -34,7 +34,7 @@ import {
   type AnswerOutcome,
 } from '../progress/progress.ts';
 import { readiness, blockLabel, type Tip } from '../progress/readiness.ts';
-import { installMode, isStandalone, onInstallModeChange, promptInstall } from '../pwa.ts';
+import { installMode, isStandalone, onInstallModeChange, promptInstall, shareBase } from '../pwa.ts';
 import { installHelpUseful, installTip, openInstallGuide } from './installTip.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { duelFromHash, duelLink, duelTime, hashHasDuel, newDuelId, pickDuelQuestions, resolveDuel, type DuelPayload } from '../duel/duel.ts';
@@ -1907,7 +1907,7 @@ export class App {
         body.replaceChildren(el('p', { class: 'intro' }, 'В этой дуэли вопросы, которых нет в этой версии игры.'));
         return;
       }
-      const base = location.href.split('#')[0];
+      const base = shareBase();
       const link =
         record.role === 'from' && !record.them
           ? duelLink(base, { id: record.id, at: record.at, q: record.q, from: record.me })

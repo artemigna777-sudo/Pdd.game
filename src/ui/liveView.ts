@@ -6,6 +6,7 @@ import { playSound } from '../audio/feedback.ts';
 import type { Question } from '../data/types.ts';
 import { LIVE, LIVE_KINDS, connectLive, isSituationId, liveLink, liveScore, liveVerdict, pickLiveItems, roundWinner, type LiveAnswer, type LiveKind, type LiveServerMessage, type LiveSocket, type RoundWinner } from '../duel/live.ts';
 import { progress, recordAnswer, saveProgress } from '../progress/progress.ts';
+import { shareBase } from '../pwa.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { emptySituations, optionOrder, readMs, recordSituation } from '../situations/run.ts';
 import type { Situation } from '../situations/types.ts';
@@ -90,7 +91,7 @@ export function runLive(d: LiveDeps): { stop: () => void } {
       show(el('section', { class: 'panel live-lobby' }, el('p', { class: 'live-code', 'aria-label': 'Код комнаты' }, d.code), el('p', {}, names[0] ? `${names[0]} выбирает задания — дуэль вот-вот начнётся.` : 'Ждём создателя комнаты…')));
       return;
     }
-    const link = liveLink(location.href, d.code);
+    const link = liveLink(shareBase(), d.code);
     const ready = !!names[1];
     const kinds = el(
       'div',

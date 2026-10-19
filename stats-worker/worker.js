@@ -34,7 +34,8 @@ import { board, cleanUpdate, readyCounts, savePlayer, setup } from './players.js
 
 const GOATCOUNTER = 'https://kurier-pdd.goatcounter.com';
 /** Откуда можно спрашивать из браузера: игра на GitHub Pages и запуск на компьютере разработчика. */
-const ORIGINS = ['https://artemigna777-sudo.github.io', 'http://localhost:5173', 'http://localhost:4173'];
+// https://localhost — игра в Android-приложении (Capacitor).
+const ORIGINS = ['https://artemigna777-sudo.github.io', 'https://localhost', 'http://localhost:5173', 'http://localhost:4173'];
 /** Что можно спрашивать у GoatCounter: только чтение статистики. */
 const ALLOWED = /^\/api\/v0\/stats\/(total|hits|toprefs|systems|locations|browsers|sizes|campaigns)$/;
 /** Время для API GoatCounter: RFC 3339 в UTC, без долей секунды (как шлёт игра). */

@@ -13,6 +13,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import type { Face } from './draw.ts';
 import { C, CSS3, DLG, ETCH, H, PATTERNS, W, ctaBio, svgLines, type Key } from './engine3.ts';
+import { BG } from './scenery6.ts';
 
 /** Склейки образца «Никто» (46,5 с, из них 42,4 — до заставки TikTok). */
 export const CW = {
@@ -47,6 +48,9 @@ export interface Shot6 {
   faces?: Record<string, Face>;
   /** 3D-кадр из Blender (`clips/<id>/<файл>`, см. blender/): видео на весь кадр под подписью вместо сцены. */
   video?: string;
+  /** Окружение под героями (тело SVG, см. `scenery6.ts`): рисуется тусклым пером `BG` без свечения
+   *  и едет вместе с камерой. Нет — пустой тёмный фон, как в роликах 34–37. */
+  bg?: string;
 }
 
 export interface Video6 {
@@ -65,6 +69,8 @@ export interface Video6 {
   outcome: { title: string; sub: string };
   cta: { lines: string[]; accent: number };
   bioGlyph?: string;
+  /** Живые фоны чёрных экранов (HTML под текстом, см. `scenery6.ts`); анимация — в `extra`. Нет — чёрный фон. */
+  backdrop?: { info?: string; outcome?: string; cta?: string; bio?: string };
   extra?: (T: Timing6) => string;
 }
 
@@ -91,7 +97,7 @@ function hook(v: Video6, T: Timing6): { html: string; tweens: string } {
     if (s.video) html.push(`<video class="clip" id="v${i}" src="clips/${s.video}" data-start="${t0}" data-duration="${(t1 - t0).toFixed(3)}" data-media-start="0" muted playsinline style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;object-fit:cover"></video>`);
     html.push(`<div class="clip scene${s.video ? '' : ' dlg'}" id="h${i}" data-start="${t0}" data-duration="${(t1 - t0).toFixed(3)}">
         ${s.video ? '' : '<div class="spot"></div>'}
-        ${scene ? `<div class="cam" id="c${i}">${svgLines(DLG, scene, 6, 'style="filter: drop-shadow(0 0 3px rgba(255,255,255,0.75)) drop-shadow(0 0 12px rgba(255,255,255,0.25))"')}</div>` : ''}
+        ${scene ? `<div class="cam" id="c${i}">${s.bg ? svgLines(BG, s.bg, 3) : ''}${svgLines(DLG, scene, 6, 'style="filter: drop-shadow(0 0 3px rgba(255,255,255,0.75)) drop-shadow(0 0 12px rgba(255,255,255,0.25))"')}</div>` : ''}
         ${s.ui ?? ''}
         <div class="hcap${s.accent ? ' acc' : ''}">${s.cap}${s.sub ? `<div class="hsub">${s.sub}</div>` : ''}</div>
       </div>`);
@@ -153,6 +159,9 @@ export function buildVideo6(v: Video6): string {
   const h = hook(v, T);
   const lg = legend(v, T);
   const cb = ctaBio(v, T);
+  const bd = v.backdrop ?? {};
+  // Фоны вывода и «Решение в био» — первым слоем внутри их сцен (до текста).
+  cb.html = cb.html.replace(/(id="cta"[^>]*>)/, `$1${bd.cta ?? ''}`).replace(/(id="bio"[^>]*>)/, `$1${bd.bio ?? ''}`);
   return `<!doctype html>
 <html lang="ru" data-resolution="portrait">
   <head>
@@ -172,9 +181,11 @@ export function buildVideo6(v: Video6): string {
       ${h.html}
       ${lg.html}
       <div class="clip scene info" id="info" data-start="${T.info[0]}" data-duration="${(T.info[T.info.length - 1] - T.info[0]).toFixed(3)}">
+        ${bd.info ?? ''}
         ${v.info.html}
       </div>
       <div class="clip scene black" id="outcome" data-start="${T.outcome[0]}" data-duration="${(T.outcome[2] - T.outcome[0]).toFixed(3)}">
+        ${bd.outcome ?? ''}
         <div class="outT" id="outT">${v.outcome.title}</div>
         <div class="outS" id="outS">${v.outcome.sub}</div>
       </div>

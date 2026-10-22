@@ -194,7 +194,7 @@ target = empty('aim')
 target.parent = car
 target.location = (0, -1.0, 0.5)
 cam = camera((2.9, -8.0, 0.55), target, lens=77)
-cam.data.shift_y = 0.05
+cam.data.shift_y = 0.14  # горизонт ниже: больше трибун и города, меньше пустого асфальта
 cam.data.dof.use_dof = True
 cam.data.dof.focus_object = target
 cam.data.dof.aperture_fstop = 4.0

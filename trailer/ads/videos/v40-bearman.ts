@@ -15,6 +15,7 @@ import type { Video6 } from '../engine6.ts';
 import { cloud, ground, sh, sky, wh } from '../etch.ts';
 import { etree } from '../etch2.ts';
 import { text } from '../kit.ts';
+import { ghostStop, houses, lampPost, layer, nightSky, particles, signboard, skyline, street, trackPerspective, treeBg, windowGrid, rng } from '../scenery6.ts';
 
 const N = C.night;
 
@@ -48,6 +49,50 @@ const raceGlow = `
   <path d="M640,1450 Q650,1360 740,1356 Q830,1360 840,1450 Z" fill="${N}"/><path d="M670,1450 Q700,1390 740,1400 Q780,1390 810,1450 M700,1376 L740,1450 L780,1376" stroke-width="3"/>
   <path d="M836,1430 Q870,1410 890,1424 Q894,1446 868,1450 L838,1450" fill="${N}"/>
   <g id="sc-q">${text(540, 1150, 130, C.accent, '?')}</g>`;
+
+// ─── Окружение кадров с человечками (тусклое, без свечения) ──────────────────
+
+/** Учебная табличка «L» на вывеске автошколы (тусклая). */
+const lSign = (x: number, y: number) => `<rect x="${x}" y="${y}" width="56" height="56" rx="6" fill="#b9bfcc" stroke="none" opacity="0.55"/>${text(x + 28, y + 46, 46, '#a32a24', 'L', 'font-weight="900" opacity="0.8"')}`;
+
+/** Улица у автошколы: автошкола за героем, дома, фонарь, дерево, тротуар и дорога. */
+const cockyBg = `
+  ${nightSky(401, 380, 860)}
+  ${skyline(-300, 1400, 980, 402, 160, 420)}
+  ${houses(470, 1400, 1460, 403, 420, 560)}
+  <rect x="40" y="880" width="440" height="580" fill="#0b111d"/><path d="M20,880 H500"/>
+  ${windowGrid(40, 1000, 440, 340, rng(404), [84, 96], 0.5)}
+  ${signboard(150, 900, 320, 70, 'АВТОШКОЛА', 36)}${lSign(80, 907)}
+  <path d="M350,1460 V1350 H450 V1460"/>
+  ${treeBg(1010, 1460, 0.9)}
+  ${lampPost(540, 1460, 1)}
+  ${street(1460)}
+  <g opacity="0.75">${carSide(380, 1700, '#0b111d')}</g>`;
+
+/** Экзаменационный центр: большое здание, флагшток, конусы площадки, тротуар и дорога. */
+const examBg = `
+  ${nightSky(411, 330, 800)}
+  ${skyline(-300, 1400, 900, 412, 120, 300)}
+  <rect x="40" y="800" width="1000" height="660" fill="#0b111d"/><path d="M20,800 H1060 M40,840 H1040"/>
+  ${windowGrid(40, 880, 1000, 380, rng(413), [100, 110], 0.45)}
+  ${signboard(250, 812, 580, 64, 'ЭКЗАМЕНАЦИОННЫЙ ЦЕНТР', 30)}
+  <path d="M480,1460 V1330 H640 V1460 M560,1330 V1460"/>
+  <path d="M-80,1460 V930"/><path d="M-80,936 h90 v54 h-90" fill="#3a1d1a" opacity="0.7"/>
+  ${street(1460)}
+  ${[180, 330, 480, 630, 780, 930].map((x) => `<path d="M${x - 22},1860 L${x},1800 L${x + 22},1860 Z" fill="#3b2418" stroke="#9a5a33" opacity="0.8"/>`).join('')}
+  <g opacity="0.75">${carSide(820, 1740, '#0b111d')}</g>`;
+
+/** Ночное поле для басни-моста: холмы, деревья, ограда с флажками, дорожка. */
+const raceBg = `
+  ${nightSky(421, 360, 1000)}
+  <circle cx="860" cy="560" r="70" fill="#c9cfdb" stroke="none" opacity="0.18"/><circle cx="860" cy="560" r="44" fill="#d8dde8" stroke="none" opacity="0.25"/>
+  <path d="M-200,1240 Q120,1080 420,1180 Q700,1270 960,1120 Q1140,1040 1300,1160 V1460 H-200 Z" fill="#0b111d"/>
+  <path d="M-200,1320 Q200,1240 560,1300 Q900,1360 1300,1260 V1460 H-200 Z" fill="#0a0f1a"/>
+  ${treeBg(60, 1300, 0.8)}${treeBg(990, 1270, 0.7)}${treeBg(520, 1290, 0.55)}
+  ${Array.from({ length: 12 }, (_, i) => `<path d="M${-60 + i * 110},1460 V1360"/>`).join('')}
+  <path d="M-60,1372 Q-5,1400 50,1372 Q105,1400 160,1372 Q215,1400 270,1372 Q325,1400 380,1372 Q435,1400 490,1372 Q545,1400 600,1372 Q655,1400 710,1372 Q765,1400 820,1372 Q875,1400 930,1372 Q985,1400 1040,1372 Q1095,1400 1150,1372" stroke-width="2"/>
+  ${Array.from({ length: 22 }, (_, i) => `<path d="M${-50 + i * 55},${1380 + (i % 2) * 4} l16,30 l16,-30" fill="${i % 3 === 0 ? '#6e3a24' : i % 3 === 1 ? '#2c3a56' : '#3b4252'}" stroke-width="1.5" opacity="0.8"/>`).join('')}
+  ${street(1460)}`;
 
 // ─── Подписи к 3D-кадру со знаком: спидометр ─────────────────────────────────
 
@@ -156,16 +201,68 @@ const info = {
     ].join('\n      '),
 };
 
+// ─── Живые фоны чёрных экранов ────────────────────────────────────────────────
+
+const T6 = { info: [25.933, 30.867], outcome: [30.867, 33.0], cta: [33.5, 39.133], bio: [39.133, 42.433] };
+const pInfo = particles('pi', 36, 431, T6.info[0], T6.info[1]);
+const pOut = particles('po', 30, 432, T6.outcome[0], T6.outcome[1]);
+const pCta = particles('pc', 40, 433, T6.cta[0], T6.cta[1], [0, 300, 1080, 1500], '#ffb37a');
+const pBio = particles('pb', 26, 434, T6.bio[0], T6.bio[1]);
+
+/** Улица ночью снизу: город, дорога со стоп-линией. */
+const cityRoad = (base: number, seed: number) => `
+  ${skyline(-60, 1140, base, seed, 160, 420)}
+  <rect x="0" y="${base}" width="1080" height="${1920 - base}" fill="#070b13" stroke="none"/>
+  <path d="M0,${base} H1080"/>
+  ${Array.from({ length: 6 }, (_, i) => `<path d="M${40 + i * 200},${base + 120} h110" stroke="#8a93a6" stroke-width="8" opacity="0.4"/>`).join('')}`;
+
+/** Огни машин по ночной дороге (полоски, которые едут вправо). */
+const streaks = (y: number) =>
+  Array.from({ length: 5 }, (_, i) => `<path id="st${i}" d="M${-300 - i * 260},${y + (i % 2) * 70} h${140 + (i % 3) * 40}" stroke="${i % 2 ? '#e0453a' : '#ffd9a0'}" stroke-width="6" opacity="0.45"/>`).join('');
+
+const backdrop = {
+  info: `<div id="bdi" style="position:absolute;inset:0">${layer('bdi-s', `
+    ${ghostStop(540, 1560, 360, 0.09)}
+    ${cityRoad(1640, 435)}
+    <path d="M120,1780 H960" stroke="#e8ecf2" stroke-width="16" opacity="0.35"/>
+    ${pInfo.svg}`)}</div>`,
+  outcome: `<div id="bdo" style="position:absolute;inset:0">${layer('bdo-s', `
+    ${skyline(-60, 1140, 1300, 436, 110, 280)}
+    ${trackPerspective(1300)}
+    ${pOut.svg}`)}</div>`,
+  cta: `<div id="bdc" style="position:absolute;inset:0">${layer('bdc-s', `
+    ${nightSky(437, 120, 520)}
+    ${cityRoad(1560, 438)}
+    ${streaks(1640)}
+    ${pCta.svg}`)}</div>`,
+  bio: `<div id="bdb" style="position:absolute;inset:0;opacity:0.7">${layer('bdb-s', `
+    ${nightSky(439, 120, 520)}
+    ${cityRoad(1560, 438)}
+    ${pBio.svg}`)}</div>`,
+};
+
+const backdropTweens = () =>
+  [
+    pInfo.tweens,
+    pOut.tweens,
+    pCta.tweens,
+    pBio.tweens,
+    `tl.fromTo('#bdi', { scale: 1, transformOrigin: '50% 80%' }, { scale: 1.06, duration: ${(T6.info[1] - T6.info[0]).toFixed(3)}, ease: 'none' }, ${T6.info[0]});`,
+    `tl.fromTo('#bdo', { scale: 1, transformOrigin: '50% 68%' }, { scale: 1.08, duration: ${(T6.outcome[1] - T6.outcome[0]).toFixed(3)}, ease: 'none' }, ${T6.outcome[0]});`,
+    `tl.fromTo('#bdc', { scale: 1.05, transformOrigin: '50% 80%' }, { scale: 1, duration: ${(T6.cta[1] - T6.cta[0]).toFixed(3)}, ease: 'none' }, ${T6.cta[0]});`,
+    ...Array.from({ length: 5 }, (_, i) => `tl.fromTo('#st${i}', { x: 0 }, { x: ${1700 + i * 120}, duration: ${(T6.cta[1] - T6.cta[0]).toFixed(3)}, ease: 'none' }, ${T6.cta[0]});`),
+  ].join('\n      ');
+
 export const v40: Video6 = {
   id: '40-bearman',
   title: 'Реклама: пилот «Формулы-1» завалил экзамен',
   scenes: { cocky, failed, race: raceGlow },
   shots: [
     { video: 'f1.mp4', cap: 'Пилот «Формулы-1»<br>завалил экзамен на права', sub: 'Оливер Бирман · реальная история' },
-    { scene: 'cocky', cam: [560, 1260, 1.15], to: [540, 1250, 1.26], cap: 'В 17 лет решил:<br>«Уроки мне не нужны»', sub: 'Великобритания', faces: { T: 'cool' } },
+    { scene: 'cocky', bg: cockyBg, cam: [560, 1260, 1.15], to: [540, 1250, 1.26], cap: 'В 17 лет решил:<br>«Уроки мне не нужны»', sub: 'Великобритания', faces: { T: 'cool' } },
     { video: 'stop.mp4', cap: 'И не остановился<br>на знаке STOP', sub: 'просто сбавил скорость', ui: hud },
-    { scene: 'failed', cam: [560, 1200, 1.15], to: [560, 1190, 1.24], cap: 'Экзамен не сдан', faces: { P: 'shock', E: 'angry' } },
-    { scene: 'race', cam: [540, 1300, 1.05], to: [540, 1300, 1.1], cap: 'Как заяц в гонке<br>с черепахой', accent: true },
+    { scene: 'failed', bg: examBg, cam: [560, 1200, 1.15], to: [560, 1190, 1.24], cap: 'Экзамен не сдан', faces: { P: 'shock', E: 'angry' } },
+    { scene: 'race', bg: raceBg, cam: [540, 1300, 1.05], to: [540, 1300, 1.1], cap: 'Как заяц в гонке<br>с черепахой', accent: true },
   ],
   hookTweens,
   tableau,
@@ -180,5 +277,7 @@ export const v40: Video6 = {
   info,
   outcome: { title: 'Со второй попытки<br>он сдал', sub: `а в 2025-м вышел на старт <span style="color:${C.accent}">«Формулы-1»</span>` },
   cta: { lines: ['Быстрый —', 'ещё не готовый.', 'Готовый —', 'знает правила.'], accent: 3 },
+  backdrop,
+  extra: backdropTweens,
   bioGlyph: `<polygon points="${Array.from({ length: 8 }, (_, i) => `${(38 * Math.cos(Math.PI / 8 + (i * Math.PI) / 4)).toFixed(1)},${(38 * Math.sin(Math.PI / 8 + (i * Math.PI) / 4)).toFixed(1)}`).join(' ')}" fill="${C.accent}" stroke="none"/>`,
 };

@@ -26,12 +26,18 @@ def reset(frames, fps=30, reflections=False, blur=False):
     sc.world = bpy.data.worlds.new('night')
     sc.world.use_nodes = True
     sc.world.node_tree.nodes['Background'].inputs['Color'].default_value = (0.004, 0.006, 0.012, 1)
-    sc.eevee.taa_render_samples = int(os.environ.get('NEON_SAMPLES') or (4 if draft else 12))
+    # Сэмплы: чем больше, тем меньше шума в отражениях, размытии и боке (32 — чисто, 12 — заметное «зерно»).
+    sc.eevee.taa_render_samples = int(os.environ.get('NEON_SAMPLES') or (4 if draft else 32))
+    sc.render.filter_size = 1.15  # чуть резче стандартных 1,5 px
     sc.view_settings.view_transform = 'Standard'
     if reflections:
         sc.eevee.use_raytracing = True
         sc.eevee.ray_tracing_method = 'SCREEN'
-        sc.eevee.ray_tracing_options.resolution_scale = '1'
+        rt = sc.eevee.ray_tracing_options
+        rt.resolution_scale = '1'
+        rt.screen_trace_quality = 1.0
+        rt.trace_max_roughness = 0.45
+        rt.use_denoise = rt.denoise_spatial = rt.denoise_temporal = rt.denoise_bilateral = True
     if blur:
         sc.render.use_motion_blur = True
         sc.render.motion_blur_shutter = 0.3
@@ -163,8 +169,9 @@ def wet(name, color=(0.006, 0.007, 0.01)):
     noise.inputs['Scale'].default_value = 0.35
     noise.inputs['Detail'].default_value = 4
     ramp = nt.nodes.new('ShaderNodeValToRGB')
-    ramp.color_ramp.elements[0].position, ramp.color_ramp.elements[0].color = 0.42, (0.03, 0.03, 0.03, 1)
-    ramp.color_ramp.elements[1].position, ramp.color_ramp.elements[1].color = 0.62, (0.4, 0.4, 0.4, 1)
+    # Лужи — почти зеркальные (чёткие отражения), сухой асфальт — матовее; переход резкий, без «мыла».
+    ramp.color_ramp.elements[0].position, ramp.color_ramp.elements[0].color = 0.46, (0.015, 0.015, 0.015, 1)
+    ramp.color_ramp.elements[1].position, ramp.color_ramp.elements[1].color = 0.56, (0.32, 0.32, 0.32, 1)
     nt.links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
     nt.links.new(ramp.outputs['Color'], b.inputs['Roughness'])
     b.inputs['Specular IOR Level'].default_value = 0.8

@@ -1,8 +1,9 @@
 """
 Общее для 3D-кадров роликов в стиле «светящихся человечков»: чёрный мир, тёмные формы, белые контуры
-(Freestyle) с мягким свечением, оранжевые акценты. Запуск — через render3d.sh (Blender без окна, EEVEE).
+(обратная оболочка) с мягким свечением, оранжевые акценты. Запуск — через render3d.sh (Blender без окна, EEVEE).
 """
 import math
+import os
 
 import bpy
 
@@ -11,48 +12,46 @@ ACCENT = (1.0, 0.478, 0.18)  # #ff7a2e
 W, H = 1080, 1920
 
 
-def reset(frames, fps=30):
+def reset(frames, fps=30, reflections=False, blur=False):
+    """Пустая сцена в стиле роликов. NEON_DRAFT=1 — черновик: 540×960 и мало сэмплов, чтобы быстро проверить
+    движение и ракурс. `reflections` — отражения (мокрый асфальт), `blur` — размытие в движении."""
+    draft = os.environ.get('NEON_DRAFT') == '1'
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = 'BLENDER_EEVEE_NEXT'
-    sc.render.resolution_x, sc.render.resolution_y = W, H
+    sc.render.resolution_x, sc.render.resolution_y = (W // 2, H // 2) if draft else (W, H)
     sc.render.fps = fps
     sc.frame_start, sc.frame_end = 1, frames
     sc.render.film_transparent = False
     sc.world = bpy.data.worlds.new('night')
     sc.world.use_nodes = True
     sc.world.node_tree.nodes['Background'].inputs['Color'].default_value = (0.004, 0.006, 0.012, 1)
-    sc.eevee.taa_render_samples = 24
+    sc.eevee.taa_render_samples = int(os.environ.get('NEON_SAMPLES') or (4 if draft else 12))
     sc.view_settings.view_transform = 'Standard'
-    # Контуры.
-    sc.render.use_freestyle = True
-    sc.render.line_thickness_mode = 'ABSOLUTE'
-    sc.render.line_thickness = 2.6
-    fs = bpy.context.view_layer.freestyle_settings
-    ls = fs.linesets[0] if len(fs.linesets) else fs.linesets.new('neon')
-    if ls.linestyle is None:
-        ls.linestyle = bpy.data.linestyles.new('neon')
-    ls.select_by_visibility = True
-    # Контуры — только у объектов из коллекции «lines» (машины, знаки); дорога светится сама — так в разы быстрее.
-    lines = bpy.data.collections.new('lines')
-    sc.collection.children.link(lines)
-    ls.select_by_collection = True
-    ls.collection = lines
-    ls.select_silhouette = ls.select_border = ls.select_crease = True
-    ls.select_external_contour = True
-    ls.linestyle.color = (0.96, 0.96, 0.95)
-    ls.linestyle.thickness = 2.6
-    bpy.context.view_layer.freestyle_settings.crease_angle = math.radians(140)
+    if reflections:
+        sc.eevee.use_raytracing = True
+        sc.eevee.ray_tracing_method = 'SCREEN'
+        sc.eevee.ray_tracing_options.resolution_scale = '1'
+    if blur:
+        sc.render.use_motion_blur = True
+        sc.render.motion_blur_shutter = 0.3
     # Свечение контуров и акцентов.
     sc.use_nodes = True
     nt = sc.node_tree
     rl, comp = nt.nodes['Render Layers'], nt.nodes['Composite']
     glare = nt.nodes.new('CompositorNodeGlare')
     glare.glare_type = 'FOG_GLOW'
-    glare.quality = 'HIGH'
+    glare.quality = 'MEDIUM' if draft else 'HIGH'
     glare.threshold = 0.55
-    glare.size = 9
-    nt.links.new(rl.outputs['Image'], glare.inputs['Image'])
+    glare.size = 8 if draft else 9
+    if reflections:
+        # Отражения при малом числе сэмплов шумят — шумоподавление (OIDN) до свечения.
+        dn = nt.nodes.new('CompositorNodeDenoise')
+        dn.prefilter = 'FAST'
+        nt.links.new(rl.outputs['Image'], dn.inputs['Image'])
+        nt.links.new(dn.outputs['Image'], glare.inputs['Image'])
+    else:
+        nt.links.new(rl.outputs['Image'], glare.inputs['Image'])
     nt.links.new(glare.outputs['Image'], comp.inputs['Image'])
     return sc
 
@@ -132,10 +131,47 @@ def linear(obj):
                 kp.interpolation = 'LINEAR'
 
 
-def outline(objs):
-    """Перенести объекты в коллекцию «lines» — у них будут контуры."""
-    lines = bpy.data.collections['lines']
+def outline(objs, width=0.025):
+    """Белый светящийся контур по силуэту («обратная оболочка»): копия формы чуть больше, вывернутая наизнанку,
+    видна только по краям. Раньше контуры рисовал Freestyle — он съедал ~3/4 времени кадра."""
+    line = bpy.data.materials.get('neon-line')
+    if line is None:
+        line = mat('neon-line', (1, 1, 1), emit=(0.96, 0.96, 0.95), strength=2.6)
+        line.use_backface_culling = True
     for o in objs:
-        for c in list(o.users_collection):
-            c.objects.unlink(o)
-        lines.objects.link(o)
+        if o.type != 'MESH':
+            continue
+        o.data.materials.append(line)
+        m = o.modifiers.new('neon-line', 'SOLIDIFY')
+        m.thickness = width
+        m.offset = 1
+        m.use_even_offset = True
+        m.use_flip_normals = True
+        m.use_rim = False
+        m.material_offset = len(o.data.materials) - 1
+
+
+def wet(name, color=(0.006, 0.007, 0.01)):
+    """Мокрый асфальт: лужи блестят и отражают огни (нужен reset(..., reflections=True))."""
+    m = mat(name, color)
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    noise = nt.nodes.new('ShaderNodeTexNoise')
+    noise.inputs['Scale'].default_value = 0.35
+    noise.inputs['Detail'].default_value = 4
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].position, ramp.color_ramp.elements[0].color = 0.42, (0.03, 0.03, 0.03, 1)
+    ramp.color_ramp.elements[1].position, ramp.color_ramp.elements[1].color = 0.62, (0.4, 0.4, 0.4, 1)
+    nt.links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
+    nt.links.new(ramp.outputs['Color'], b.inputs['Roughness'])
+    b.inputs['Specular IOR Level'].default_value = 0.8
+    return m
+
+
+def smooth(objs, levels=2):
+    """Сгладить формы (кузов болида и т. п.) — до контуров, чтобы контур шёл по гладкому силуэту."""
+    for o in objs:
+        o.modifiers.new('smooth', 'SUBSURF').levels = levels
+        o.modifiers['smooth'].render_levels = levels
+        for p in o.data.polygons:
+            p.use_smooth = True

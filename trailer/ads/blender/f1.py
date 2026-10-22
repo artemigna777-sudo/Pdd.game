@@ -9,16 +9,19 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import bpy  # noqa: E402
 
-from neon import ACCENT, box, camera, cyl, empty, key, linear, mat, outline, parent, reset  # noqa: E402
+import random  # noqa: E402
+
+from neon import ACCENT, box, camera, cyl, empty, key, linear, mat, outline, parent, reset, smooth, wet  # noqa: E402
 
 FRAMES = 99
 args = sys.argv[sys.argv.index('--') + 1:]
 out = args[0]
 still = int(args[1]) if len(args) > 1 else None
 
-sc = reset(FRAMES)
+sc = reset(FRAMES, reflections=True, blur=True)
+random.seed(40)
 dark = mat('dark')
-asphalt = mat('asphalt', (0.008, 0.009, 0.012))
+asphalt = wet('asphalt')
 glow = mat('glow', emit=ACCENT, strength=9)
 white = mat('white', emit=(1, 1, 1), strength=2.2)
 
@@ -33,6 +36,20 @@ for i in range(-8, 40):
     box('dash', (0, y, 0.005), (0.14, 2.2, 0.01), white)
     box('kerb', (-7.2, y, 0.03), (0.8, 2.2, 0.06), glow if i % 2 else white)
     box('kerb', (7.2, y, 0.03), (0.8, 2.2, 0.06), glow if i % 2 == 0 else white)
+
+# Даль: огни трибун и мачты прожекторов — в расфокусе дают «боке», на мокром асфальте — отражения.
+warm = mat('warm', emit=(1.0, 0.8, 0.55), strength=7)
+cold = mat('cold', emit=(0.75, 0.85, 1.0), strength=7)
+for _ in range(140):
+    side = random.choice((-1, 1))
+    x = side * random.uniform(13, 26)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=random.uniform(0.12, 0.3), segments=10, ring_count=6,
+                                         location=(x, random.uniform(15, 230), random.uniform(1.5, 9)))
+    bpy.context.object.data.materials.append(random.choice((warm, warm, cold, glow)))
+for y in range(30, 240, 42):
+    for side in (-1, 1):
+        cyl('mast', (side * 12, y, 6), 0.12, 12, dark, rot=(0, 0, 0), verts=8)
+        box('flood', (side * 11.6, y, 12.2), (1.6, 0.2, 0.7), mat('flood', emit=(1, 0.97, 0.9), strength=14))
 
 # Болид: нос к камере (по −Y).
 car = empty('car')
@@ -54,7 +71,17 @@ parts = [
     box('rplateL', (0.53, 1.85, 0.86), (0.04, 0.62, 0.6), glow),
     box('rplateR', (-0.53, 1.85, 0.86), (0.04, 0.62, 0.6), glow),
     box('pylon', (0, 1.75, 0.8), (0.06, 0.2, 0.4), dark),
+    box('diffuser', (0, 1.95, 0.16), (1.1, 0.5, 0.12), dark, rot=(-0.25, 0, 0)),
+    box('mirrorL', (0.5, -0.6, 0.78), (0.18, 0.05, 0.08), dark),
+    box('mirrorR', (-0.5, -0.6, 0.78), (0.18, 0.05, 0.08), dark),
+    box('rainlight', (0, 2.08, 0.5), (0.18, 0.03, 0.08), mat('rain', emit=(1, 0.05, 0.03), strength=12)),
 ]
+# Подвеска: тонкие рычаги от монокока к колёсам.
+for x in (1, -1):
+    for y, z in ((-1.62, 0.42), (-1.62, 0.28), (1.45, 0.45), (1.45, 0.3)):
+        dx = 0.62 * x
+        parts.append(box('arm', (dx / 2 + 0.3 * x, y, z), (abs(dx), 0.05, 0.03), dark))
+smooth([p for p in parts if p.name.startswith(('tub', 'nose', 'podL', 'podR', 'cover'))])
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, location=(0, -0.32, 0.86))
 helmet = bpy.context.object
 helmet.data.materials.append(mat('helmet', emit=ACCENT, strength=4))
@@ -64,11 +91,25 @@ for x, y, r, w in ((0.86, -1.62, 0.34, 0.32), (-0.86, -1.62, 0.34, 0.32), (0.88,
     hub = empty('hub', (x, y, r))
     tyre = cyl('tyre', (x, y, r), r, w, dark, rot=(0, math.pi / 2, 0), verts=48)
     rim = cyl('rim', (x + (0.17 if x > 0 else -0.17) * (w / 0.32), y, r), r * 0.62, 0.02, mat('rim', emit=(1, 1, 1), strength=1.4), rot=(0, math.pi / 2, 0), verts=32)
-    parent([tyre, rim], hub)
+    side = 1 if x > 0 else -1
+    bpy.ops.mesh.primitive_torus_add(major_radius=r * 0.8, minor_radius=0.012, location=(x + side * (w / 2 + 0.005), y, r),
+                                     rotation=(0, math.pi / 2, 0))
+    ring = bpy.context.object
+    ring.data.materials.append(glow)
+    parent([tyre, rim, ring], hub)
     wheels.append(hub)
     parts.append(hub)
 parent(parts, car)
-outline([p for p in parts if p.type == 'MESH'] + [c for h in wheels for c in h.children])
+outline([p for p in parts if p.type == 'MESH' and p.name != 'rainlight'] + [c for h in wheels for c in h.children if c.name.startswith('tyre')], width=0.03)
+
+# Искры из-под днища: короткие оранжевые штрихи назад, мигают вразнобой.
+for i in range(14):
+    sp = box('spark', (random.uniform(-0.5, 0.5), random.uniform(1.0, 2.4), 0.04),
+             (0.012, random.uniform(0.3, 0.9), 0.012), mat('spark', emit=(1, 0.6, 0.2), strength=25),
+             rot=(0, 0, random.uniform(-0.3, 0.3)))
+    sp.parent = car
+    for f in range(1, FRAMES + 1, 2):
+        key(sp, f, hide_render=random.random() < 0.55)
 
 # Движение: издалека прямо на камеру и мимо, колёса крутятся.
 key(car, 1, location=(0.9, 59.2, 0))
@@ -85,6 +126,9 @@ target.parent = car
 target.location = (0, -1.0, 0.5)
 cam = camera((2.9, -8.0, 0.55), target, lens=77)
 cam.data.shift_y = 0.05
+cam.data.dof.use_dof = True
+cam.data.dof.focus_object = target
+cam.data.dof.aperture_fstop = 2.0
 for f in range(1, FRAMES + 1, 3):
     key(cam, f, location=(2.9 + 0.015 * math.sin(f * 1.7), -8.0, 0.55 + 0.015 * math.cos(f * 2.3)))
 

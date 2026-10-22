@@ -172,7 +172,7 @@ const CLIPS: Record<string, Clip> = {
 
   /** Меню: машина курьера едет по улице. */
   menu: {
-    async run(page, rec) {
+    async run(_page, rec) {
       await rec.skip(600);
       await rec.record(4000);
     },

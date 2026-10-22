@@ -1,10 +1,11 @@
 /**
  * Таблица лидеров: общая для всех игроков, кнопка 🏆 в меню. Посредник подменён, но его правила и SQL —
- * настоящие (stats-worker/players.js) с хранилищем SQLite из Node: случайный ник, своё имя без мата, место.
+ * настоящие (stats-worker/players.js) с хранилищем SQLite из Node: случайный ник, своё имя без мата, место,
+ * жалобы на имена, «Убрать меня из таблицы», правила и политика конфиденциальности.
  */
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test, type Page } from '@playwright/test';
-import { board, cleanUpdate, savePlayer, setup } from '../../stats-worker/players.js';
+import { board, cleanUpdate, removePlayer, report, savePlayer, setup } from '../../stats-worker/players.js';
 
 const PROXY = 'https://board-proxy.test';
 
@@ -20,20 +21,23 @@ async function fakeProxy(page: Page) {
   setup(sql);
   const now = Date.now();
   for (let n = 1; n <= 25; n++) savePlayer(sql, cleanUpdate({ id: `other-player-${String(n).padStart(6, '0')}`, board: true, name: `Игрок ${n}`, xp: n * 1000, coins: 2600 - n * 100 }), now - n);
-  const state = { offline: false, puts: [] as Record<string, unknown>[] };
+  const state = { offline: false, puts: [] as Record<string, unknown>[], sql };
   await page.addInitScript((base) => ((window as unknown as { __boardBase: string }).__boardBase = base), PROXY);
   await page.route(`${PROXY}/**`, async (route) => {
     const req = route.request();
-    const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+    const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     if (state.offline) return route.abort('internetdisconnected');
     const url = new URL(req.url());
+    if (url.pathname === '/player' && req.method() === 'DELETE') return route.fulfill({ headers, json: removePlayer(sql, url.searchParams.get('id')) });
+    if (url.pathname === '/report') return route.fulfill({ headers, json: report(sql, JSON.parse(req.postData() ?? 'null'), Date.now()) });
     if (url.pathname === '/player') {
       const raw = JSON.parse(req.postData() ?? 'null');
       state.puts.push(raw);
       const upd = cleanUpdate(raw);
       if (upd.error) return route.fulfill({ status: 400, headers, json: { error: upd.error } });
-      return route.fulfill({ headers, json: { ok: true, name: savePlayer(sql, upd, Date.now()) } });
+      const name = savePlayer(sql, upd, Date.now());
+      return route.fulfill({ headers, json: { ok: true, name, ...(upd.name && name !== upd.name ? { reset: true } : {}) } });
     }
     return route.fulfill({ headers, json: board(sql, url.searchParams.get('by'), url.searchParams.get('id')) });
   });
@@ -126,4 +130,55 @@ test('таблица лидеров: все сразу под случайным
   proxy.offline = false;
   await page.getByRole('button', { name: 'Попробовать ещё раз' }).tap();
   await expect(rows).toHaveCount(20);
+});
+
+test('жалоба на имя скрывает его, «Убрать меня из таблицы» удаляет игрока; правила и политика конфиденциальности', async ({ page }) => {
+  const proxy = await fakeProxy(page);
+  await seed(page);
+  // Один игрок уже пожаловался на «Игрок 25» — вторая жалоба (наша) скроет имя.
+  report(proxy.sql, { id: 'other-player-000001', name: 'Игрок 25' }, Date.now());
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Таблица лидеров' }).tap();
+  const rows = page.locator('.board__row');
+  await expect(rows).toHaveCount(20);
+  await expect(page.locator('.board__rules')).toContainText('имя без мата');
+  // На ник и на себя кнопки жалобы нет.
+  await expect(page.locator('.board__row.is-me .board__report')).toHaveCount(0);
+
+  const flag = rows.first().getByRole('button', { name: 'Пожаловаться на имя «Игрок 25»' });
+  await flag.tap();
+  await expect(flag).toHaveText('Жалоба?');
+  await flag.tap();
+  await expect(page.locator('#toast')).toContainText('Имя «Игрок 25» скрыто по жалобам игроков.');
+  await expect(rows.first()).toContainText(/user_\d{4}/);
+  await expect(page.locator('.board__list')).not.toContainText('Игрок 25');
+
+  // Убрать себя: подтверждение вторым касанием, запись удалена, игра больше ничего не отправляет.
+  const leave = page.getByRole('button', { name: 'Убрать меня из таблицы' });
+  await leave.tap();
+  await page.getByRole('button', { name: 'Точно убрать? Нажми ещё раз' }).tap();
+  await expect(page.locator('#toast')).toContainText('тебя больше нет в таблице');
+  const mineCard = page.locator('.board__mine');
+  await expect(mineCard).toContainText('Тебя нет в таблице');
+  await expect(page.locator('.board__row.is-me')).toHaveCount(0);
+  await expect(page.locator('.board__total')).toHaveText('В таблице 25 игроков');
+  const putsBefore = proxy.puts.length;
+  await page.reload();
+  await page.getByRole('button', { name: 'Таблица лидеров' }).tap();
+  await expect(mineCard).toContainText('Тебя нет в таблице');
+  expect(proxy.puts.length, 'после «Убрать меня» игра ничего не отправляет').toBe(putsBefore);
+  await page.getByRole('button', { name: 'Вернуться в таблицу' }).tap();
+  await expect(mineCard).toContainText(/Ты в таблице как «user_\d{4}»/);
+  await expect(page.locator('.board__row.is-me')).toHaveCount(1);
+
+  // Политика конфиденциальности — страница в самой игре.
+  await page.locator('.board__rules').getByRole('link', { name: 'Политика конфиденциальности' }).tap();
+  await expect(page).toHaveTitle(/Политика конфиденциальности/);
+  await expect(page.locator('h1')).toContainText('Политика конфиденциальности игры «Курьер ПДД»');
+  await expect(page.locator('body')).toContainText('Убрать меня из таблицы');
+  await page.getByRole('link', { name: '← Вернуться в игру' }).first().tap();
+  await expect(page.getByRole('button', { name: 'Таблица лидеров' })).toBeVisible();
+  // И в настройках.
+  await page.getByRole('button', { name: 'Настройки' }).tap();
+  await expect(page.getByRole('link', { name: 'Политика конфиденциальности' })).toBeVisible();
 });

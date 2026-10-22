@@ -12,7 +12,7 @@
  * Источники — README.
  */
 import { chair, desk, floorLine, person } from '../draw.ts';
-import { C, DLG, isvg, itext, pop, show } from '../engine3.ts';
+import { C, DLG, itext, pop, show } from '../engine3.ts';
 import type { Video6 } from '../engine6.ts';
 import { cloud, fig, ground, sea, sh, sky, wh } from '../etch.ts';
 import { cottage } from '../etch2.ts';

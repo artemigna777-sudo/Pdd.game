@@ -2676,6 +2676,15 @@ button {
   margin-top: 20px;
 }
 
+.settings__privacy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+  min-height: 48px;
+  text-decoration: none;
+}
+
 .choice--toggle .choice__title {
   display: flex;
   align-items: center;
@@ -5848,4 +5857,41 @@ a.btn {
 .board__mine .btn--secondary,
 .board__join .btn--secondary {
   border: 2px solid var(--line);
+}
+
+.board__report {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -6px -8px 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.board__report.is-armed {
+  min-width: 84px;
+  background: var(--danger, #c0392b);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.board__rules {
+  margin: 16px 0 4px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.board__rules a {
+  display: inline-block;
+  margin-top: 6px;
+  min-height: 44px;
+  line-height: 44px;
+  color: var(--accent, inherit);
 }

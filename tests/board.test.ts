@@ -18,7 +18,7 @@ const memory = new Map<string, string>();
   },
 };
 
-const { BOARD, boardName, cleanBoardName, fetchBoard, newPlayerId, parseBoard, playerId, playerUpdate, syncPlayer } = await import('../src/board/board.ts');
+const { BOARD, boardName, cleanBoardName, fetchBoard, isDefaultNick, newPlayerId, parseBoard, playerId, playerUpdate, removeMe, reportName, showMeAgain, syncPlayer, takeNameReset } = await import('../src/board/board.ts');
 const { getSettings, updateSettings } = await import('../src/settings.ts');
 const { coinsEarned, ensureCoinsSpent, spentEstimate } = await import('../src/progress/earned.ts');
 const { emptyProgress, sanitizeProgress, spendCoins } = await import('../src/progress/progress.ts');
@@ -33,7 +33,7 @@ let db: DatabaseSync;
 
 beforeEach(() => {
   memory.clear();
-  updateSettings({ boardName: '', boardNick: '', playerId: '' });
+  updateSettings({ boardName: '', boardNick: '', playerId: '', boardHidden: false });
   sent = [];
   db = new DatabaseSync(':memory:');
   const sql = {
@@ -57,6 +57,51 @@ afterEach(() => {
 
 const sync = (o: { xp?: number; coins?: number; ready?: number; force?: boolean; now?: number } = {}) =>
   syncPlayer({ xp: o.xp ?? 0, coins: o.coins ?? 0, ready: async () => o.ready, force: o.force, now: o.now ?? NOW }, BASE);
+
+test('жалобы на имя: после двух игроков имя скрыто, игра узнаёт об этом и показывает ник; убрать себя из таблицы', async () => {
+  const as = (id: string, name = '') => updateSettings({ playerId: id, boardName: name });
+  const A = 'A'.repeat(22);
+  const B = 'B'.repeat(22);
+  const C = 'C'.repeat(22);
+  as(A, 'Плохое Имя');
+  assert.equal(await sync({ xp: 500, force: true }), 'ok');
+  as(B);
+  assert.equal(await sync({ xp: 300, force: true }), 'ok');
+  assert.equal(await reportName('Плохое Имя', BASE), 'ok');
+  as(C);
+  assert.equal(await sync({ xp: 100, force: true }), 'ok');
+  assert.equal(await reportName('Плохое Имя', BASE), 'hidden');
+  // Игра A при следующей отправке узнаёт, что имя скрыто, и забывает его.
+  as(A, 'Плохое Имя');
+  assert.equal(await sync({ xp: 500, force: true }), 'reset');
+  assert.equal(getSettings().boardName, '');
+  assert.ok(isDefaultNick(boardName()), 'в таблице снова ник');
+  assert.equal(takeNameReset(), true);
+  assert.equal(takeNameReset(), false, 'сообщение — один раз');
+  const top = await fetchBoard('xp', A, BASE);
+  assert.ok(top !== 'offline' && top !== 'error' && !top.top.some((r) => r.name === 'Плохое Имя'));
+  assert.ok(isDefaultNick('user_1234') && !isDefaultNick('Маша'));
+
+  // C убирает себя: запись удалена, игра больше ничего не отправляет, пока не вернётся.
+  as(C);
+  assert.equal(await removeMe(BASE), 'ok');
+  assert.equal(getSettings().boardHidden, true);
+  sent = [];
+  assert.equal(await sync({ xp: 100, force: true }), 'skipped');
+  assert.deepEqual(sent, []);
+  const after = await fetchBoard('xp', C, BASE);
+  assert.ok(after !== 'offline' && after !== 'error');
+  assert.equal(after.total, 2);
+  assert.equal(after.me, undefined);
+  showMeAgain();
+  assert.equal(await sync({ xp: 100 }), 'ok', 'вернулся — отправка сразу, без ожидания 6 часов');
+  globalThis.fetch = (async () => {
+    throw new Error('нет сети');
+  }) as typeof fetch;
+  assert.equal(await reportName('Маша', BASE), 'offline');
+  assert.equal(await removeMe(BASE), 'offline');
+  assert.equal(getSettings().boardHidden, false, 'без связи — ничего не изменилось');
+});
 
 test('что игра отправляет о себе: опыт, монеты и своё имя, если есть; готовность — только со статистикой', () => {
   assert.match(newPlayerId(), /^[A-Za-z0-9_-]{22}$/);

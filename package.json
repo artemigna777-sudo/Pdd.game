@@ -22,6 +22,8 @@
     "android:res": "tsx scripts/android-res.ts"
   },
   "dependencies": {
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/share": "^7.0.4",
     "phaser": "^3.90.0",
     "qrcode-generator": "^2.0.4"
   },

@@ -6,6 +6,10 @@
  * игрок был последний раз. Ещё — ник по умолчанию вроде «user_4821»: его выдаёт посредник при первом
  * заходе, случайный и ни у кого не повторяется. Кто не заходил год — удаляется.
  *
+ * Жалобы: на своё имя другого игрока можно пожаловаться; после жалоб от `reportsToHide` разных игроков имя
+ * скрывается (в таблице снова ник), и это же имя у этого игрока больше не принимается. Игрок может
+ * удалить себя целиком — со всеми данными и жалобами.
+ *
  * Здесь только правила и SQL — без Cloudflare, чтобы проверять в тестах. `sql` — как у Durable Object:
  * `sql.exec(запрос, ...значения)` возвращает строки (`.toArray()`).
  */
@@ -19,6 +23,8 @@ export const PLAYER = {
   maxValue: 10_000_000,
   /** Кто не заходил столько дней, удаляется. */
   keepDays: 365,
+  /** После жалоб от стольких разных игроков имя скрывается. */
+  reportsToHide: 2,
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -41,12 +47,24 @@ export function cleanName(raw) {
 /** Ники по умолчанию («user_4821») выдаёт только посредник: своё имя таким быть не может. */
 const NICK_LIKE = /^user[\s_-]*\d+$/i;
 
+/**
+ * Латиница и цифры, похожие на русские буквы: «п1др», «xyй», «6ля» читаются как мат, поэтому имя проверяется
+ * ещё и после такой замены (только по длинным корням — чтобы не ловить обычные имена латиницей).
+ */
+const LOOKALIKE = { a: 'а', b: 'б', c: 'с', e: 'е', h: 'н', i: 'и', k: 'к', m: 'м', o: 'о', p: 'р', t: 'т', u: 'и', x: 'х', y: 'у', '0': 'о', '1': 'и', '3': 'з', '4': 'ч', '6': 'б', '8': 'в', '@': 'а', $: 'с', '|': 'и', 'ё': 'е' };
+const asCyrillic = (low) =>
+  [...low]
+    .map((ch) => LOOKALIKE[ch] ?? ch)
+    .join('')
+    .replace(/[^а-яё]/g, '')
+    .replace(/(.)\1+/g, '$1');
+
 /** Можно ли показывать имя всем. */
 export function nameAllowed(name) {
   if (NICK_LIKE.test(name)) return false;
   const low = name.toLowerCase();
   const plain = low.replace(/[^а-яёa-z]/g, '');
-  return !(BAD_ANYWHERE.test(low) || BAD_ANYWHERE.test(plain) || BAD_WORD_START.test(low) || BAD_LATIN.test(plain));
+  return !(BAD_ANYWHERE.test(low) || BAD_ANYWHERE.test(plain) || BAD_ANYWHERE.test(asCyrillic(low)) || BAD_WORD_START.test(low) || BAD_LATIN.test(plain));
 }
 
 const count = (v) => (Number.isInteger(v) && v >= 0 && v <= PLAYER.maxValue ? v : undefined);
@@ -78,6 +96,9 @@ export function setup(sql) {
   sql.exec('CREATE INDEX IF NOT EXISTS players_xp ON players (board, xp)');
   sql.exec('CREATE INDEX IF NOT EXISTS players_coins ON players (board, coins)');
   sql.exec('CREATE INDEX IF NOT EXISTS players_seen ON players (seen)');
+  // Имя, скрытое по жалобам (столбец добавлен позже — у старой таблицы его нет).
+  if (!sql.exec('PRAGMA table_info(players)').toArray().some((c) => c.name === 'blocked')) sql.exec('ALTER TABLE players ADD COLUMN blocked TEXT');
+  sql.exec('CREATE TABLE IF NOT EXISTS reports (target TEXT NOT NULL, reporter TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (target, reporter))');
 }
 
 /**
@@ -98,7 +119,10 @@ export function freeNick(sql, rnd = Math.random) {
  * статистику — стирается готовность. Ник выдаётся при первом заходе и больше не меняется.
  */
 export function savePlayer(sql, upd, now, rnd = Math.random) {
-  const nick = sql.exec('SELECT nick FROM players WHERE id = ?', upd.id).toArray()[0]?.nick ?? freeNick(sql, rnd);
+  const old = sql.exec('SELECT nick, blocked FROM players WHERE id = ?', upd.id).toArray()[0];
+  const nick = old?.nick ?? freeNick(sql, rnd);
+  // Имя, скрытое по жалобам, у этого игрока больше не принимается — в таблице ник.
+  if (upd.name && old?.blocked && upd.name.toLowerCase() === String(old.blocked).toLowerCase()) upd = { ...upd, name: undefined };
   sql.exec(
     `INSERT INTO players (id, name, nick, board, xp, coins, ready, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, board = excluded.board, xp = excluded.xp,
@@ -113,7 +137,39 @@ export function savePlayer(sql, upd, now, rnd = Math.random) {
     now,
   );
   sql.exec('DELETE FROM players WHERE seen < ?', now - PLAYER.keepDays * DAY);
+  sql.exec('DELETE FROM reports WHERE at < ?', now - PLAYER.keepDays * DAY);
   return upd.name ?? String(nick);
+}
+
+/**
+ * Жалоба игрока `reporter` на имя `name` в таблице. Ники по умолчанию и своё имя не в счёт, жаловаться
+ * может только игрок, который сам есть у посредника. → { ok, hidden } или { error }.
+ */
+export function report(sql, raw, now) {
+  if (typeof raw !== 'object' || raw === null || typeof raw.id !== 'string' || !ID.test(raw.id)) return { error: 'id' };
+  const name = cleanName(raw.name);
+  if (!name) return { error: 'name' };
+  if (!sql.exec('SELECT 1 FROM players WHERE id = ?', raw.id).toArray().length) return { error: 'id' };
+  const targets = sql.exec('SELECT id FROM players WHERE board = 1 AND name = ? AND id != ?', name, raw.id).toArray();
+  let hidden = false;
+  for (const t of targets) {
+    sql.exec('INSERT OR IGNORE INTO reports (target, reporter, at) VALUES (?, ?, ?)', t.id, raw.id, now);
+    const n = Number(sql.exec('SELECT COUNT(*) AS n FROM reports WHERE target = ?', t.id).toArray()[0]?.n ?? 0);
+    if (n >= PLAYER.reportsToHide) {
+      sql.exec('UPDATE players SET blocked = name, name = NULL WHERE id = ?', t.id);
+      sql.exec('DELETE FROM reports WHERE target = ?', t.id);
+      hidden = true;
+    }
+  }
+  return { ok: true, hidden };
+}
+
+/** Удалить игрока целиком: запись, его жалобы и жалобы на него. */
+export function removePlayer(sql, id) {
+  if (typeof id !== 'string' || !ID.test(id)) return { error: 'id' };
+  sql.exec('DELETE FROM players WHERE id = ?', id);
+  sql.exec('DELETE FROM reports WHERE target = ? OR reporter = ?', id, id);
+  return { ok: true };
 }
 
 /**

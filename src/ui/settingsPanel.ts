@@ -99,6 +99,8 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
           ),
         )
       : null,
+    // Политика конфиденциальности — отдельная страница в самой игре (public/privacy.html), работает и без интернета.
+    full ? el('a', { class: 'btn btn--secondary settings__privacy', href: 'privacy.html' }, 'Политика конфиденциальности') : null,
     full ? versionSection(opts.openStats) : null,
   );
 }

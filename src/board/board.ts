@@ -8,6 +8,10 @@
  * включена — ещё готовность к экзамену в процентах: её видит только автор на секретном экране
  * статистики, и то лишь как число игроков в каждом десятке процентов. Больше ничего. Таблицу игра берёт там же (`GET /board`). Без интернета или если посредник
  * недоступен — таблица не открывается, остальная игра работает как раньше.
+ *
+ * На чужое имя можно пожаловаться (`POST /report`): после нескольких жалоб посредник скрывает его, и игра
+ * этого игрока узнаёт об этом при следующей отправке (`reset`). Игрок может убрать себя из таблицы
+ * (`DELETE /player`): запись удаляется у посредника, и игра больше ничего не отправляет, пока он не вернётся.
  */
 import { STATS_PROXY } from '../config.ts';
 import { getSettings, updateSettings } from '../settings.ts';
@@ -51,8 +55,8 @@ export interface PlayerUpdate {
   ready?: number;
 }
 
-/** Ответ посредника на отправку: принято, имя не подходит, нет связи, другая ошибка. */
-export type SendResult = 'ok' | 'name' | 'offline' | 'error';
+/** Ответ посредника на отправку: принято, имя не подходит, имя скрыто по жалобам, нет связи, другая ошибка. */
+export type SendResult = 'ok' | 'name' | 'reset' | 'offline' | 'error';
 
 /**
  * Адрес посредника. В разработке и автотестах — нет (ничего не отправляется), если тест не задал
@@ -149,13 +153,19 @@ export async function sendPlayer(upd: PlayerUpdate, base = boardBase(), now = Da
   if (res.ok) {
     markSynced(now);
     // Без своего имени посредник отвечает ником, который он выдал этой игре, — запомнить его.
-    let name: unknown;
+    let body: { name?: unknown; reset?: unknown } = {};
     try {
-      name = ((await res.json()) as { name?: unknown }).name;
+      body = (await res.json()) as typeof body;
     } catch {
-      name = undefined;
+      body = {};
     }
-    const nick = typeof name === 'string' ? cleanBoardName(name) : '';
+    const nick = typeof body.name === 'string' ? cleanBoardName(body.name) : '';
+    // Своё имя скрыто по жалобам игроков — забыть его, в таблице теперь ник.
+    if (body.reset === true) {
+      updateSettings({ boardName: '', ...(nick ? { boardNick: nick } : {}) });
+      save(RESET_KEY, true);
+      return 'reset';
+    }
     if (!upd.name && nick && nick !== getSettings().boardNick) updateSettings({ boardNick: nick });
     return 'ok';
   }
@@ -182,6 +192,47 @@ export async function fetchBoard(by: BoardBy, id: string, base = boardBase()): P
   }
 }
 
+/** Пожаловаться на чужое имя в таблице: 'ok' — жалоба принята, 'hidden' — после неё имя скрыто. */
+export async function reportName(name: string, base = boardBase()): Promise<'ok' | 'hidden' | 'offline' | 'error'> {
+  if (!base) return 'offline';
+  const res = await call(`${base}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: playerId(), name: cleanBoardName(name) }) });
+  if (!res) return 'offline';
+  if (!res.ok) return 'error';
+  try {
+    return ((await res.json()) as { hidden?: unknown }).hidden === true ? 'hidden' : 'ok';
+  } catch {
+    return 'ok';
+  }
+}
+
+/** Убрать себя из таблицы: посредник удаляет запись, игра больше ничего не отправляет. */
+export async function removeMe(base = boardBase()): Promise<'ok' | 'offline' | 'error'> {
+  if (!base) return 'offline';
+  const res = await call(`${base}/player?${new URLSearchParams({ id: playerId() })}`, { method: 'DELETE' });
+  if (!res) return 'offline';
+  if (!res.ok) return 'error';
+  updateSettings({ boardHidden: true, boardName: '', boardNick: '' });
+  return 'ok';
+}
+
+/** Вернуться в таблицу: снова отправлять о себе (сразу — при следующей отправке). */
+export function showMeAgain(): void {
+  updateSettings({ boardHidden: false });
+  markSynced(0);
+}
+
+const RESET_KEY = 'pdd-game:board-reset';
+
+/** Своё имя скрыли по жалобам: показать это один раз. */
+export function takeNameReset(): boolean {
+  const was = load<boolean>(RESET_KEY, false) === true;
+  if (was) save(RESET_KEY, false);
+  return was;
+}
+
+/** Ники по умолчанию на жалобы не отмечаются: их выдаёт посредник. */
+export const isDefaultNick = (name: string) => /^user[\s_-]*\d+$/i.test(name);
+
 // ─── Когда отправлять ────────────────────────────────────────────────────────────
 
 const SYNC_KEY = 'pdd-game:board-sync';
@@ -201,7 +252,7 @@ function markSynced(now: number): void {
  * имени. Готовность считается, только когда она нужна.
  */
 export async function syncPlayer(o: { xp: number; coins: number; ready: () => Promise<number | undefined>; force?: boolean; now?: number }, base = boardBase()): Promise<SendResult | 'skipped'> {
-  if (!base) return 'skipped';
+  if (!base || getSettings().boardHidden) return 'skipped';
   const now = o.now ?? Date.now();
   if (!o.force && now - syncedAt() < BOARD.syncHours * 3_600_000) return 'skipped';
   const ready = await o.ready();

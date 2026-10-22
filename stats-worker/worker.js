@@ -30,7 +30,7 @@
  * в ограничение частоты запросов API GoatCounter.
  */
 import { RoomCore } from './room.js';
-import { board, cleanUpdate, readyCounts, savePlayer, setup } from './players.js';
+import { board, cleanUpdate, readyCounts, removePlayer, report, savePlayer, setup } from './players.js';
 
 const GOATCOUNTER = 'https://kurier-pdd.goatcounter.com';
 /** Откуда можно спрашивать из браузера: игра на GitHub Pages и запуск на компьютере разработчика. */
@@ -61,7 +61,7 @@ export default {
     const origin = request.headers.get('Origin') || '';
     const cors = {
       'Access-Control-Allow-Origin': ORIGINS.includes(origin) ? origin : ORIGINS[0],
-      'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
@@ -80,7 +80,7 @@ export default {
       if (!env.LIVE) return reply(503, { error: 'live' });
       return env.LIVE.get(env.LIVE.idFromName(live[1])).fetch(request);
     }
-    if (url.pathname === '/player' || url.pathname === '/board') return playersRoute(request, env, url, origin, reply);
+    if (url.pathname === '/player' || url.pathname === '/board' || url.pathname === '/report') return playersRoute(request, env, url, origin, reply);
     if (request.method !== 'GET') return reply(405, { error: 'method' });
 
     // Секреты вставляют с телефона: лишние пробелы и переводы строки по краям не мешают.
@@ -199,6 +199,7 @@ const playersStub = (env) => env.PLAYERS.get(env.PLAYERS.idFromName(PLAYERS_ID))
 /**
  * Игроки. `PUT /player` — игра присылает о себе: номер (случайный), показывать ли в таблице, своё имя
  * (если введено), опыт, заработанные монеты, готовность; в ответе — имя в таблице (своё или ник). `GET /board?by=xp|coins&id=…` — таблица лидеров и своё место.
+ * `POST /report` { id, name } — жалоба на имя в таблице. `DELETE /player?id=…` — удалить себя со всеми данными.
  */
 async function playersRoute(request, env, url, origin, reply) {
   if (!ORIGINS.includes(origin)) return reply(403, { error: 'origin' });
@@ -211,7 +212,13 @@ async function playersRoute(request, env, url, origin, reply) {
     // Ответ Durable Object — без заголовков CORS: браузер игры его не пропустит, поэтому — через `reply`.
     return res.ok ? reply(200, await res.json()) : reply(502, { error: 'players' });
   }
-  if (request.method !== 'PUT') return reply(405, { error: 'method' });
+  if (url.pathname === '/player' && request.method === 'DELETE') {
+    const id = url.searchParams.get('id') || '';
+    const res = await playersStub(env).fetch(`https://players/player?${new URLSearchParams({ id })}`, { method: 'DELETE' });
+    return res.ok ? reply(200, { ok: true }) : reply(res.status === 400 ? 400 : 502, { error: res.status === 400 ? 'id' : 'players' });
+  }
+  const want = url.pathname === '/report' ? 'POST' : 'PUT';
+  if (request.method !== want) return reply(405, { error: 'method' });
   const text = await request.text();
   if (text.length > 1024) return reply(413, { error: 'size' });
   let raw;
@@ -219,6 +226,11 @@ async function playersRoute(request, env, url, origin, reply) {
     raw = JSON.parse(text);
   } catch {
     return reply(400, { error: 'bad' });
+  }
+  if (url.pathname === '/report') {
+    const res = await playersStub(env).fetch('https://players/report', { method: 'POST', body: JSON.stringify(raw) });
+    const body = await res.json().catch(() => ({ error: 'players' }));
+    return reply(res.ok ? 200 : res.status === 400 ? 400 : 502, body);
   }
   const upd = cleanUpdate(raw);
   if (upd.error) return reply(400, { error: upd.error });
@@ -350,7 +362,17 @@ export class Players {
     if (url.pathname === '/player' && request.method === 'PUT') {
       const upd = cleanUpdate(await request.json());
       if (upd.error) return new Response(JSON.stringify(upd), { status: 400 });
-      return json({ ok: true, name: savePlayer(this.sql, upd, now) });
+      const name = savePlayer(this.sql, upd, now);
+      // Своё имя не принято (скрыто по жалобам) — игра забудет его и покажет ник.
+      return json({ ok: true, name, ...(upd.name && name !== upd.name ? { reset: true } : {}) });
+    }
+    if (url.pathname === '/player' && request.method === 'DELETE') {
+      const out = removePlayer(this.sql, url.searchParams.get('id'));
+      return new Response(JSON.stringify(out), { status: out.error ? 400 : 200 });
+    }
+    if (url.pathname === '/report' && request.method === 'POST') {
+      const out = report(this.sql, await request.json(), now);
+      return new Response(JSON.stringify(out), { status: out.error ? 400 : 200 });
     }
     if (url.pathname === '/board') return json(board(this.sql, url.searchParams.get('by'), url.searchParams.get('id')));
     if (url.pathname === '/ready') return json(readyCounts(this.sql, now));

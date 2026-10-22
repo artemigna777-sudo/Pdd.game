@@ -1,6 +1,7 @@
 {
   "name": "pdd-game",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "version": "0.1.0",
   "type": "module",
   "description": "2D-игра для подготовки к теории на права (билеты ПДД A, B, M)",
@@ -33,6 +34,7 @@
     "@capacitor/core": "^7.6.9",
     "@playwright/test": "^1.56.1",
     "@types/node": "^26.6.3",
+    "javascript-obfuscator": "^4.1.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
     "sharp": "^0.35.4",

@@ -1,8 +1,9 @@
 /**
  * Таблица лидеров: по опыту и по заработанным монетам, общая для всех игроков (`board/board.ts`).
- * В ней все сразу — под ником вроде «user_1652», своё имя можно вписать здесь же.
+ * В ней все сразу — под ником вроде «user_1652», своё имя можно вписать здесь же. На чужое имя можно
+ * пожаловаться (⚑), себя — убрать из таблицы.
  */
-import { BOARD, boardName, cleanBoardName, fetchBoard, playerId, syncPlayer, type BoardBy, type BoardResult, type SendResult } from '../board/board.ts';
+import { BOARD, boardName, cleanBoardName, fetchBoard, isDefaultNick, playerId, removeMe, reportName, showMeAgain, syncPlayer, takeNameReset, type BoardBy, type BoardResult, type SendResult } from '../board/board.ts';
 import { loadQuestions } from '../data/questions.ts';
 import { allExams } from '../exam/examHistory.ts';
 import { coinsEarned } from '../progress/earned.ts';
@@ -34,7 +35,12 @@ const num = (n: number) => n.toLocaleString('ru-RU').replace(/\s/g, ' ');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-function row(place: number, name: string, value: number, by: BoardBy, me: boolean): HTMLElement {
+function row(place: number, name: string, value: number, by: BoardBy, me: boolean, onReport?: (name: string, button: HTMLButtonElement) => void): HTMLElement {
+  const report =
+    !me && onReport && !isDefaultNick(name)
+      ? (el('button', { class: 'board__report', type: 'button', 'aria-label': `Пожаловаться на имя «${name}»`, title: 'Пожаловаться на имя' }, '⚑') as HTMLButtonElement)
+      : null;
+  if (report && onReport) report.onclick = () => onReport(name, report);
   return el(
     'li',
     { class: `board__row${me ? ' is-me' : ''}`, ...(me ? { 'aria-current': 'true' } : {}) },
@@ -42,8 +48,18 @@ function row(place: number, name: string, value: number, by: BoardBy, me: boolea
     el('span', { class: 'board__name' }, name, me ? el('span', { class: 'board__you' }, ' — ты') : null),
     by === 'xp' ? el('span', { class: 'board__level' }, `ур. ${levelOf(value).number}`) : null,
     el('span', { class: 'board__value' }, `${num(value)}${by === 'xp' ? '' : ' 🪙'}`),
+    report,
   );
 }
+
+/** Правила таблицы и ссылка на политику конфиденциальности. */
+const rules = () =>
+  el(
+    'div',
+    { class: 'board__rules' },
+    el('p', {}, 'Правила: имя без мата, оскорблений, рекламы и личных данных (фамилии, телефона, адреса). На нарушителя нажми ⚑ — после жалоб нескольких игроков его имя заменяется ником.'),
+    el('a', { href: 'privacy.html' }, 'Политика конфиденциальности'),
+  );
 
 /** Экран таблицы лидеров. */
 export function boardView(): HTMLElement {
@@ -76,8 +92,20 @@ export function boardView(): HTMLElement {
       el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => void show() }, 'Попробовать ещё раз'),
     );
 
-  /** Своя карточка: имя в таблице, место и «Сменить имя». */
+  /** Своя карточка: имя в таблице, место и «Сменить имя»; если игрок убрал себя — «Вернуться в таблицу». */
   const renderMe = (result?: BoardResult) => {
+    if (getSettings().boardHidden) {
+      me.replaceChildren(
+        el(
+          'div',
+          { class: 'panel board__mine' },
+          el('strong', {}, 'Тебя нет в таблице'),
+          el('p', { class: 'board__hint' }, 'Игра ничего не отправляет в таблицу лидеров. Вернуться можно в любой момент.'),
+          el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => (showMeAgain(), void show()) }, 'Вернуться в таблицу'),
+        ),
+      );
+      return;
+    }
     const own = cleanBoardName(getSettings().boardName);
     const place = result?.me;
     const name = place?.name || boardName();
@@ -89,8 +117,58 @@ export function boardView(): HTMLElement {
         place && result ? el('p', { class: 'board__place-line' }, `${place.place}-е место из ${result.total} · ${num(place.value)} ${result.by === 'xp' ? 'опыта' : plural(place.value, ['монета', 'монеты', 'монет'])}`) : null,
         own ? null : el('p', { class: 'board__hint' }, 'Этот ник выдан случайно и ни у кого не повторяется. Можно вписать своё имя — его увидят все игроки.'),
         el('button', { class: 'btn btn--secondary', type: 'button', onclick: () => renameForm() }, 'Сменить имя'),
+        leaveButton(),
       ),
     );
+  };
+
+  /** «Убрать меня из таблицы» — со вторым касанием для подтверждения. */
+  const leaveButton = () => {
+    const button = el('button', { class: 'btn btn--secondary board__leave', type: 'button' }, 'Убрать меня из таблицы') as HTMLButtonElement;
+    let armed = false;
+    button.onclick = async () => {
+      if (!armed) {
+        armed = true;
+        button.textContent = 'Точно убрать? Нажми ещё раз';
+        return;
+      }
+      if (busy) return;
+      busy = true;
+      button.disabled = true;
+      const res = await removeMe();
+      busy = false;
+      button.disabled = false;
+      if (res !== 'ok') {
+        showToast('Нет связи с таблицей лидеров — попробуй позже.');
+        return;
+      }
+      showToast('Готово: тебя больше нет в таблице, данные удалены.');
+      void show();
+    };
+    return button;
+  };
+
+  /** Жалоба на имя — со вторым касанием для подтверждения. */
+  const report = async (name: string, button: HTMLButtonElement) => {
+    if (button.dataset.armed !== '1') {
+      button.dataset.armed = '1';
+      button.textContent = 'Жалоба?';
+      button.classList.add('is-armed');
+      return;
+    }
+    if (busy) return;
+    busy = true;
+    button.disabled = true;
+    const res = await reportName(name);
+    busy = false;
+    if (res === 'offline' || res === 'error') {
+      button.disabled = false;
+      showToast('Нет связи с таблицей лидеров — попробуй позже.');
+      return;
+    }
+    button.textContent = '✓';
+    showToast(res === 'hidden' ? `Имя «${name}» скрыто по жалобам игроков.` : 'Жалоба отправлена. Спасибо!');
+    if (res === 'hidden') void show();
   };
 
   const renameForm = () => {
@@ -134,8 +212,8 @@ export function boardView(): HTMLElement {
     busy = false;
     button.disabled = false;
     if (res !== 'ok') {
-      updateSettings({ boardName: before });
-      showToast(res === 'name' ? 'Такое имя нельзя показать в таблице — выбери другое.' : 'Нет связи с таблицей лидеров — попробуй позже.');
+      if (res !== 'reset') updateSettings({ boardName: before });
+      showToast(res === 'name' || res === 'reset' ? 'Такое имя нельзя показать в таблице — выбери другое.' : 'Нет связи с таблицей лидеров — попробуй позже.');
       return;
     }
     if (!before) trackEvent('board-name', 'Таблица лидеров: ввели своё имя');
@@ -150,22 +228,25 @@ export function boardView(): HTMLElement {
     list.replaceChildren(el('p', { class: 'board__empty' }, 'Загружаю таблицу…'));
     const asked = by;
     await syncMe(true);
+    if (takeNameReset()) showToast('Твоё имя скрыли по жалобам игроков — в таблице снова ник. Можно выбрать другое имя.');
     const result = await fetchBoard(asked, playerId());
     if (asked !== by) return;
     if (result === 'offline' || result === 'error') {
       offline(result === 'offline' ? 'Нет связи с таблицей лидеров. Проверь интернет и попробуй ещё раз.' : 'Таблица лидеров сейчас недоступна. Попробуй чуть позже.');
+      list.append(rules());
       return;
     }
     renderMe(result);
     if (!result.top.length) {
-      list.replaceChildren(el('p', { class: 'board__empty' }, 'Пока в таблице никого — стань первым!'));
+      list.replaceChildren(el('p', { class: 'board__empty' }, 'Пока в таблице никого — стань первым!'), rules());
       return;
     }
-    const rows = result.top.map((r, i) => row(i + 1, r.name, r.value, by, !!r.me));
+    const rows = result.top.map((r, i) => row(i + 1, r.name, r.value, by, !!r.me, (name, button) => void report(name, button)));
     const mine = result.me && !result.top.some((r) => r.me) ? [el('li', { class: 'board__gap', 'aria-hidden': 'true' }, '…'), row(result.me.place, result.me.name || boardName(), result.me.value, by, true)] : [];
     list.replaceChildren(
       el('ol', { class: 'board__rows' }, ...rows, ...mine),
       el('p', { class: 'board__total' }, `В таблице ${result.total} ${plural(result.total, ['игрок', 'игрока', 'игроков'])}`),
+      rules(),
     );
   };
 

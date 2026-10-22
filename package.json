@@ -1,6 +1,7 @@
 {
   "name": "pdd-game",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "version": "0.1.0",
   "type": "module",
   "description": "2D-игра для подготовки к теории на права (билеты ПДД A, B, M)",
@@ -17,15 +18,23 @@
     "test:e2e": "playwright test",
     "icons": "tsx scripts/icons.ts",
     "signs": "tsx scripts/signs.ts",
-    "situations": "tsx scripts/situations.ts"
+    "situations": "tsx scripts/situations.ts",
+    "android": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease bundleRelease",
+    "android:res": "tsx scripts/android-res.ts"
   },
   "dependencies": {
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/share": "^7.0.4",
     "phaser": "^3.90.0",
     "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "@playwright/test": "^1.56.1",
     "@types/node": "^26.6.3",
+    "javascript-obfuscator": "^4.1.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
     "sharp": "^0.35.4",

@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, test } from 'node:test';
-import { PLAYER, board, cleanName, cleanUpdate, freeNick, nameAllowed, readyCounts, savePlayer, setup } from '../stats-worker/players.js';
+import { PLAYER, board, cleanName, cleanUpdate, freeNick, nameAllowed, readyCounts, removePlayer, report, savePlayer, setup } from '../stats-worker/players.js';
 import worker, { Players } from '../stats-worker/worker.js';
 
 /** Хранилище как у Durable Object: `exec(запрос, ...значения).toArray()`. */
@@ -41,6 +41,9 @@ test('от игры принимается только своё: номер, и
   assert.equal(cleanName('А​ня'), 'А ня');
   for (const bad of ['Хуй', 'пиздец', 'ёбарь', 'Сука', 'бля123', 'xxFUCKxx', 'п и з д а']) assert.equal(nameAllowed(cleanName(bad)), false, bad);
   for (const ok of ['Маша', 'Хлебушек', 'Употребитель', 'Тимур', 'Сергей', 'Артём', 'Небесный', 'Mike']) assert.equal(nameAllowed(ok), true, ok);
+  // Цифры и латиница вместо русских букв, повторы букв.
+  for (const bad of ['п1др', 'П1ДОР', 'xyй', 'XУЕ', 'пuздa', 'пиииздец', '3алупа', 'mудак', 'п.1.д.р']) assert.equal(nameAllowed(cleanName(bad)), false, bad);
+  for (const ok of ['Michael', 'Nikita', 'Kostya 2008', 'Tiхон', 'Ebby', 'Рома777', 'Bober', 'Anna_K', 'Хукер', 'Сухой']) assert.equal(nameAllowed(ok), true, ok);
   assert.deepEqual(cleanUpdate({ id: id(1), board: true, name: 'Пиздюк', xp: 1, coins: 1 }), { error: 'name' });
 });
 
@@ -100,6 +103,45 @@ test('таблица лидеров: по опыту и по монетам, с�
   savePlayer(sql, cleanUpdate({ id: id(3), board: true, name: 'Игрок 3', xp: 24000, coins: 2300 }), now + 200);
   assert.deepEqual(board(sql, 'xp', id(3)).me, { place: 1, value: 24000, name: 'Игрок 3' });
   assert.equal(board(sql, 'xp', id(3)).top[1].name, 'Игрок 3');
+});
+
+test('жалобы: после двух разных игроков имя скрыто, вернуть его нельзя; удалить себя целиком', () => {
+  const sql = sqlStorage();
+  setup(sql);
+  const now = Date.UTC(2026, 9, 22);
+  const put = (n: number, name?: string) => savePlayer(sql, cleanUpdate({ id: id(n), board: true, ...(name ? { name } : {}), xp: n * 100, coins: 0 }), now);
+  put(1, 'Плохое Имя');
+  const nick2 = put(2);
+  put(3);
+  put(4, 'Маша');
+  assert.deepEqual(report(sql, { id: id(9), name: 'Плохое Имя' }, now), { error: 'id' }, 'жалуется только игрок, который есть у посредника');
+  assert.deepEqual(report(sql, { id: id(2), name: '' }, now), { error: 'name' });
+  assert.deepEqual(report(sql, { id: id(2), name: 'Плохое Имя' }, now), { ok: true, hidden: false });
+  assert.deepEqual(report(sql, { id: id(2), name: 'Плохое Имя' }, now), { ok: true, hidden: false }, 'повторная жалоба того же игрока не в счёт');
+  assert.deepEqual(report(sql, { id: id(1), name: 'Плохое Имя' }, now), { ok: true, hidden: false }, 'на себя — не в счёт');
+  assert.deepEqual(report(sql, { id: id(3), name: nick2 }, now), { ok: true, hidden: false }, 'ники не скрываются');
+  assert.deepEqual(report(sql, { id: id(3), name: 'Плохое Имя' }, now), { ok: true, hidden: true });
+  const shown = board(sql, 'xp', id(1)).me?.name ?? '';
+  assert.match(shown, /^user_\d+$/, 'вместо имени — ник');
+  assert.equal(put(1, 'Плохое Имя'), shown, 'то же имя больше не принимается');
+  assert.equal(put(1, 'плохое имя'), shown);
+  assert.equal(put(1, 'Новое Имя'), 'Новое Имя', 'другое имя — можно');
+  assert.equal(board(sql, 'xp', id(4)).me?.name, 'Маша', 'чужие имена не тронуты');
+  // Удалить себя: записи и жалоб больше нет.
+  report(sql, { id: id(4), name: 'Новое Имя' }, now);
+  assert.deepEqual(removePlayer(sql, id(4)), { ok: true });
+  assert.deepEqual(removePlayer(sql, 'короткий'), { error: 'id' });
+  assert.equal(board(sql, 'xp', id(4)).me, undefined);
+  assert.equal(sql.exec('SELECT COUNT(*) AS n FROM reports').toArray()[0].n, 0);
+  assert.equal(board(sql, 'xp', null).total, 3);
+});
+
+test('старая таблица без столбца для скрытых имён дополняется', () => {
+  const sql = sqlStorage();
+  sql.exec('CREATE TABLE players (id TEXT PRIMARY KEY, name TEXT, nick TEXT NOT NULL, board INTEGER NOT NULL DEFAULT 0, xp INTEGER, coins INTEGER, ready INTEGER, seen INTEGER NOT NULL)');
+  setup(sql);
+  setup(sql);
+  assert.equal(savePlayer(sql, cleanUpdate({ id: id(1), board: true, name: 'Маша', xp: 1, coins: 1 }), 1), 'Маша');
 });
 
 test('готовность игроков по десяткам процентов за 7 и 30 дней; кто не заходил год — удалён', () => {
@@ -192,6 +234,24 @@ test('посредник: игра присылает о себе и берёт 
   assert.equal((await call({}, '/board?by=xp')).status, 503, 'без привязки PLAYERS — понятный отказ');
   const pre = await call(env, '/player', { method: 'OPTIONS' });
   assert.match(pre.headers.get('Access-Control-Allow-Methods') ?? '', /PUT/);
+  assert.match(pre.headers.get('Access-Control-Allow-Methods') ?? '', /DELETE/);
+
+  // Жалобы через посредника: имя Пети скрыто, игра Пети узнаёт об этом при отправке.
+  await put({ id: id(6), board: true, xp: 1, coins: 1 });
+  const rep = (who: number, name: string, origin?: string) => call(env, '/report', { method: 'POST', body: { id: id(who), name }, origin });
+  assert.deepEqual(await (await rep(1, 'Петя')).json(), { ok: true, hidden: false });
+  assert.equal((await rep(6, 'Петя', 'https://evil.example')).status, 403);
+  assert.deepEqual(await (await rep(6, 'Петя')).json(), { ok: true, hidden: true });
+  assert.equal((await call(env, '/report', { method: 'PUT', body: {} })).status, 405);
+  assert.equal((await rep(99, 'Маша')).status, 400);
+  const back = await (await put({ id: id(2), board: true, name: 'Петя', xp: 3000, coins: 1200 })).json();
+  assert.equal(back.reset, true);
+  assert.match(back.name, /^user_\d{4}$/);
+  // Удалить себя.
+  assert.equal((await call(env, `/player?id=${id(1)}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await call(env, `/player?id=${id(1)}`, { method: 'DELETE', origin: 'https://evil.example' })).status, 403);
+  assert.equal((await call(env, '/player?id=x', { method: 'DELETE' })).status, 400);
+  assert.equal((await (await call(env, `/board?by=xp&id=${id(1)}`)).json()).me, undefined);
 });
 
 test('готовность игроков — только в отчёте для автора (с ключом), отчёт работает и без игроков', async () => {

@@ -1,5 +1,45 @@
-import { defineConfig } from 'vite';
+import JavaScriptObfuscator from 'javascript-obfuscator';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/** Чанки, которые не запутываем: библиотеки (чужой открытый код, запутывание только замедлит игру) и данные
+ * (вопросы, знаки, ситуации — они и так открытые, а файлы большие). */
+const PLAIN = /^(vendor|questions|mapping|signs|scenes|s\d|situations)/;
+
+/** Запутывание кода игры в сборке: чтобы его было трудно скопировать и развивать как свой. Только при
+ * `vite build` (`NO_OBFUSCATE=1` — без него, для поиска ошибок); в режиме разработки и в браузерных тестах код
+ * обычный. Настройки — без «перемешивания» логики и мёртвого кода, чтобы игра не стала медленнее на недорогих телефонах. */
+function obfuscate(): Plugin {
+  return {
+    name: 'kurier-obfuscate',
+    apply: (_, env) => env.command === 'build' && process.env.NO_OBFUSCATE !== '1',
+    enforce: 'post',
+    // В generateBundle, а не в renderChunk: к этому моменту в коде уже настоящие имена файлов для import()
+    // (иначе запутанные строки-заглушки Vite не заменяются и подгрузка частей игры ломается).
+    generateBundle(_, bundle) {
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== 'chunk' || PLAIN.test(chunk.name)) continue;
+        chunk.code = JavaScriptObfuscator.obfuscate(chunk.code, {
+          target: 'browser',
+          compact: true,
+          identifierNamesGenerator: 'mangled',
+          renameGlobals: false,
+          stringArray: true,
+          stringArrayThreshold: 0.75,
+          stringArrayEncoding: ['base64'],
+          stringArrayRotate: true,
+          stringArrayShuffle: true,
+          splitStrings: false,
+          controlFlowFlattening: false,
+          deadCodeInjection: false,
+          selfDefending: false,
+          debugProtection: false,
+          sourceMap: false,
+        }).getObfuscatedCode();
+      }
+    },
+  };
+}
 
 export default defineConfig({
   // Относительные пути: сборка работает и на https://<user>.github.io/<repo>/, и локально.
@@ -10,8 +50,16 @@ export default defineConfig({
     target: 'es2020',
     // Phaser сам по себе ~1.2 МБ, это ожидаемо.
     chunkSizeWarningLimit: 1500,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Библиотеки отдельно — их не запутываем (см. obfuscate).
+        manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined),
+      },
+    },
   },
   plugins: [
+    obfuscate(),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,

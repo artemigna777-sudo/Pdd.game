@@ -1,0 +1,29 @@
+Курьер ПДД
+Copyright © 2026 Artem I (github.com/artemigna777-sudo). Все права защищены. All rights reserved.
+
+Исходный код, графика, сюжет, тексты, персонажи, ролики, название и оформление игры «Курьер ПДД»
+(далее — «Игра») охраняются авторским правом (часть 4 Гражданского кодекса РФ и международные договоры).
+
+То, что репозиторий открыт для просмотра, не даёт никаких прав на Игру. Без письменного разрешения
+правообладателя запрещено:
+  - копировать, скачивать для использования, изменять и распространять код или его части;
+  - выпускать Игру или игру, созданную на её основе, под любым названием — на сайтах, в магазинах
+    приложений и в других местах;
+  - использовать графику, сюжет, тексты, персонажей, ролики и название Игры;
+  - использовать Игру в коммерческих целях.
+
+Разрешено только играть в Игру по официальным ссылкам и смотреть код в этом репозитории.
+За разрешением обращайтесь к правообладателю через github.com/artemigna777-sudo.
+
+Не принадлежат правообладателю и распространяются на своих условиях:
+  - тексты экзаменационных вопросов, варианты ответов и картинки билетов (data/, public/images/) —
+    официальные экзаменационные билеты ПДД;
+  - пояснения к ответам и знаки из открытого набора pdd_russia (data/raw/pdd_russia/, см. SOURCE.md);
+  - шрифты (лицензия SIL Open Font License) и библиотеки из package.json — по их лицензиям.
+
+---
+
+The source code, graphics, story, texts, characters, videos, name and design of the game "Курьер ПДД"
+("Kurier PDD") are protected by copyright. Viewing this repository grants no license. Copying, modifying,
+distributing, publishing derivative games or any commercial use without prior written permission
+of the copyright holder is prohibited. Third-party materials listed above remain under their own terms.

@@ -1,0 +1,6 @@
+{
+  "appId": "ru.kurierpdd.game",
+  "appName": "Курьер ПДД",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#1b2430" }
+}

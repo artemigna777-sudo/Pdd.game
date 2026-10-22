@@ -1,12 +1,47 @@
 /**
  * «Поделиться»: картинка-результат для друзей и отправка файлов. На телефоне открывается
- * системное меню «Поделиться», где его нет — файл сохраняется.
+ * системное меню «Поделиться», где его нет — файл сохраняется. В Android-приложении браузер внутри
+ * не умеет ни делиться файлами, ни скачивать их, поэтому там файл кладётся в кэш приложения
+ * (@capacitor/filesystem) и отдаётся системному меню «Поделиться» (@capacitor/share).
  */
 import { GAME_TITLE } from '../config.ts';
+import { isNativeApp } from '../pwa.ts';
 import { showToast } from './toast.ts';
+
+/** Содержимое файла в base64 (без «data:…;base64,»). */
+function base64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Android-приложение: файл в кэш и системное меню «Поделиться». */
+async function shareNative(blob: Blob, name: string, title: string): Promise<'shared' | 'cancelled'> {
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
+  const { uri } = await Filesystem.writeFile({ path: name, data: await base64(blob), directory: Directory.Cache });
+  try {
+    await Share.share({ title, files: [uri], dialogTitle: title });
+    return 'shared';
+  } catch (e) {
+    // Игрок закрыл меню, ничего не выбрав.
+    if (/cancel/i.test(String((e as Error)?.message ?? e))) return 'cancelled';
+    throw e;
+  }
+}
 
 /** Отдать файл: системное меню «Поделиться» или скачивание. */
 export async function shareFile(blob: Blob, name: string, title: string): Promise<'shared' | 'saved' | 'cancelled'> {
+  if (isNativeApp()) {
+    try {
+      return await shareNative(blob, name, title);
+    } catch {
+      showToast('Не удалось открыть меню «Поделиться» — попробуй ещё раз.');
+      return 'cancelled';
+    }
+  }
   const file = new File([blob], name, { type: blob.type });
   const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
   if (nav.canShare?.({ files: [file] }) && nav.share) {

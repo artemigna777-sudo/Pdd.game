@@ -17,8 +17,15 @@ const notify = () => listeners.forEach((fn) => fn());
 
 export type InstallMode = 'prompt' | 'ios-hint' | 'none';
 
+/** Игра запущена как приложение из магазина (Android, Capacitor). */
+export const isNativeApp = () => (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.() === true;
+
+/** Адрес игры для ссылок друзьям: в приложении страница живёт внутри телефона (https://localhost), поэтому — сайт. */
+export const shareBase = () => (isNativeApp() ? 'https://artemigna777-sudo.github.io/Pdd.game/' : location.href.split('#')[0]);
+
 /** Игра открыта с главного экрана (как приложение), а не в браузере. */
 export const isStandalone = () =>
+  isNativeApp() ||
   window.matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
@@ -60,7 +67,8 @@ export function setupPwa(): void {
     showToast('Игра установлена на главный экран');
   });
 
-  if (!('serviceWorker' in navigator)) return;
+  // В приложении из магазина обновления приходят через магазин, а не через service worker.
+  if (isNativeApp() || !('serviceWorker' in navigator)) return;
   updateSW = registerSW({
     onNeedRefresh() {
       updateReady = true;

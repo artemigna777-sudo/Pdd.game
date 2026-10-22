@@ -4,7 +4,7 @@ import { levelOf, sanitizeProgress } from '../progress/progress.ts';
 import { getSettings, updateSettings, type ControlMode, type Theme } from '../settings.ts';
 import type { Difficulty } from '../world/rules.ts';
 import { load } from '../storage.ts';
-import { BUILD_TIME, applyUpdate, checkForUpdate, isUpdateReady, type UpdateCheck } from '../pwa.ts';
+import { BUILD_TIME, applyUpdate, checkForUpdate, isNativeApp, isUpdateReady, type UpdateCheck } from '../pwa.ts';
 import { playTutorial, showModal } from './cutscene.ts';
 import { shareFile } from './share.ts';
 import { el } from './dom.ts';
@@ -99,6 +99,8 @@ export function settingsPanel(full = false, opts: { openStats?: () => void } = {
           ),
         )
       : null,
+    // Политика конфиденциальности — отдельная страница в самой игре (public/privacy.html), работает и без интернета.
+    full ? el('a', { class: 'btn btn--secondary settings__privacy', href: 'privacy.html' }, 'Политика конфиденциальности') : null,
     full ? versionSection(opts.openStats) : null,
   );
 }
@@ -270,7 +272,9 @@ function versionSection(openStats?: () => void): HTMLElement {
     { class: 'version' },
     el('h2', { class: 'settings__title settings__title--next', onclick: secret }, 'Версия игры'),
     el('p', { class: 'choice__hint', onclick: secret }, version ? `Версия от ${version}.` : 'Версия для разработки.'),
-    el('div', { class: 'choices' }, button, stats),
+    // В приложении из магазина обновляет магазин.
+    isNativeApp() ? el('p', { class: 'choice__hint' }, 'Обновления приходят через RuStore.') : null,
+    el('div', { class: 'choices' }, isNativeApp() ? null : button, stats),
     status,
   );
 }

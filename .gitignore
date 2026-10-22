@@ -36,3 +36,4 @@ trailer/promo/*.mp4
 trailer/promo/.*.hf-transaction-*/
 trailer/promo/work-*/
 trailer/ads/clips/
+__pycache__/

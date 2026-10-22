@@ -15,6 +15,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { FONTS, H, W } from './engine3.ts';
+import { type Sfx, writeSfx } from './sfx.ts';
 
 /** Склейки образца «Библиотека» (44 с, из них 34,6 — сценка, дальше карточка и заставка TikTok). */
 export const CW7 = {
@@ -82,7 +83,7 @@ const FACES: Record<Face7, { m: string; by: number; ba: number; lid?: boolean; e
 const ln = (x1: number, y1: number, x2: number, y2: number, extra = '') => `<path d="M${x1},${y1} L${x2},${y2}" ${extra}/>`;
 
 /** Голова и лицо (центр головы — 0,0). */
-function headSvg(id: string, o: { glasses?: boolean; hair?: boolean }): string {
+function headSvg(id: string, o: { glasses?: boolean; hair?: boolean; mustache?: boolean }): string {
   const eye = (x: number) => `<circle cx="${x}" cy="0" r="17" fill="${K.line}" stroke="none"/>`;
   const lid = (x: number) => `<path d="M${x - 19},-20 H${x + 19} V-1 H${x - 19} Z" fill="${K.head}" stroke="none"/><path d="M${x - 17},-1 H${x + 17}" stroke-width="4"/>`;
   return `<circle r="${R}" fill="${K.head}" stroke-width="7"/>
@@ -96,7 +97,12 @@ function headSvg(id: string, o: { glasses?: boolean; hair?: boolean }): string {
     <g stroke-width="6"><g id="${id}-b1" transform="translate(-23 -40) rotate(0)">${ln(-14, 0, 14, 0)}</g><g id="${id}-b2" transform="translate(23 -40) rotate(0)">${ln(-14, 0, 14, 0)}</g></g>
     <g stroke-width="6" fill="none">${Object.entries(MOUTHS)
       .map(([k, d]) => `<g id="${id}-m-${k}" opacity="${k === 'flat' ? 1 : 0}">${d}</g>`)
-      .join('')}</g>`;
+      .join('')}</g>
+    ${o.mustache ? `<path d="M-30,22 Q-16,8 0,16 Q16,8 30,22 Q16,18 0,24 Q-16,18 -30,22 Z" fill="${K.line}" stroke-width="3"/>` : ''}
+    <g id="${id}-shades" opacity="0" transform="translate(0 0)"><path d="M-54,-16 H54" stroke-width="6"/>
+      <path d="M-50,-16 H-4 Q-6,10 -26,12 Q-48,10 -50,-16 Z M4,-16 H50 Q48,10 26,12 Q6,10 4,-16 Z" fill="#050506" stroke-width="5"/>
+      <path d="M-40,-10 l10,0 M14,-10 l10,0" stroke="#8fa4c8" stroke-width="4"/></g>
+    <g id="${id}-sweat" opacity="0" transform="translate(0 0)"><path d="M${R - 6},-34 q10,16 0,24 q-10,-8 0,-24 Z" fill="#8cc8ff" stroke="#cfe8ff" stroke-width="3"/></g>`;
 }
 
 /** Рука: плечо → локоть → кисть; `items` — вещи в кисти (держатся прямо, сколько ни крути руку). */
@@ -122,6 +128,7 @@ export interface FigOpts {
   pose: Pose;
   glasses?: boolean;
   hair?: boolean;
+  mustache?: boolean;
   /** Вещи в передней и задней руке (варианты прячутся прозрачностью). */
   items1?: string;
   items2?: string;
@@ -235,6 +242,12 @@ export interface Video7 {
   /** Слои и клипы ролика (HTML внутри #root) и их анимация. */
   html: string;
   tweens: string;
+  /** Свои стили ролика (викторина и т. п.). */
+  css?: string;
+  /** Длина ролика, с (по умолчанию — по образцу `CW7`). */
+  end?: number;
+  /** Звуки поверх музыки: [секунда, звук] — их синтезирует `sfx.ts`, render7.sh сводит с музыкой. */
+  sfx?: [number, Sfx][];
 }
 
 export function buildVideo7(v: Video7): string {
@@ -247,17 +260,18 @@ export function buildVideo7(v: Video7): string {
     <script src="gsap.min.js"></script>
     <style>
       ${CSS7}
+      ${v.css ?? ''}
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="${CW7.end}" data-width="${W}" data-height="${H}">
-      <audio id="music" src="music.wav" data-start="0" data-duration="${CW7.end}" data-volume="1"></audio>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="${v.end ?? CW7.end}" data-width="${W}" data-height="${H}">
+      <audio id="music" src="music.wav" data-start="0" data-duration="${v.end ?? CW7.end}" data-volume="1"></audio>
       ${v.html}
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });
       ${v.tweens}
-      tl.set({}, {}, ${CW7.end});
+      tl.set({}, {}, ${v.end ?? CW7.end});
       window.__timelines = window.__timelines || {};
       window.__timelines['main'] = tl;
       tl.seek(0);
@@ -275,5 +289,6 @@ export function writeVideo7(v: Video7): string {
   copyFileSync(new URL('../video/gsap.min.js', import.meta.url), new URL('gsap.min.js', dir));
   const music = new URL(`./music/${v.id}/music.wav`, import.meta.url);
   if (existsSync(music)) copyFileSync(music, new URL('music.wav', dir));
+  if (v.sfx?.length) writeSfx(new URL('sfx.wav', dir), v.sfx, v.end ?? CW7.end);
   return dir.pathname;
 }

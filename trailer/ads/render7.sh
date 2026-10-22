@@ -17,7 +17,10 @@ fi
 mkdir -p mp4
 (cd "out/$id" && npx -y hyperframes@0.8.119 render . --fps 30 --crf 20 --video-frame-format png -o raw.mp4 >/dev/null 2>&1)
 # Звук берём прямо из music.wav: при сборке кадров HyperFrames делает его тише (~ на 4–5 дБ).
-if [ -f "out/$id/music.wav" ]; then audio="-i out/$id/music.wav -map 0:v -map 1:a"; else audio=""; fi
+# Звуки (sfx.wav) сводятся с музыкой.
+if [ -f "out/$id/music.wav" ] && [ -f "out/$id/sfx.wav" ]; then
+  audio="-i out/$id/music.wav -i out/$id/sfx.wav -filter_complex [1:a][2:a]amix=inputs=2:normalize=0[a] -map 0:v -map [a]"
+elif [ -f "out/$id/music.wav" ]; then audio="-i out/$id/music.wav -map 0:v -map 1:a"; else audio=""; fi
 ffmpeg -y -loglevel error -i "out/$id/raw.mp4" $audio -c:v libx264 -preset slow -crf 23 -maxrate 9M -bufsize 18M -pix_fmt yuv420p \
   -c:a aac -b:a 192k -ar 44100 -shortest -movflags +faststart "mp4/kurier-pdd-ad-$id.mp4"
 ffmpeg -y -loglevel error -i "mp4/kurier-pdd-ad-$id.mp4" -c:v copy -an -movflags +faststart "mp4/kurier-pdd-ad-$id-bez-zvuka.mp4"

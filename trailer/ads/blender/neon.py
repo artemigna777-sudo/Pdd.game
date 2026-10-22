@@ -7,8 +7,8 @@ import math
 import bpy
 
 ACCENT = (1.0, 0.478, 0.18)  # #ff7a2e
-# Рендер в 720×1280 (на телефоне без видеокарты так в разы быстрее), ffmpeg увеличивает до 1080×1920.
-W, H = 720, 1280
+# Сразу 1080×1920: при рендере в 720×1280 и увеличении кадр выходил мыльным и зернистым.
+W, H = 1080, 1920
 
 
 def reset(frames, fps=30):
@@ -22,12 +22,12 @@ def reset(frames, fps=30):
     sc.world = bpy.data.worlds.new('night')
     sc.world.use_nodes = True
     sc.world.node_tree.nodes['Background'].inputs['Color'].default_value = (0.004, 0.006, 0.012, 1)
-    sc.eevee.taa_render_samples = 6
+    sc.eevee.taa_render_samples = 24
     sc.view_settings.view_transform = 'Standard'
     # Контуры.
     sc.render.use_freestyle = True
     sc.render.line_thickness_mode = 'ABSOLUTE'
-    sc.render.line_thickness = 1.7
+    sc.render.line_thickness = 2.6
     fs = bpy.context.view_layer.freestyle_settings
     ls = fs.linesets[0] if len(fs.linesets) else fs.linesets.new('neon')
     if ls.linestyle is None:
@@ -41,7 +41,7 @@ def reset(frames, fps=30):
     ls.select_silhouette = ls.select_border = ls.select_crease = True
     ls.select_external_contour = True
     ls.linestyle.color = (0.96, 0.96, 0.95)
-    ls.linestyle.thickness = 1.7
+    ls.linestyle.thickness = 2.6
     bpy.context.view_layer.freestyle_settings.crease_angle = math.radians(140)
     # Свечение контуров и акцентов.
     sc.use_nodes = True
@@ -49,9 +49,9 @@ def reset(frames, fps=30):
     rl, comp = nt.nodes['Render Layers'], nt.nodes['Composite']
     glare = nt.nodes.new('CompositorNodeGlare')
     glare.glare_type = 'FOG_GLOW'
-    glare.quality = 'MEDIUM'
+    glare.quality = 'HIGH'
     glare.threshold = 0.55
-    glare.size = 8
+    glare.size = 9
     nt.links.new(rl.outputs['Image'], glare.inputs['Image'])
     nt.links.new(glare.outputs['Image'], comp.inputs['Image'])
     return sc

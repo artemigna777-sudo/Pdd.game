@@ -2,6 +2,7 @@
 # Ролики-истории по формуле cwex (engine6.ts): sh trailer/ads/render6.sh 34-950. Готовые файлы — trailer/ads/mp4/.
 # Музыка образца — trailer/ads/music/<id>/music.wav (см. README, в репозиторий не кладём); без неё ролик немой.
 # Только снимки кадров: SNAP=1 AT=0.5,4,8 sh trailer/ads/render6.sh 34-950.
+# HQ=1 — меньше сжатие (для роликов с 3D-кадрами из Blender: на тёмном фоне иначе видно «зерно» и ступеньки).
 set -e
 cd "$(dirname "$0")"
 id="$1"
@@ -15,8 +16,9 @@ if [ -n "$SNAP" ]; then
   exit 0
 fi
 mkdir -p mp4
-(cd "out/$id" && npx -y hyperframes@0.8.119 render . --fps 30 --crf 20 --video-frame-format png -o raw.mp4 >/dev/null 2>&1)
-ffmpeg -y -loglevel error -i "out/$id/raw.mp4" -c:v libx264 -preset slow -crf 23 -maxrate 9M -bufsize 18M -pix_fmt yuv420p \
+if [ -n "$HQ" ]; then raw=14 crf=17 rate=20M; else raw=20 crf=23 rate=9M; fi
+(cd "out/$id" && npx -y hyperframes@0.8.119 render . --fps 30 --crf $raw --video-frame-format png -o raw.mp4 >/dev/null 2>&1)
+ffmpeg -y -loglevel error -i "out/$id/raw.mp4" -c:v libx264 -preset slow -crf $crf -maxrate $rate -bufsize $rate -pix_fmt yuv420p \
   -c:a aac -b:a 192k -ar 44100 -movflags +faststart "mp4/kurier-pdd-ad-$id.mp4"
 ffmpeg -y -loglevel error -i "mp4/kurier-pdd-ad-$id.mp4" -c:v copy -an -movflags +faststart "mp4/kurier-pdd-ad-$id-bez-zvuka.mp4"
 echo "mp4/kurier-pdd-ad-$id.mp4"

@@ -70,20 +70,21 @@ for x, y, r, w in ((0.86, -1.62, 0.34, 0.32), (-0.86, -1.62, 0.34, 0.32), (0.88,
 parent(parts, car)
 outline([p for p in parts if p.type == 'MESH'] + [c for h in wheels for c in h.children])
 
-# Движение: издалека прямо на камеру и мимо (≈ 190 км/ч), колёса крутятся.
-key(car, 1, location=(0.9, 90, 0))
+# Движение: издалека прямо на камеру и мимо, колёса крутятся.
+key(car, 1, location=(0.9, 59.2, 0))
 key(car, FRAMES, location=(0.9, -14, 0))
 linear(car)
 for hub in wheels:
     key(hub, 1, rotation_euler=(0, 0, 0))
-    key(hub, FRAMES, rotation_euler=(-(104 / 0.35), 0, 0))
+    key(hub, FRAMES, rotation_euler=(-(73.2 / 0.35), 0, 0))
     linear(hub)
 
 # Камера у края трассы, низко; следит за болидом, лёгкая тряска.
 target = empty('aim')
 target.parent = car
 target.location = (0, -1.0, 0.5)
-cam = camera((2.9, -8.0, 0.55), target, lens=48)
+cam = camera((2.9, -8.0, 0.55), target, lens=77)
+cam.data.shift_y = 0.05
 for f in range(1, FRAMES + 1, 3):
     key(cam, f, location=(2.9 + 0.015 * math.sin(f * 1.7), -8.0, 0.55 + 0.015 * math.cos(f * 2.3)))
 

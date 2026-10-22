@@ -66,7 +66,8 @@ export interface Video6 {
   story: Key[];
   /** Расчёт на чёрном по моментам `CW.info`. */
   info: { html: string; tweens: (t: number[]) => string };
-  outcome: { title: string; sub: string };
+  /** Итог; `video` — 3D-кадр под текстом (`clips/<id>/<файл>`), нет — чёрный фон. */
+  outcome: { title: string; sub: string; video?: string };
   cta: { lines: string[]; accent: number };
   bioGlyph?: string;
   /** Живые фоны чёрных экранов (HTML под текстом, см. `scenery6.ts`); анимация — в `extra`. Нет — чёрный фон. */
@@ -152,6 +153,8 @@ const CSS6 = `
       .row .x { margin-left: auto; color: ${C.accent}; font-weight: 800; }
       .row.hot { border: 3px solid ${C.accent}; }
       .outT { position: absolute; left: 60px; right: 60px; top: 820px; text-align: center; font-size: 54px; font-weight: 800; line-height: 1.2; color: #fff; }
+      .shade { background: linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 42%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0) 70%); }
+      .shade .outT, .shade .outS { text-shadow: 0 2px 16px rgba(0,0,0,0.95); }
       .outS { position: absolute; left: 60px; right: 60px; top: 1000px; text-align: center; font-size: 32px; font-weight: 600; line-height: 1.3; color: #9a9ca3; }`;
 
 export function buildVideo6(v: Video6): string {
@@ -184,7 +187,8 @@ export function buildVideo6(v: Video6): string {
         ${bd.info ?? ''}
         ${v.info.html}
       </div>
-      <div class="clip scene black" id="outcome" data-start="${T.outcome[0]}" data-duration="${(T.outcome[2] - T.outcome[0]).toFixed(3)}">
+      ${v.outcome.video ? `<video class="clip" id="vout" src="clips/${v.outcome.video}" data-start="${T.outcome[0]}" data-duration="${(T.outcome[2] - T.outcome[0]).toFixed(3)}" data-media-start="0" muted playsinline style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;object-fit:cover"></video>` : ''}
+      <div class="clip scene${v.outcome.video ? ' shade' : ' black'}" id="outcome" data-start="${T.outcome[0]}" data-duration="${(T.outcome[2] - T.outcome[0]).toFixed(3)}">
         ${bd.outcome ?? ''}
         <div class="outT" id="outT">${v.outcome.title}</div>
         <div class="outS" id="outS">${v.outcome.sub}</div>

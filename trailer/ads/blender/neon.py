@@ -42,7 +42,8 @@ def reset(frames, fps=30, reflections=False, blur=False):
     glare = nt.nodes.new('CompositorNodeGlare')
     glare.glare_type = 'FOG_GLOW'
     glare.quality = 'MEDIUM' if draft else 'HIGH'
-    glare.threshold = 0.55
+    # Порог выше: светятся только контуры и акценты, а тусклые огни фона — нет (иначе сливаются с контурами).
+    glare.threshold = 0.8
     glare.size = 8 if draft else 9
     if reflections:
         # Отражения при малом числе сэмплов шумят — шумоподавление (OIDN) до свечения.
@@ -131,12 +132,14 @@ def linear(obj):
                 kp.interpolation = 'LINEAR'
 
 
-def outline(objs, width=0.025):
+def outline(objs, width=0.025, line=None):
     """Белый светящийся контур по силуэту («обратная оболочка»): копия формы чуть больше, вывернутая наизнанку,
-    видна только по краям. Раньше контуры рисовал Freestyle — он съедал ~3/4 времени кадра."""
-    line = bpy.data.materials.get('neon-line')
+    видна только по краям. Раньше контуры рисовал Freestyle — он съедал ~3/4 времени кадра.
+    `line` — свой материал контура (например, `dim_line()` для фона)."""
     if line is None:
-        line = mat('neon-line', (1, 1, 1), emit=(0.96, 0.96, 0.95), strength=2.6)
+        line = bpy.data.materials.get('neon-line')
+    if line is None:
+        line = mat('neon-line', (1, 1, 1), emit=(0.97, 0.97, 0.96), strength=3.8)
         line.use_backface_culling = True
     for o in objs:
         if o.type != 'MESH':
@@ -175,3 +178,108 @@ def smooth(objs, levels=2):
         o.modifiers['smooth'].render_levels = levels
         for p in o.data.polygons:
             p.use_smooth = True
+
+
+def dim_line():
+    """Контур фона: тусклый и холодный (сине-серый), чтобы белые контуры героя не сливались с окружением."""
+    line = bpy.data.materials.get('dim-line')
+    if line is None:
+        line = mat('dim-line', (0.1, 0.12, 0.16), emit=(0.36, 0.48, 0.7), strength=0.55)
+        line.use_backface_culling = True
+    return line
+
+
+def windows(name, color=(1.0, 0.62, 0.32), strength=0.5, axis='y', cell=(1.6, 1.2), lit=0.35, wall=(0.006, 0.008, 0.013)):
+    """Тёмный фасад со светящимися окнами (часть окон горит). `axis` — куда смотрит фасад: 'y' (окна по x и z)
+    или 'x' (по y и z). `cell` — шаг окон в метрах, `lit` — доля горящих окон."""
+    m = mat(name, wall)
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    comb = nt.nodes.new('ShaderNodeCombineXYZ')
+    nt.links.new(tc.outputs['Object'], sep.inputs['Vector'])
+    nt.links.new(sep.outputs['X' if axis == 'y' else 'Y'], comb.inputs['X'])
+    nt.links.new(sep.outputs['Z'], comb.inputs['Y'])
+    br = nt.nodes.new('ShaderNodeTexBrick')
+    br.offset = 0.0
+    br.inputs['Color1'].default_value = (1, 1, 1, 1)
+    br.inputs['Color2'].default_value = (0, 0, 0, 1)
+    br.inputs['Scale'].default_value = 1.0
+    br.inputs['Mortar Size'].default_value = min(cell) * 0.32
+    br.inputs['Brick Width'].default_value = cell[0]
+    br.inputs['Row Height'].default_value = cell[1]
+    nt.links.new(comb.outputs['Vector'], br.inputs['Vector'])
+    bw = nt.nodes.new('ShaderNodeRGBToBW')
+    nt.links.new(br.outputs['Color'], bw.inputs['Color'])
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.interpolation = 'CONSTANT'
+    ramp.color_ramp.elements[1].position = 1 - lit
+    nt.links.new(bw.outputs['Val'], ramp.inputs['Fac'])
+    inv = nt.nodes.new('ShaderNodeMath')
+    inv.operation = 'SUBTRACT'
+    inv.inputs[0].default_value = 1.0
+    nt.links.new(br.outputs['Fac'], inv.inputs[1])
+    mul = nt.nodes.new('ShaderNodeMath')
+    mul.operation = 'MULTIPLY'
+    nt.links.new(ramp.outputs['Color'], mul.inputs[0])
+    nt.links.new(inv.outputs['Value'], mul.inputs[1])
+    k = nt.nodes.new('ShaderNodeMath')
+    k.operation = 'MULTIPLY'
+    k.inputs[1].default_value = strength
+    nt.links.new(mul.outputs['Value'], k.inputs[0])
+    b.inputs['Emission Color'].default_value = (*color, 1)
+    nt.links.new(k.outputs['Value'], b.inputs['Emission Strength'])
+    return m
+
+
+def stripes(name, colors, strength=0.7, axis='y', period=1.4):
+    """Светящийся щит без надписей и марок: косые полосы двух цветов на тёмном."""
+    m = mat(name)
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    nt.links.new(tc.outputs['Object'], sep.inputs['Vector'])
+    add = nt.nodes.new('ShaderNodeMath')
+    add.operation = 'ADD'
+    nt.links.new(sep.outputs['X' if axis == 'y' else 'Y'], add.inputs[0])
+    nt.links.new(sep.outputs['Z'], add.inputs[1])
+    div = nt.nodes.new('ShaderNodeMath')
+    div.operation = 'DIVIDE'
+    div.inputs[1].default_value = period
+    nt.links.new(add.outputs['Value'], div.inputs[0])
+    fr = nt.nodes.new('ShaderNodeMath')
+    fr.operation = 'FRACT'
+    nt.links.new(div.outputs['Value'], fr.inputs[0])
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.interpolation = 'CONSTANT'
+    e = ramp.color_ramp.elements
+    e[0].position, e[0].color = 0.0, (*colors[0], 1)
+    e[1].position, e[1].color = 0.45, (0.0, 0.0, 0.0, 1)
+    e3 = e.new(0.6)
+    e3.color = (*colors[1], 1)
+    nt.links.new(fr.outputs['Value'], ramp.inputs['Fac'])
+    nt.links.new(ramp.outputs['Color'], b.inputs['Emission Color'])
+    b.inputs['Emission Strength'].default_value = strength
+    return m
+
+
+def haze(sc, color=(0.022, 0.032, 0.06), start=15.0, depth=220.0, amount=0.85):
+    """Дымка для глубины: даль уходит в тёмно-синий, огни вдали тускнеют (проход «туман», до свечения)."""
+    sc.view_layers[0].use_pass_mist = True
+    ms = sc.world.mist_settings
+    ms.start, ms.depth, ms.falloff = start, depth, 'QUADRATIC'
+    nt = sc.node_tree
+    glare = next(n for n in nt.nodes if n.bl_idname == 'CompositorNodeGlare')
+    src = glare.inputs['Image'].links[0].from_socket
+    rl = nt.nodes['Render Layers']
+    k = nt.nodes.new('CompositorNodeMath')
+    k.operation = 'MULTIPLY'
+    k.inputs[1].default_value = amount
+    nt.links.new(rl.outputs['Mist'], k.inputs[0])
+    mix = nt.nodes.new('CompositorNodeMixRGB')
+    mix.inputs[2].default_value = (*color, 1)
+    nt.links.new(k.outputs['Value'], mix.inputs['Fac'])
+    nt.links.new(src, mix.inputs[1])
+    nt.links.new(mix.outputs['Image'], glare.inputs['Image'])

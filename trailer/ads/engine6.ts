@@ -45,6 +45,8 @@ export interface Shot6 {
   ui?: string;
   /** Выражения лиц человечков в этом кадре: id → лицо. */
   faces?: Record<string, Face>;
+  /** 3D-кадр из Blender (`clips/<id>/<файл>`, см. blender/): видео на весь кадр под подписью вместо сцены. */
+  video?: string;
 }
 
 export interface Video6 {
@@ -86,8 +88,9 @@ function hook(v: Video6, T: Timing6): { html: string; tweens: string } {
       tw.push(`tl.to('#c${i}', { ...${JSON.stringify(camAt(tx, ty, ts))}, duration: ${(t1 - t0).toFixed(3)}, ease: 'none' }, ${t0});`);
       for (const [who, face] of Object.entries(s.faces ?? {})) tw.push(`tl.set('.s${i}face${who}', { opacity: 0 }, ${t0}); tl.set('#s${i}face${who}_${face}', { opacity: 1 }, ${t0});`);
     }
-    html.push(`<div class="clip scene dlg" id="h${i}" data-start="${t0}" data-duration="${(t1 - t0).toFixed(3)}">
-        <div class="spot"></div>
+    if (s.video) html.push(`<video class="clip" id="v${i}" src="clips/${s.video}" data-start="${t0}" data-duration="${(t1 - t0).toFixed(3)}" data-media-start="0" muted playsinline style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;object-fit:cover"></video>`);
+    html.push(`<div class="clip scene${s.video ? '' : ' dlg'}" id="h${i}" data-start="${t0}" data-duration="${(t1 - t0).toFixed(3)}">
+        ${s.video ? '' : '<div class="spot"></div>'}
         ${scene ? `<div class="cam" id="c${i}">${svgLines(DLG, scene, 6, 'style="filter: drop-shadow(0 0 3px rgba(255,255,255,0.75)) drop-shadow(0 0 12px rgba(255,255,255,0.25))"')}</div>` : ''}
         ${s.ui ?? ''}
         <div class="hcap${s.accent ? ' acc' : ''}">${s.cap}${s.sub ? `<div class="hsub">${s.sub}</div>` : ''}</div>
@@ -207,5 +210,11 @@ export function writeVideo6(v: Video6): string {
   for (const f of readdirSync(new URL('./assets/', import.meta.url))) copyFileSync(new URL(`./assets/${f}`, import.meta.url), new URL(f, dir));
   const music = new URL(`./music/${v.id}/music.wav`, import.meta.url);
   if (existsSync(music)) copyFileSync(music, new URL('music.wav', dir));
+  // 3D-кадры (собираются из рендеров Blender, в репозиторий не кладутся).
+  const clips = new URL(`./clips/${v.id}/`, import.meta.url);
+  if (existsSync(clips)) {
+    mkdirSync(new URL('clips/', dir), { recursive: true });
+    for (const f of readdirSync(clips)) copyFileSync(new URL(f, clips), new URL(`clips/${f}`, dir));
+  }
   return dir.pathname;
 }

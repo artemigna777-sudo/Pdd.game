@@ -89,6 +89,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,webp,woff2}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
+        // Страницы билетов для поисковиков (scripts/seo.ts) — обычные страницы сайта, не игра.
+        navigateFallbackDenylist: [/\/bilety\//, /\/sitemap\.xml$/],
       },
     }),
   ],

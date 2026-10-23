@@ -35,6 +35,8 @@ jobs:
         run: npm test
       - name: Сборка
         run: npm run build
+      - name: Страницы билетов для поисковиков
+        run: npm run seo
       - name: Браузер для тестов
         run: npx playwright install --with-deps chromium
       - name: Браузерные тесты (управление, сюжет, билеты)

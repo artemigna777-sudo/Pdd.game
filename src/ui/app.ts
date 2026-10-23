@@ -289,6 +289,12 @@ function screenForStats(route: Route): [string, string] | undefined {
   }
 }
 
+/** Билет по ссылке со страниц билетов для поисковиков (`#bilet=12`, см. scripts/seo.ts). */
+function ticketFromHash(hash: string): number | undefined {
+  const n = Number(/^#bilet=(\d{1,2})$/.exec(hash)?.[1]);
+  return n >= 1 && n <= 40 ? n : undefined;
+}
+
 /** Сообщение о пришедших итогах дуэлей. */
 function duelRepliesToast(names: string[]): void {
   playSound('reward');
@@ -314,9 +320,10 @@ export class App {
       if (next) this.open(next);
       else this.render(isRoute(e.state) ? e.state : { name: 'menu' });
     });
-    // Ссылка на дуэль (#duel=…): адрес очищается, чтобы «Назад» и перезагрузка не открывали её снова.
+    // Ссылка на дуэль (#duel=…) или билет (#bilet=…): адрес очищается, чтобы «Назад» и перезагрузка не открывали её снова.
     const link = hashHasDuel(location.hash) || hashHasLive(location.hash) ? location.hash : undefined;
-    history.replaceState({ name: 'menu' }, '', link ? location.pathname + location.search : undefined);
+    const ticket = ticketFromHash(location.hash);
+    history.replaceState({ name: 'menu' }, '', link || ticket ? location.pathname + location.search : undefined);
     // Статистика: новый игрок и вход с главного экрана — по разу, затем экраны по мере открытия.
     startStats();
     trackOnce('new-player', 'Новый игрок');
@@ -332,14 +339,23 @@ export class App {
     // Знакодекс: сообщение о новом знаке после любого верного ответа.
     window.setTimeout(() => watchNewSigns(progress, onProgressChange, () => playSound('reward')), 1500);
     if (link) void this.openLink(link);
-    // Первый запуск — короткое обучение (по ссылке на дуэль — в следующий раз, чтобы не мешать вызову).
+    else if (ticket) this.openTicket(ticket);
+    // Первый запуск — короткое обучение (по ссылке на дуэль или билет — в следующий раз, чтобы не мешать).
     else if (!getSettings().tutorial) void playTutorial().then(() => updateSettings({ tutorial: true }));
     window.addEventListener('hashchange', () => {
-      if (!hashHasDuel(location.hash) && !hashHasLive(location.hash)) return;
       const hash = location.hash;
+      const t = ticketFromHash(hash);
+      if (!t && !hashHasDuel(hash) && !hashHasLive(hash)) return;
       history.replaceState(history.state, '', location.pathname + location.search);
-      void this.openLink(hash);
+      if (t) this.openTicket(t);
+      else void this.openLink(hash);
     });
+  }
+
+  /** Билет по ссылке; под ним «Билеты», чтобы «Назад» вёл по обычному пути. */
+  private openTicket(ticket: number): void {
+    if (this.route.name !== 'tickets') this.open({ name: 'tickets' });
+    this.open({ name: 'ticket', ticket });
   }
 
   /** Ссылка на дуэль: по ссылке (`#duel=`) или комната дуэли в реальном времени (`#live=`). */

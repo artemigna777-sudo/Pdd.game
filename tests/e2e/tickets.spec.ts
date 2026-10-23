@@ -98,3 +98,16 @@ test('из разбора можно пройти билет заново, и н
   await page.getByRole('button', { name: 'Назад' }).tap();
   await expect(title(page)).toHaveText('Билеты');
 });
+
+test('ссылка со страницы билетов (#bilet=12) открывает билет в игре, «Назад» — список билетов', async ({ page }) => {
+  await page.goto('/?ref=seo#bilet=12');
+  await expect(title(page)).toHaveText('Билет 12');
+  await expect(page.locator('.card__meta')).toContainText('Вопрос 1');
+  // Адрес очищен: перезагрузка не открывает билет снова.
+  expect(new URL(page.url()).hash).toBe('');
+  await page.goBack();
+  await expect(title(page)).toHaveText('Билеты');
+  // Неверный номер билета ничего не открывает.
+  await page.goto('/#bilet=41');
+  await expect(page.getByRole('button', { name: 'Билеты' })).toBeVisible();
+});

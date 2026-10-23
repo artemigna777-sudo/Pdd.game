@@ -290,3 +290,205 @@ def haze(sc, color=(0.022, 0.032, 0.06), start=15.0, depth=220.0, amount=0.85):
     nt.links.new(k.outputs['Value'], mix.inputs['Fac'])
     nt.links.new(src, mix.inputs[1])
     nt.links.new(mix.outputs['Image'], glare.inputs['Image'])
+
+
+# ─── Освещённые сцены (ролик 41): небо, звёзды, рельеф, солнце ────────────────
+
+def look(sc, transform='AgX', exposure=0.0):
+    """Сцены с настоящим светом мягче держат яркие блики в AgX (неон в Standard выгорал бы в белое пятно)."""
+    sc.view_settings.view_transform = transform
+    sc.view_settings.exposure = exposure
+
+
+def sky(sc, zenith=(0.0, 0.0, 0.0), horizon=(0.0, 0.0, 0.0), stars=0.0, strength=1.0):
+    """Небо: градиент от горизонта к зениту и звёзды (точки Вороного по направлению взгляда)."""
+    nt = sc.world.node_tree
+    bg = nt.nodes['Background']
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    nt.links.new(tc.outputs['Generated'], sep.inputs['Vector'])
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    e = ramp.color_ramp.elements
+    e[0].position, e[0].color = 0.0, (*horizon, 1)
+    e[1].position, e[1].color = 0.45, (*zenith, 1)
+    mp = nt.nodes.new('ShaderNodeMapRange')
+    mp.inputs['From Min'].default_value = 0.0
+    mp.inputs['From Max'].default_value = 1.0
+    nt.links.new(sep.outputs['Z'], mp.inputs['Value'])
+    nt.links.new(mp.outputs['Result'], ramp.inputs['Fac'])
+    col = ramp.outputs['Color']
+    if stars:
+        vor = nt.nodes.new('ShaderNodeTexVoronoi')
+        vor.inputs['Scale'].default_value = 260
+        nt.links.new(tc.outputs['Generated'], vor.inputs['Vector'])
+        lt = nt.nodes.new('ShaderNodeMath')
+        lt.operation = 'LESS_THAN'
+        lt.inputs[1].default_value = 0.045
+        nt.links.new(vor.outputs['Distance'], lt.inputs[0])
+        br = nt.nodes.new('ShaderNodeMath')
+        br.operation = 'MULTIPLY'
+        nt.links.new(lt.outputs['Value'], br.inputs[0])
+        nt.links.new(vor.outputs['Color'], br.inputs[1])
+        k = nt.nodes.new('ShaderNodeMath')
+        k.operation = 'MULTIPLY'
+        k.inputs[1].default_value = stars
+        nt.links.new(br.outputs['Value'], k.inputs[0])
+        add = nt.nodes.new('ShaderNodeMixRGB')
+        add.blend_type = 'ADD'
+        add.inputs['Fac'].default_value = 1.0
+        nt.links.new(col, add.inputs[1])
+        nt.links.new(k.outputs['Value'], add.inputs[2])
+        col = add.outputs['Color']
+    nt.links.new(col, bg.inputs['Color'])
+    bg.inputs['Strength'].default_value = strength
+
+
+def sun(rot, strength=4.0, color=(1, 0.98, 0.94), angle=0.6):
+    """Солнце: rot — (наклон, 0, азимут) в радианах; angle — размытие тени в градусах."""
+    bpy.ops.object.light_add(type='SUN', rotation=rot)
+    s = bpy.context.object
+    s.data.energy = strength
+    s.data.color = color
+    s.data.angle = math.radians(angle)
+    s.data.shadow_maximum_resolution = 0.01  # тени чуть грубее: на процессоре самые мелкие — самые дорогие
+    return s
+
+
+def terrain(name, size, res, height, material, loc=(0, 0, 0)):
+    """Рельеф: сетка res×res на квадрате size; height(x, y) получает массивы numpy (мировые координаты)."""
+    import numpy as np
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=res, y_subdivisions=res, size=size, location=loc)
+    o = bpy.context.object
+    o.name = name
+    me = o.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    co[:, 2] = height(co[:, 0] + loc[0], co[:, 1] + loc[1])
+    me.vertices.foreach_set('co', co.ravel())
+    me.update()
+    me.polygons.foreach_set('use_smooth', [True] * len(me.polygons))
+    me.materials.append(material)
+    return o
+
+
+def craters(seed, n, area, rmin, rmax, keep=None):
+    """Кратеры: список (x, y, радиус, глубина) и функция высоты (numpy): чаша, вал вокруг и пологие волны.
+    keep — (x, y, радиус): ровная площадка без кратеров (место посадки, след)."""
+    import random as _r
+    import numpy as np
+    rnd = _r.Random(seed)
+    cs = []
+    while len(cs) < n:
+        r = rmin * (rmax / rmin) ** (rnd.random() ** 2.4)
+        x, y = rnd.uniform(area[0], area[1]), rnd.uniform(area[2], area[3])
+        if keep and ((x - keep[0]) ** 2 + (y - keep[1]) ** 2) ** 0.5 < keep[2] + 2.2 * r:
+            continue
+        cs.append((x, y, r, r * rnd.uniform(0.12, 0.2)))
+
+    def h(x, y):
+        z = 0.22 * np.sin(x * 0.13 + 1.0) * np.cos(y * 0.11) + 0.12 * np.sin(x * 0.37 + y * 0.29) + 0.05 * np.sin(x * 1.3) * np.sin(y * 1.1)
+        for cx, cy, r, d in cs:
+            q = np.hypot(x - cx, y - cy) / r
+            z = z - np.where(q < 1.0, d * (1 - q * q), 0.0) + d * 0.35 * np.exp(-((q - 1.0) / 0.28) ** 2)
+        return z
+    return cs, h
+
+
+def regolith(name='regolith', base=0.13, grit=0.25, grain=60):
+    """Лунный грунт: серый, матовый, с пятнами и мелкой «крупой» (рельеф только у матового грунта — без бликов)."""
+    m = mat(name, (base, base, base * 0.97))
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    b.inputs['Roughness'].default_value = 1.0
+    b.inputs['Specular IOR Level'].default_value = 0.1
+    n1 = nt.nodes.new('ShaderNodeTexNoise')
+    n1.inputs['Scale'].default_value = 0.6
+    n1.inputs['Detail'].default_value = 3  # больше октав шума на процессоре дорого, а на глаз не видно
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].color = (base * 0.6, base * 0.6, base * 0.6, 1)
+    ramp.color_ramp.elements[1].color = (base * 1.35, base * 1.33, base * 1.3, 1)
+    nt.links.new(n1.outputs['Fac'], ramp.inputs['Fac'])
+    nt.links.new(ramp.outputs['Color'], b.inputs['Base Color'])
+    n2 = nt.nodes.new('ShaderNodeTexNoise')
+    n2.inputs['Scale'].default_value = grain  # для крупного плана (след) — мельче
+    n2.inputs['Detail'].default_value = 1
+    bump = nt.nodes.new('ShaderNodeBump')
+    bump.inputs['Strength'].default_value = grit
+    nt.links.new(n2.outputs['Fac'], bump.inputs['Height'])
+    nt.links.new(bump.outputs['Normal'], b.inputs['Normal'])
+    return m
+
+
+def foil(name='foil', color=(1.0, 0.6, 0.18)):
+    """Мятая золотая фольга (оранжевый акцент стиля): металл с крупным рельефом — блики дробятся."""
+    m = mat(name, color)
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    # Полуметалл: в космосе чистый металл отражает чёрное небо и выглядит тёмным. Лёгкое свечение — акцент стиля.
+    b.inputs['Metallic'].default_value = 0.55
+    b.inputs['Roughness'].default_value = 0.38
+    b.inputs['Emission Color'].default_value = (*color, 1)
+    b.inputs['Emission Strength'].default_value = 0.12
+    n = nt.nodes.new('ShaderNodeTexNoise')
+    n.inputs['Scale'].default_value = 7
+    n.inputs['Detail'].default_value = 3
+    n.inputs['Distortion'].default_value = 1.5
+    bump = nt.nodes.new('ShaderNodeBump')
+    bump.inputs['Strength'].default_value = 0.55
+    nt.links.new(n.outputs['Fac'], bump.inputs['Height'])
+    nt.links.new(bump.outputs['Normal'], b.inputs['Normal'])
+    return m
+
+
+def metal(name, color=(0.5, 0.52, 0.55), rough=0.35):
+    m = mat(name, color)
+    b = m.node_tree.nodes['Principled BSDF']
+    b.inputs['Metallic'].default_value = 1.0
+    b.inputs['Roughness'].default_value = rough
+    return m
+
+
+def glow_cone(name, loc, r1, r2, depth, color, strength=2.0, alpha=0.35, rot=(0, 0, 0)):
+    """Полупрозрачное свечение (струя двигателя): излучение, смешанное с прозрачностью."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.remove(nt.nodes['Principled BSDF'])
+    out = nt.nodes['Material Output']
+    em = nt.nodes.new('ShaderNodeEmission')
+    em.inputs['Color'].default_value = (*color, 1)
+    em.inputs['Strength'].default_value = strength
+    tr = nt.nodes.new('ShaderNodeBsdfTransparent')
+    lw = nt.nodes.new('ShaderNodeLayerWeight')
+    lw.inputs['Blend'].default_value = 0.6
+    inv = nt.nodes.new('ShaderNodeMath')
+    inv.operation = 'MULTIPLY_ADD'
+    inv.inputs[1].default_value = -alpha
+    inv.inputs[2].default_value = alpha
+    nt.links.new(lw.outputs['Facing'], inv.inputs[0])
+    mix = nt.nodes.new('ShaderNodeMixShader')
+    nt.links.new(inv.outputs['Value'], mix.inputs['Fac'])
+    nt.links.new(tr.outputs['BSDF'], mix.inputs[1])
+    nt.links.new(em.outputs['Emission'], mix.inputs[2])
+    nt.links.new(mix.outputs['Shader'], out.inputs['Surface'])
+    m.surface_render_method = 'DITHERED'  # «смешивание» (BLENDED) на процессоре втрое медленнее
+    bpy.ops.mesh.primitive_cone_add(vertices=40, radius1=r1, radius2=r2, depth=depth, location=loc, rotation=rot, end_fill_type='NOTHING')
+    o = bpy.context.object
+    o.name = name
+    o.data.materials.append(m)
+    return o
+
+
+def still_or_anim(sc, out, still):
+    """Кадр для пробы (по порядку от первого кадра — частицам нужна история) или вся анимация в PNG."""
+    sc.render.image_settings.file_format = 'PNG'
+    if still:
+        for f in range(sc.frame_start, still + 1):
+            sc.frame_set(f)
+        sc.render.filepath = os.path.join(out, f'still_{still:04d}.png')
+        bpy.ops.render.render(write_still=True)
+    else:
+        sc.render.filepath = os.path.join(out, '')
+        bpy.ops.render.render(animation=True)
+    print('DONE')

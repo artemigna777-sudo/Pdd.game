@@ -51,6 +51,8 @@ export interface Shot6 {
   /** Окружение под героями (тело SVG, см. `scenery6.ts`): рисуется тусклым пером `BG` без свечения
    *  и едет вместе с камерой. Нет — пустой тёмный фон, как в роликах 34–37. */
   bg?: string;
+  /** Мягкое затемнение верха кадра под подписью (для светлого неба в 3D-кадрах). */
+  shade?: boolean;
 }
 
 export interface Video6 {
@@ -100,6 +102,7 @@ function hook(v: Video6, T: Timing6): { html: string; tweens: string } {
         ${s.video ? '' : '<div class="spot"></div>'}
         ${scene ? `<div class="cam" id="c${i}">${s.bg ? svgLines(BG, s.bg, 3) : ''}${svgLines(DLG, scene, 6, 'style="filter: drop-shadow(0 0 3px rgba(255,255,255,0.75)) drop-shadow(0 0 12px rgba(255,255,255,0.25))"')}</div>` : ''}
         ${s.ui ?? ''}
+        ${s.shade ? '<div style="position:absolute;left:0;right:0;top:0;height:760px;background:linear-gradient(rgba(0,0,0,0.62),rgba(0,0,0,0.35) 55%,rgba(0,0,0,0))"></div>' : ''}
         <div class="hcap${s.accent ? ' acc' : ''}">${s.cap}${s.sub ? `<div class="hsub">${s.sub}</div>` : ''}</div>
       </div>`);
   });

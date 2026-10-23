@@ -37,3 +37,4 @@ trailer/promo/.*.hf-transaction-*/
 trailer/promo/work-*/
 trailer/ads/clips/
 __pycache__/
+.claude/settings.local.json

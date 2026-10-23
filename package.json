@@ -18,6 +18,7 @@
     "test:e2e": "playwright test",
     "icons": "tsx scripts/icons.ts",
     "signs": "tsx scripts/signs.ts",
+    "seo": "tsx scripts/seo.ts",
     "situations": "tsx scripts/situations.ts",
     "android": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease bundleRelease",
     "android:res": "tsx scripts/android-res.ts"

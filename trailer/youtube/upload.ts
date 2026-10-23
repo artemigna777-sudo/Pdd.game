@@ -160,7 +160,7 @@ async function upload(token: string, file: string, meta: VideoMeta): Promise<str
         r = await fetch(session, {
           method: 'PUT',
           headers: { 'content-length': String(end - sent), 'content-range': `bytes ${sent}-${end - 1}/${size}` },
-          body: readChunk(fd, sent, end - sent),
+          body: new Uint8Array(readChunk(fd, sent, end - sent)),
         });
       } catch {
         r = new Response(null, { status: 599 });

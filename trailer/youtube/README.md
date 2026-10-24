@@ -80,3 +80,14 @@ ffmpeg -y -i trailer/ads/out/$id/raw.mp4 -i trailer/ads/out/$id/sfx.wav -map 0:v
 ```
 
 (`raw.mp4` и `sfx.wav` появляются после `sh trailer/ads/render7.sh <id>` или `render6.sh`.)
+
+## Загружено
+
+| Дата | Ролик | YouTube Studio |
+|---|---|---|
+| 23.10.2026 | 39 «Папа водит 20 лет» | https://studio.youtube.com/video/up4S5pAIIo0/edit |
+| 24.10.2026 | 34 «950 попыток» | https://studio.youtube.com/video/cKJMpt3Cjh4/edit |
+| 24.10.2026 | 21 «Сегодня теория» (Икар) | https://studio.youtube.com/video/pDOkejiRpL8/edit |
+| 24.10.2026 | 36 «139 раз» | https://studio.youtube.com/video/WzgYBupnYh8/edit |
+| 24.10.2026 | 22 Сизиф | https://studio.youtube.com/video/RxMHJh7UCAY/edit |
+| 24.10.2026 | 25 «Титаник» | https://studio.youtube.com/video/UXtk2y0b1Jo/edit |

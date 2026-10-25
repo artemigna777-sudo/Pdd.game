@@ -18,7 +18,12 @@ fi
 mkdir -p mp4
 if [ -n "$HQ" ]; then raw=14 crf=17 rate=20M; else raw=20 crf=23 rate=9M; fi
 (cd "out/$id" && npx -y hyperframes@0.8.119 render . --fps 30 --crf $raw --video-frame-format png -o raw.mp4 >/dev/null 2>&1)
-ffmpeg -y -loglevel error -i "out/$id/raw.mp4" -c:v libx264 -preset slow -crf $crf -maxrate $rate -bufsize $rate -pix_fmt yuv420p \
+# HyperFrames сводит музыку слишком тихо (в паузах −56 дБ), поэтому звук сводим сами: музыка +7 дБ — на ~10 дБ
+# тише голоса, как в образце.
+ffmpeg -y -loglevel error -i "out/$id/vo.wav" -i "out/$id/music.wav" -filter_complex \
+  "[0]aresample=44100,aformat=channel_layouts=stereo[v];[1]aresample=44100,aformat=channel_layouts=stereo,volume=7dB[m];[v][m]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95,loudnorm=I=-14:TP=-1:LRA=11" \
+  -ar 44100 "out/$id/mix.wav"
+ffmpeg -y -loglevel error -i "out/$id/raw.mp4" -i "out/$id/mix.wav" -map 0:v -map 1:a -shortest -c:v libx264 -preset slow -crf $crf -maxrate $rate -bufsize $rate -pix_fmt yuv420p \
   -c:a aac -b:a 192k -ar 44100 -movflags +faststart "mp4/kurier-pdd-ad-$id.mp4"
 ffmpeg -y -loglevel error -i "mp4/kurier-pdd-ad-$id.mp4" -c:v copy -an -movflags +faststart "mp4/kurier-pdd-ad-$id-bez-zvuka.mp4"
 echo "mp4/kurier-pdd-ad-$id.mp4"

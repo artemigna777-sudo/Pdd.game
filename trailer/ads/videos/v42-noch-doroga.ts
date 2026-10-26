@@ -17,7 +17,7 @@ const END = 155.5;
 /* ---------- Мелкие детали только этого ролика ---------- */
 
 /** Наш хэтчбек сзади: белый, старый, с «У» нет — права уже есть. */
-const carRear = (x: number, y: number, s: number, o: { brake?: string; id?: string } = {}) => `<g ${o.id ? `id="${o.id}"` : ''}><g transform="translate(${x} ${y}) scale(${s})">
+export const carRear = (x: number, y: number, s: number, o: { brake?: string; id?: string } = {}) => `<g ${o.id ? `id="${o.id}"` : ''}><g transform="translate(${x} ${y}) scale(${s})">
   <ellipse cx="0" cy="150" rx="250" ry="30" fill="#000" opacity="0.5"/>
   <path d="M-230 120 L-230 -20 Q-220 -70 -170 -80 L-130 -200 Q-120 -230 -80 -232 L80 -232 Q120 -230 130 -200 L170 -80 Q220 -70 230 -20 L230 120 Z" fill="#c9ccd6"/>
   <path d="M-115 -195 L115 -195 L150 -90 L-150 -90 Z" fill="#141a2e"/><path d="M-60 -185 L-20 -185 L-80 -100 L-120 -100 Z" fill="#2c3656" opacity="0.6"/>
@@ -29,7 +29,7 @@ const carRear = (x: number, y: number, s: number, o: { brake?: string; id?: stri
 </g></g>`;
 
 /** Вид на героя через лобовое стекло: рамка кузова, капот, отсветы. */
-const windshield = (inner: string, o: { glare?: boolean } = {}) => `
+export const windshield = (inner: string, o: { glare?: boolean } = {}) => `
   <rect width="1080" height="1920" fill="#0b0f1c"/>
   <rect x="120" y="360" width="840" height="900" fill="#10162a"/>
   <rect x="300" y="420" width="480" height="420" rx="40" fill="#1b2340"/>
@@ -42,16 +42,16 @@ const windshield = (inner: string, o: { glare?: boolean } = {}) => `
   ${o.glare !== false ? '<path d="M200 380 L330 370 L150 1170 L60 1180 Z" fill="#fff" opacity="0.05"/><path d="M700 330 L760 335 L540 1140 L500 1140 Z" fill="#fff" opacity="0.04"/>' : ''}`;
 
 /** Руль снизу кадра у героя (через стекло) и руки на нём. */
-const wheelHands = `<path d="M330 1180 Q340 1000 540 990 Q740 1000 750 1180" stroke="#06080f" stroke-width="40" fill="none"/>
+export const wheelHands = `<path d="M330 1180 Q340 1000 540 990 Q740 1000 750 1180" stroke="#06080f" stroke-width="40" fill="none"/>
   <ellipse cx="380" cy="1060" rx="42" ry="54" fill="${P.skin2}"/><ellipse cx="700" cy="1060" rx="42" ry="54" fill="${P.skin2}"/>`;
 
 /** Подписанные карточки выбора внизу (как в образце). */
-const choiceCard = (letter: string, color: string, title: string, sub: string, y: number, id: string) => `<div id="${id}" style="position:absolute;left:70px;right:70px;top:${y}px;height:190px;border-radius:30px;border:4px solid ${color};background:rgba(10,13,24,0.88);display:flex;align-items:center;gap:30px;padding:0 34px;box-shadow:0 0 40px ${color}55">
+export const choiceCard = (letter: string, color: string, title: string, sub: string, y: number, id: string) => `<div id="${id}" style="position:absolute;left:70px;right:70px;top:${y}px;height:190px;border-radius:30px;border:4px solid ${color};background:rgba(10,13,24,0.88);display:flex;align-items:center;gap:30px;padding:0 34px;box-shadow:0 0 40px ${color}55">
   <div style="width:112px;height:112px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:66px;color:#10131f;flex:none">${letter}</div>
   <div><div style="font-weight:900;font-size:44px;line-height:1.05;color:${color};text-transform:uppercase">${title}</div><div style="font-weight:700;font-size:28px;color:#c9cfdf;margin-top:8px">${sub}</div></div></div>`;
 
 /** Мигание «как сердце»: двойной удар каждые ~1,1 с. */
-const heartbeat = (sel: string, t0: number, t1: number) => {
+export const heartbeat = (sel: string, t0: number, t1: number) => {
   let s = '';
   for (let t = t0; t < t1 - 0.2; t += 1.1) {
     s += `tl.fromTo('${sel}', { opacity: 0.08, scale: 0.92, transformOrigin: '50% 50%' }, { opacity: 1, scale: 1.08, duration: 0.09 }, ${t.toFixed(2)});
@@ -63,7 +63,7 @@ const heartbeat = (sel: string, t0: number, t1: number) => {
 };
 
 /** Дорога в лесу «от водителя» с фарами (общий фон многих кадров). */
-const forestRoad = (o: { y?: number; beams?: boolean; moon?: boolean; seed?: number; extra?: string } = {}) => {
+export const forestRoad = (o: { y?: number; beams?: boolean; moon?: boolean; seed?: number; extra?: string } = {}) => {
   const y = o.y ?? 900;
   return `${sky({ moon: o.moon ? [820, 300] : undefined, seed: o.seed ?? 4 })}${forest(y, o.seed ?? 3)}${roadPOV(y, { beams: o.beams ?? true })}
     ${pines(y + 60, 520, '#0a0f1e', (o.seed ?? 3) + 40, -200, 200, 0.5, false)}${pines(y + 60, 520, '#0a0f1e', (o.seed ?? 3) + 41, 900, 1300, 0.5, false)}
@@ -71,7 +71,7 @@ const forestRoad = (o: { y?: number; beams?: boolean; moon?: boolean; seed?: num
 };
 
 /** Ель для плана сбоку с объявлениями. */
-const trunk = (x: number, w: number) => `<rect x="${x - w / 2}" y="0" width="${w}" height="1920" fill="#2a2333"/><rect x="${x - w / 2}" y="0" width="${w * 0.3}" height="1920" fill="#3a3045" opacity="0.6"/>`;
+export const trunk = (x: number, w: number) => `<rect x="${x - w / 2}" y="0" width="${w}" height="1920" fill="#2a2333"/><rect x="${x - w / 2}" y="0" width="${w * 0.3}" height="1920" fill="#3a3045" opacity="0.6"/>`;
 
 /* ---------- Кадры ---------- */
 
@@ -242,7 +242,7 @@ add(T(136), T(141), `${forestRoad({ y: 860, seed: 22 })}<g id="on25">${glow(500,
   cam: { s: [1.0, 1.05], oy: 860 },
   tweens: (t0) => `tl.fromTo('#on25', { scale: 0.4, transformOrigin: '540px 860px' }, { scale: 1.6, duration: ${(T(141) - t0).toFixed(2)}, ease: 'power1.in' }, ${t0});`,
 });
-const beamIcon = (x: number, y: number, s: number, hi: boolean, id: string) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">${glow(0, 0, 160, hi ? 'gGlowC' : 'gGlowW', 'opacity="0.6"')}
+export const beamIcon = (x: number, y: number, s: number, hi: boolean, id: string) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">${glow(0, 0, 160, hi ? 'gGlowC' : 'gGlowW', 'opacity="0.6"')}
   <path d="M-30 -60 Q-90 -60 -90 0 Q-90 60 -30 60 Z" fill="${hi ? '#3f9cff' : '#4ee28a'}"/>
   ${[-40, -15, 10, 35].map((dy) => `<path d="M-10 ${hi ? dy : dy - 6} L70 ${hi ? dy : dy + 22}" stroke="${hi ? '#3f9cff' : '#4ee28a'}" stroke-width="12" stroke-linecap="round"/>`).join('')}</g></g>`;
 add(T(141), T(145), `<rect width="1080" height="1920" fill="#06080f"/><rect x="140" y="620" width="800" height="440" rx="50" fill="#0a1020"/>

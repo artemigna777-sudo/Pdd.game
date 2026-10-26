@@ -47,6 +47,8 @@ export interface Video8 {
   flashes?: [number, number, number, string?][];
   /** Шапку и субтитры прячем с этого момента (финальная карточка). */
   plainFrom?: number;
+  /** Номер части в шапке (по умолчанию 1). */
+  part?: number;
 }
 
 export const P = {
@@ -224,7 +226,7 @@ ${shots}
       <div id="tex"></div>
       <div id="vig"></div>
 ${overlays}
-      <div class="clip hud" data-start="0" data-duration="${plain}"><div class="clk"><i id="rec"></i>${clock}</div><div class="part">ЧАСТЬ 1</div></div>
+      <div class="clip hud" data-start="0" data-duration="${plain}"><div class="clk"><i id="rec"></i>${clock}</div><div class="part">ЧАСТЬ ${v.part ?? 1}</div></div>
 ${subs}
       <div id="flash"></div>
     </div>

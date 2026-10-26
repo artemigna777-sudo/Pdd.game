@@ -179,7 +179,7 @@ export function buildVideo8(v: Video8): string {
     .map(
       (s, i) =>
         `<div class="clip sub" data-start="${s.t0.toFixed(3)}" data-duration="${(Math.min(s.t1, plain) - s.t0).toFixed(3)}">${s.words
-          .map((w, j) => `<b id="w${i}_${j}"${w.color ? ` style="color:${w.color}"` : ''}>${w.text}</b>`)
+          .map((w, j) => `<b id="w${i}_${j}" style="opacity:0.3${w.color ? `;color:${w.color}` : ''}">${w.text}</b>`)
           .join('')}</div>`,
     )
     .join('\n');
@@ -187,7 +187,7 @@ export function buildVideo8(v: Video8): string {
     .filter((s) => s.t0 < plain)
     .map((s, i) =>
       s.words
-        .map((w, j) => `tl.fromTo('#w${i}_${j}', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.12, ease: 'back.out(2)' }, ${w.t.toFixed(3)});`)
+        .map((w, j) => `tl.fromTo('#w${i}_${j}', { opacity: 0.3 }, { opacity: 1, duration: 0.1, ease: 'power1.out' }, ${w.t.toFixed(3)});`)
         .join('\n'),
     )
     .join('\n');

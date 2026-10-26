@@ -9,10 +9,11 @@ import { bridgePOV, carTop, ghostPerson, hero, glow, logTruck, noteSheet, pines,
 import { carRear, forestRoad, heartbeat, choiceCard, windshield, wheelHands } from './v42-noch-doroga.ts';
 
 const words: Word[] = JSON.parse(readFileSync(new URL('./v43-words.json', import.meta.url), 'utf8'));
-/** Сдвиг: первые 7,2 с — «Ранее» (повтор части 1), озвучка начинается после них. */
-const OFF = 7.2;
+const recapWords: Word[] = (JSON.parse(readFileSync(new URL('./v43-recap-words.json', import.meta.url), 'utf8')) as number[][]).map((w) => [...w, 0] as unknown as Word);
+/** Сдвиг: первые 17,7 с — «Ранее» (пересказ части 1 с озвучкой), основная озвучка начинается после них. */
+const OFF = 17.7;
 const T = (i: number) => words[i][1] + OFF;
-const END = 198.7;
+const END = 191.5 + OFF;
 /** Центр правой (lx) и левой (lxL) полосы на глубине y: фура и хэтчбек едут в одной полосе. */
 const lx = (y: number) => 540 + (380 * (y - 880)) / 1040;
 const lxL = (y: number) => 540 - (380 * (y - 880)) / 1040;
@@ -57,10 +58,10 @@ const roadsideExtras = (y0: number, id: string) => {
 };
 const fogDrift = (id: string, t0: number, t1: number) => `tl.fromTo('#${id}', { x: -160 }, { x: 160, duration: ${(t1 - t0).toFixed(2)}, ease: 'none' }, ${t0.toFixed(2)});`;
 // «Ранее»: короткий пересказ части 1 (озвучки нет, только субтитры и музыка).
-add(0, 2.6, driver('calm'), { cam: { s: [1.0, 1.1], oy: 700 } });
-add(2.6, 5.0, `<rect width="1080" height="1920" fill="#0d0f17"/>${glow(540, 760, 760, 'gLamp')}${noteSheet(540, 800, 860, 940, [{ text: 'Если читаешь это —' }, { text: 'ты уже на экзамене.' }, { text: 'Ошибёшься —', color: '#b8231f' }, { text: 'останешься на ней.', color: '#b8231f' }], { id: 'nr', head: '2006', rot: -2 })}`, { cam: { s: [1.0, 1.1], oy: 760 } });
+add(0, 7.4, driver('calm'), { cam: { s: [1.0, 1.1], oy: 700 } });
+add(7.4, 13.4, `<rect width="1080" height="1920" fill="#0d0f17"/>${glow(540, 760, 760, 'gLamp')}${noteSheet(540, 800, 860, 940, [{ text: 'Если читаешь это —' }, { text: 'ты уже на экзамене.' }, { text: 'Ошибёшься —', color: '#b8231f' }, { text: 'останешься на ней.', color: '#b8231f' }], { id: 'nr', head: '2006', rot: -2 })}`, { cam: { s: [1.0, 1.1], oy: 760 } });
 const strip = (y: number, rot: number, n: number, t: string) => `<g transform="translate(540 ${y}) rotate(${rot})"><rect x="-400" y="-70" width="800" height="140" rx="6" fill="${P.paper}"/><rect x="-440" y="-84" width="120" height="40" fill="rgba(230,214,170,0.75)" transform="rotate(-20 -380 -60)"/><text x="-370" y="-18" font-family="Montserrat" font-weight="900" font-size="28" fill="#3a3f55">ПРАВИЛО <tspan fill="#d42f2f">№${n}</tspan></text><text x="-370" y="30" font-family="Montserrat" font-weight="900" font-size="42" fill="#1a1d2c">${t}</text></g>`;
-add(5.0, OFF, `<rect width="1080" height="1920" fill="#0b0f1c"/>${[['Мигающий жёлтый', -3], ['Знак «Стоп»', 2], ['Дальний свет за 150 м', -2], ['Машина у перехода', 3], ['На мосту не обгоняй', -2]].map(([t, r], k) => strip(360 + k * 190, r as number, k + 1, t as string)).join('')}`, { cam: { s: [1.0, 1.06], oy: 800 } });
+add(13.4, OFF, `<rect width="1080" height="1920" fill="#0b0f1c"/>${[['Мигающий жёлтый', -3], ['Знак «Стоп»', 2], ['Дальний свет за 150 м', -2], ['Машина у перехода', 3], ['На мосту не обгоняй', -2]].map(([t, r], k) => strip(360 + k * 190, r as number, k + 1, t as string)).join('')}`, { cam: { s: [1.0, 1.06], oy: 800 } });
 // 0. Он едет за фурой.
 add(OFF, T(14), `${road(880, { moon: true })}${truckRear(lx(1010), 1010, 0.62, { id: 'tr0' })}${brakeLights(lx(1010), 1010, 0.62, 'bl0')}${carRear(lx(1560), 1560, 0.95, { id: 'car0' })}`, {
   cam: { s: [1.08, 1.0], oy: 1300 },
@@ -240,7 +241,7 @@ const overlays = [
   rule(10, 'На мосту не останавливайся', 281, 319),
   {
     t0: T(361),
-    t1: T(394),
+    t1: T(382),
     html: `<div style="position:absolute;left:0;right:0;top:300px;text-align:center;font-weight:900;font-size:62px;color:#fff;letter-spacing:1px">ЧТО ВЫБЕРЕШЬ?</div>
       ${choiceCard('А', P.yellow, 'Заглянуть в кузов', 'выйти и посмотреть внутрь', 430, 'ca')}
       ${choiceCard('Б', P.cyan, 'Уехать, не оглядываясь', 'вдавить газ', 660, 'cb')}
@@ -275,11 +276,11 @@ const text: Record<number, string> = {
 const cap = (t0: number, t1: number, ws: string[], colors: Record<number, string> = {}) => ({
   t0, t1, words: ws.map((text, i) => ({ text, t: t0 + ((t1 - t0 - 0.2) * i) / ws.length, color: colors[i] })),
 });
-const recapSubs = [
-  cap(0.1, 2.5, ['РАНЕЕ:', 'ему', '18,', 'права', '—', '3', 'дня'], { 0: P.yellow, 2: P.cyan }),
-  cap(2.7, 4.9, ['Записка:', 'ошибёшься', '—', 'останешься', 'на', 'дороге'], { 1: P.red, 3: P.red }),
-  cap(5.1, OFF - 0.1, ['5', 'правил.', 'Ты', 'выбрал', 'ехать', 'за', 'фурой'], { 1: P.yellow, 6: P.cyan }),
-];
+const recapSubs = makeSubs(recapWords, {
+  text: { 8: 'правам', 1: 'октября,' },
+  color: { 6: P.cyan, 12: P.yellow, 14: P.red, 17: P.red, 20: P.yellow, 26: P.cyan },
+  hide: [[9, 9]],
+});
 export const v43: Video8 = {
   id: '43-noch-doroga-2',
   title: 'Правила ночной дороги. Часть 2',

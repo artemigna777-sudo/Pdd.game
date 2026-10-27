@@ -14,7 +14,7 @@ const timingUrl = new URL('./v44-timing.json', import.meta.url);
 const timing = existsSync(timingUrl) ? (JSON.parse(readFileSync(timingUrl, 'utf8')) as { off: number; recap: [number, number][]; main: [number, number][] }) : null;
 
 /* ---------- Время предложений ---------- */
-const est = (t: string[], t0: number): [number, number][] => {
+export const est = (t: string[], t0: number): [number, number][] => {
   let t_ = t0;
   return t.map((s) => {
     const d = s.replace(/\*/g, '').length * 0.068 + 0.5;
@@ -32,7 +32,7 @@ const E = (i: number) => mainT[i - 1][1];
 const END = mainT[mainT.length - 1][1] + 2.2;
 
 /** Слова предложений с временем (пропорционально длине слов) и цветом из пометок: *красный*, ^жёлтый^, ~голубой~. */
-const toWords = (sent: string[], tt: [number, number][]): { words: Word[]; color: Record<number, string> } => {
+export const toWords = (sent: string[], tt: [number, number][]): { words: Word[]; color: Record<number, string> } => {
   const words: Word[] = [];
   const color: Record<number, string> = {};
   sent.forEach((s, i) => {
@@ -58,11 +58,11 @@ const shots: Shot8[] = [];
 const add = (t0: number, t1: number, art: string, rest: Partial<Shot8> = {}) => shots.push({ t0, t1, art: svg(art), ...rest });
 const dark = '<rect width="1080" height="1920" fill="#06080f"/>';
 
-const driver = (face: 'calm' | 'worry' | 'scared' | 'shock' | 'focus' | 'side') =>
+export const driver = (face: 'calm' | 'worry' | 'scared' | 'shock' | 'focus' | 'side') =>
   windshield(`${hero(540, 680, 1.05, face, { light: P.cyan })}${wheelHands}`);
 
 /** Фура сзади с распахнутыми дверями: внутри тёмный кузов с рядами огней приборов. */
-const truckOpen = (x: number, y: number, s: number, id = 'to', lit = true) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">
+export const truckOpen = (x: number, y: number, s: number, id = 'to', lit = true) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">
   ${glow(0, -80, 620, lit ? 'gGlowC' : 'gLamp', 'opacity="0.35"')}
   <rect x="-300" y="-520" width="600" height="600" rx="16" fill="#1e293b"/><rect x="-270" y="-490" width="540" height="540" fill="#04060c"/>
   ${[0, 1, 2, 3].flatMap((r) => [0, 1, 2].map((c) => `<rect x="${-220 + c * 160}" y="${-440 + r * 130}" width="110" height="60" rx="14" fill="#0f1526"/><rect x="${-196 + c * 160}" y="${-428 + r * 130}" width="62" height="18" rx="6" fill="${lit ? '#35c4ef' : '#27304a'}" opacity="${lit ? 0.7 : 1}"/>`)).join('')}
@@ -71,7 +71,7 @@ const truckOpen = (x: number, y: number, s: number, id = 'to', lit = true) => `<
   </g></g>`;
 
 /** Ряды учебных машин спереди: фары выключены, на лобовом — табличка с годом, на крыше «У». */
-const learnerFront = (x: number, y: number, s: number, year: string, glowOn: boolean, id = '') => `<g ${id ? `id="${id}"` : ''}><g transform="translate(${x} ${y}) scale(${s})">
+export const learnerFront = (x: number, y: number, s: number, year: string, glowOn: boolean, id = '') => `<g ${id ? `id="${id}"` : ''}><g transform="translate(${x} ${y}) scale(${s})">
   <rect x="-110" y="-70" width="220" height="130" rx="30" fill="#334155"/><rect x="-86" y="-96" width="172" height="62" rx="18" fill="#1b2440"/>
   <rect x="-40" y="-84" width="80" height="26" rx="6" fill="#e8dcb8"/><text x="0" y="-64" text-anchor="middle" font-family="Montserrat" font-weight="900" font-size="20" fill="#2a2d38">${year}</text>
   <polygon points="0,-150 -30,-100 30,-100" fill="#ffc23d" stroke="#d92b2b" stroke-width="4"/><text x="0" y="-108" text-anchor="middle" font-family="Montserrat" font-weight="900" font-size="26" fill="#10131f">У</text>
@@ -79,7 +79,7 @@ const learnerFront = (x: number, y: number, s: number, year: string, glowOn: boo
   </g></g>`;
 
 /** Герой со спины (в полный рост): капюшон, плечи, ноги — шаги анимируются по id `<id>-l`, `<id>-r`. */
-const walker = (x: number, y: number, s: number, id: string) => `<g transform="translate(${x} ${y}) scale(${s})">
+export const walker = (x: number, y: number, s: number, id: string) => `<g transform="translate(${x} ${y}) scale(${s})">
   <ellipse cx="0" cy="610" rx="150" ry="26" fill="#000" opacity="0.5"/>
   <g id="${id}-l"><rect x="-70" y="330" width="52" height="270" rx="22" fill="#1d2338"/><rect x="-78" y="580" width="66" height="30" rx="12" fill="#0b0e18"/></g>
   <g id="${id}-r"><rect x="18" y="330" width="52" height="270" rx="22" fill="#232a44"/><rect x="10" y="580" width="66" height="30" rx="12" fill="#0b0e18"/></g>
@@ -89,14 +89,14 @@ const walker = (x: number, y: number, s: number, id: string) => `<g transform="t
   </g>`;
 
 /** Тень инструктора: силуэт по плечи с белыми глазами. */
-const shadow = (x: number, y: number, s: number, id: string) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">
+export const shadow = (x: number, y: number, s: number, id: string) => `<g id="${id}"><g transform="translate(${x} ${y}) scale(${s})">
   ${glow(0, 0, 360, 'gGlowC', 'opacity="0.18"')}
   <path d="M-170 400 Q-190 150 -70 110 L70 110 Q190 150 170 400 Z" fill="#05070e"/><ellipse cx="0" cy="0" rx="96" ry="116" fill="#05070e"/>
   <path d="M-96 -40 Q-90 -130 0 -140 Q90 -130 96 -40 Q60 -80 0 -78 Q-60 -80 -96 -40 Z" fill="#05070e"/>
   <g class="eyes"><ellipse cx="-34" cy="-6" rx="13" ry="9" fill="#f4f1ea"/><ellipse cx="34" cy="-6" rx="13" ry="9" fill="#f4f1ea"/>${glow(-34, -6, 50, 'gGlowW')}${glow(34, -6, 50, 'gGlowW')}</g>
   </g></g>`;
 
-const rule = (n: number, text: string, a: number, b: number) => ({
+export const rule = (n: number, text: string, a: number, b: number) => ({
   t0: a, t1: b,
   html: `<div id="rn${n}">${ruleNote(n, text)}</div>`,
   tweens: (t0: number) => `tl.fromTo('#rn${n}', { opacity: 0, scale: 1.25, rotation: -6, transformOrigin: '400px 300px' }, { opacity: 1, scale: 1, duration: 0.25, ease: 'power3.in' }, ${t0});`,

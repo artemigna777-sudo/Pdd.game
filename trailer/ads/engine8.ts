@@ -49,6 +49,8 @@ export interface Video8 {
   plainFrom?: number;
   /** Номер части в шапке (по умолчанию 1). */
   part?: number;
+  /** Своя метка в шапке вместо «ЧАСТЬ N» (например, «ЛЕГЕНДА №1»). */
+  tag?: string;
 }
 
 export const P = {
@@ -226,7 +228,7 @@ ${shots}
       <div id="tex"></div>
       <div id="vig"></div>
 ${overlays}
-      <div class="clip hud" data-start="0" data-duration="${plain}"><div class="clk"><i id="rec"></i>${clock}</div><div class="part">ЧАСТЬ ${v.part ?? 1}</div></div>
+      <div class="clip hud" data-start="0" data-duration="${plain}"><div class="clk"><i id="rec"></i>${clock}</div><div class="part">${v.tag ?? `ЧАСТЬ ${v.part ?? 1}`}</div></div>
 ${subs}
       <div id="flash"></div>
     </div>

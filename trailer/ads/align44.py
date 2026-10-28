@@ -74,18 +74,18 @@ def align(sentences, words, total):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--recap', nargs='+', required=True)
+    ap.add_argument('--recap', nargs='*', default=[])
     ap.add_argument('--main', nargs='+', required=True)
     ap.add_argument('--id', default='44-noch-doroga-3')
     ap.add_argument('--script', default=str(HERE / 'videos/v44-script.json'))
     ap.add_argument('--timing', default=str(HERE / 'videos/v44-timing.json'))
     a = ap.parse_args()
     script = json.load(open(a.script))
-    yr, dr = load(a.recap)
+    yr, dr = load(a.recap) if a.recap else (np.zeros((0, 2), np.float32), 0.0)
     ym, dm = load(a.main)
-    tr = align(script['recap'], words_of(yr), dr)
+    tr = align(script['recap'], words_of(yr), dr) if a.recap else []
     tm = align(script['main'], words_of(ym), dm)
-    off = round(dr + 0.6, 2)
+    off = round(dr + 0.6, 2) if a.recap else 0.4
     json.dump({'off': off, 'recap': tr, 'main': tm}, open(a.timing, 'w'), ensure_ascii=False)
     y = np.concatenate([yr, np.zeros((int((off - dr) * SR), 2), np.float32), ym])
     out = HERE / 'music' / a.id / 'vo.wav'

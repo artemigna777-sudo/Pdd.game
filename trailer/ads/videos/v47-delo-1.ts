@@ -9,8 +9,8 @@ import { rng, svg, glow, carTop } from '../scenery8.ts';
 import { toWords } from './v44-noch-doroga-3.ts';
 
 /* ---------- Время: страницы стола ---------- */
-const PAGE_T = [0, 3.0, 7.6, 12.6, 17.8, 22.0, 26.6];
-const END = 32.5;
+const PAGE_T = [0, 3.6, 8.8, 14.2, 20.2, 26.2, 32.2];
+const END = 42.4;
 const PAGE_H = 1700;
 const pageY = (k: number) => 960 + k * PAGE_H;
 const MOVE = 0.8;
@@ -179,13 +179,13 @@ const shots: Shot8[] = [
 
 /* ---------- Подписи улик (вместо озвучки) ---------- */
 const caps = [
-  [0.5, 2.8, 'Кто *виноват* в аварии?'],
-  [3.4, 7.2, 'Улика 1. Перекрёсток. Светофор. Две машины.'],
-  [8.0, 12.2, 'А: «Ехал на жёлтый». Б: «Мне горел *зелёный*».'],
-  [13.0, 17.4, 'Улика 2. Регистратор: жёлтый за *60 метров*.'],
-  [18.2, 21.6, 'Тормозной путь на 40 км/ч — около *20 метров*.'],
-  [22.4, 26.2, 'Виноват *А*. Пункт 6.2: жёлтый — это *«стой»*.'],
-  [27.0, 31.8, 'Больше 80 таких дел — в игре «Курьер ПДД».'],
+  [0.5, 3.2, 'Кто *виноват* в аварии?'],
+  [4.2, 8.4, 'Улика 1. Перекрёсток. Светофор. Две машины.'],
+  [9.6, 14.0, 'А: «Ехал на жёлтый». Б: «Мне горел *зелёный*».'],
+  [15.0, 19.8, 'Улика 2. Регистратор: жёлтый за *60 метров*.'],
+  [21.0, 25.8, 'Тормозной путь на 40 км/ч — около *20 метров*.'],
+  [27.0, 31.8, 'Виноват *А*. Пункт 6.2: жёлтый — это *«стой»*.'],
+  [33.0, 41.0, 'Больше 80 таких дел — в игре «Курьер ПДД».'],
 ] as const;
 const cw = toWords(caps.map((c) => c[2]), caps.map((c) => [c[0], c[1]] as [number, number]));
 
@@ -203,7 +203,7 @@ export const v47: Video8 = {
       html: `<div style="position:absolute;inset:0;background:radial-gradient(60% 45% at 50% 42%, rgba(255,214,140,0.20), rgba(0,0,0,0) 70%), radial-gradient(90% 70% at 50% 45%, rgba(0,0,0,0) 40%, rgba(5,3,2,0.72) 100%);mix-blend-mode:normal;pointer-events:none"></div>`,
     },
     {
-      t0: 28.4,
+      t0: 36.0,
       t1: END,
       html: `<div id="bio" style="position:absolute;left:150px;right:150px;top:240px;height:120px;border-radius:60px;background:${P.yellow};display:flex;align-items:center;justify-content:center;gap:18px;font-weight:900;font-size:50px;color:#10131f;box-shadow:0 0 50px ${P.yellow}88">ССЫЛКА В БИО <span style="font-size:56px">↗</span></div>`,
       tweens: (t0: number) => `tl.fromTo('#bio', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(2)' }, ${t0});tl.to('#bio', { scale: 1.06, duration: 0.4, yoyo: true, repeat: 3, ease: 'sine.inOut' }, ${t0 + 0.4});`,
@@ -212,5 +212,5 @@ export const v47: Video8 = {
   clock: [[0, 'ПЕРЕКРЁСТОК · 14:32']],
   shakes: [[PAGE_T[5] + 1.65, 16, 0.5]],
   flashes: [[PAGE_T[5] + 1.65, 0.25, 0.3, '#ffffff']],
-  plainFrom: 28.4,
+  plainFrom: 36.0,
 };

@@ -105,4 +105,4 @@ ffmpeg -y -i trailer/ads/out/$id/raw.mp4 -i trailer/ads/out/$id/sfx.wav -map 0:v
 | 24.10.2026 | 36 «139 раз» | https://studio.youtube.com/video/WzgYBupnYh8/edit |
 | 24.10.2026 | 22 Сизиф | https://studio.youtube.com/video/RxMHJh7UCAY/edit |
 | 24.10.2026 | 25 «Титаник» | https://studio.youtube.com/video/UXtk2y0b1Jo/edit |
-| 31.10.2026 | 48 «Фаэтон» (без звука) | https://studio.youtube.com/video/LxLNXI4qeRo/edit |
+| 31.10.2026 | 48 «Фаэтон» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/FGvAQQse0Ek/edit |

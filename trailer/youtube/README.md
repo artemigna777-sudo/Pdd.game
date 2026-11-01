@@ -106,3 +106,4 @@ ffmpeg -y -i trailer/ads/out/$id/raw.mp4 -i trailer/ads/out/$id/sfx.wav -map 0:v
 | 24.10.2026 | 22 Сизиф | https://studio.youtube.com/video/RxMHJh7UCAY/edit |
 | 24.10.2026 | 25 «Титаник» | https://studio.youtube.com/video/UXtk2y0b1Jo/edit |
 | 31.10.2026 | 48 «Фаэтон» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/FGvAQQse0Ek/edit |
+| 01.11.2026 | 49 «Троянский конь» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/2cXeBNlDTPs/edit |

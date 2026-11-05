@@ -628,3 +628,10 @@ https://en.wikipedia.org/wiki/Trojan_Horse. Цифра «10 лет» — по Г
 около 3,5 минуты от удара птиц до посадки, у капитана почти 20 000 часов налёта:
 https://en.wikipedia.org/wiki/US_Airways_Flight_1549, https://en.wikipedia.org/wiki/Sully_Sullenberger.
 Самолёт без названия авиакомпании и логотипов. Сборка: `sh trailer/ads/render.sh 51`.
+
+## Ролик 52 «Фелпс» — та же плоская цветная рисовка (`videos/v52-felps.ts`)
+
+Монтаж и музыка как у 51 (`engine9.ts`, `music/long.wav`, затем `loudnorm=I=-14`). Диалог в комнате: «Позанимаюсь, когда будет настроение» —
+«Фелпс так не думал» — «Пять лет без выходных». История: бассейн, календарь с крестами (день рождения обведён), пьедестал и 23 золота.
+Факты: 23 золота и 28 медалей, около 5 лет без выходных (в источниках 5–6): https://en.wikipedia.org/wiki/Michael_Phelps,
+https://www.dailyathlete.ca/phelps. Сборка: `sh trailer/ads/render.sh 52`.

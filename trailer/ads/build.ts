@@ -43,11 +43,12 @@ import { v49 } from './videos/v49-troya.ts';
 import { v50 } from './videos/v50-odissey.ts';
 import { v51 } from './videos/v51-gudzon.ts';
 import { v52 } from './videos/v52-felps.ts';
+import { v53 } from './videos/v53-bruce.ts';
 import { writeVideo9, type Video9 } from './engine9.ts';
 
 export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20];
 /** Третья серия — формат новых образцов (`engine3.ts`). */
-export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v48, v49, v50];
+export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v48, v49, v50, v53];
 
 const only = process.argv.slice(2);
 for (const v of VIDEOS) {

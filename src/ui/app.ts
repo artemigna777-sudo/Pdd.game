@@ -5,7 +5,7 @@ import { loadMapping, loadQuestions } from '../data/questions.ts';
 import { allAttempts, findAttempt, recordAttempt, summarize } from '../data/ticketHistory.ts';
 import type { Question } from '../data/types.ts';
 import { EXAM_RULES, answerExam, answeredCount, blockOf, checkTime, clock, currentItem, extraCount, goToExam, openItems, phaseItems, skipExam, startExam } from '../exam/exam.ts';
-import { allExams, answeredAt, findExam, recordExam, savedChoices } from '../exam/examHistory.ts';
+import { allExams, answeredAt, findExam, lastAskedMap, markExamAsked, recordExam, savedChoices } from '../exam/examHistory.ts';
 import { setGameActive } from '../game/game.ts';
 import {
   CONTROL_TICKETS,
@@ -1178,7 +1178,9 @@ export class App {
     loadQuestions().then((all) => {
       if (this.route !== route) return;
       const byId = new Map(all.map((q) => [q.id, q]));
-      const s = startExam(all, Date.now());
+      const lastAsked = lastAskedMap();
+      const s = startExam(all, Date.now(), Math.random, lastAsked);
+      markExamAsked(s.items.map((i) => i.id), s.startedAt);
       let selected = -1;
       let lastTick = -1;
       playSound('start');
@@ -1285,7 +1287,7 @@ export class App {
         const item = currentItem(s);
         if (!item || selected < 0) return;
         const before = extraCount(s);
-        answerExam(s, selected, selected === byId.get(item.id)!.correct, all, Date.now());
+        answerExam(s, selected, selected === byId.get(item.id)!.correct, all, Date.now(), Math.random, lastAsked);
         if (s.outcome) return finish();
         const added = extraCount(s) - before;
         if (added > 0) {

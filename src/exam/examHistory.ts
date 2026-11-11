@@ -72,6 +72,29 @@ export function recordExam(attempt: ExamAttempt): ExamAttempt {
   return attempt;
 }
 
+const ASKED_KEY = 'pdd-game:exam-asked';
+
+/**
+ * Когда каждый вопрос в последний раз попадал в экзамен: по истории и по начатым экзаменам (брошенный экзамен тоже
+ * показал вопросы, поэтому они не должны выпасть снова сразу).
+ */
+export function lastAskedMap(): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const a of all()) for (const id of a.items) map.set(id, Math.max(map.get(id) ?? 0, a.at));
+  const raw = load<unknown>(ASKED_KEY, {});
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+    for (const [id, at] of Object.entries(raw as Record<string, unknown>)) if (isInt(at, 0)) map.set(id, Math.max(map.get(id) ?? 0, at));
+  }
+  return map;
+}
+
+/** Запомнить, что вопросы показаны в экзамене, начатом в момент `now`. */
+export function markExamAsked(ids: readonly string[], now: number): void {
+  const map = lastAskedMap();
+  for (const id of ids) map.set(id, now);
+  save(ASKED_KEY, Object.fromEntries(map));
+}
+
 /** Для тестов: забыть копию в памяти. */
 export function resetExamCache(): void {
   memory = undefined;

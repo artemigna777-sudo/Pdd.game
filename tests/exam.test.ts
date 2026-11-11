@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { EXAM_RULES, answerExam, answeredCount, blockOf, checkTime, clock, currentItem, extraCount, goToExam, mainMistakes, openItems, skipExam, startExam, type ExamState } from '../src/exam/exam.ts';
+import { EXAM_RULES, answerExam, answeredCount, blockOf, checkTime, clock, currentItem, extraCount, goToExam, mainMistakes, openItems, skipExam, startExam, type ExamState, type LastAsked } from '../src/exam/exam.ts';
 import { EXAM_HISTORY_LIMIT, allExams, answeredAt, findExam, recordExam, sanitizeExams, savedChoices, type ExamAttempt } from '../src/exam/examHistory.ts';
 
 interface Q {
@@ -202,4 +202,37 @@ test('история экзаменов: проверка данных, уник
   for (let i = 0; i < EXAM_HISTORY_LIMIT; i++) recordExam({ ...good, at: 5000 + i });
   assert.equal(allExams().length, EXAM_HISTORY_LIMIT);
   assert.equal(findExam(1000), undefined);
+});
+
+test('экзамены подряд не повторяют вопросы: на каждом месте — не раньше чем через 30 экзаменов', () => {
+  const asked = new Map<string, number>();
+  const lastAt: Map<string, number>[] = Array.from({ length: EXAM_RULES.questions }, () => new Map());
+  let previous = new Set<string>();
+  const random = rng(11);
+  for (let exam = 1; exam <= 120; exam++) {
+    const s = startExam(QUESTIONS, T0 + exam * MIN, random, asked as LastAsked);
+    s.items.forEach((item, place) => {
+      const was = lastAt[place].get(item.id);
+      if (was !== undefined) assert.ok(exam - was >= 30, `вопрос ${item.id} на месте ${place + 1}: повтор через ${exam - was} экзаменов`);
+      lastAt[place].set(item.id, exam);
+      asked.set(item.id, T0 + exam * MIN);
+    });
+    const now = new Set(s.items.map((i) => i.id));
+    for (const id of now) assert.ok(!previous.has(id), `вопрос ${id} повторился в соседнем экзамене ${exam}`);
+    previous = now;
+  }
+});
+
+test('без истории экзамен собирается, как раньше: на каждое место — вопрос с тем же номером', () => {
+  const s = startExam(QUESTIONS, T0, rng(5), new Map());
+  s.items.forEach((item, i) => assert.equal(byId.get(item.id)!.number, i + 1));
+});
+
+test('дополнительные вопросы не повторяют основные', () => {
+  const asked = new Map<string, number>();
+  const s = startExam(QUESTIONS, T0, rng(2), asked);
+  for (const it of s.items) asked.set(it.id, T0);
+  play(s, [false, ...Array(19).fill(true)]);
+  const main = new Set(s.items.filter((i) => !i.extra).map((i) => i.id));
+  for (const it of s.items.filter((i) => i.extra)) assert.ok(!main.has(it.id));
 });

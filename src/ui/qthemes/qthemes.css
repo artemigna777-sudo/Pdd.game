@@ -680,7 +680,6 @@
 .qcard .qreceipt__head { font-family: 'Russo One', sans-serif; font-size: 13px; letter-spacing: .05em; }
 .qcard .qreceipt__sum { font-size: 20px; }
 .qcard .qreceipt__note { font-weight: 600; font-size: 12px; color: #5d6a7a; }
-.qcard .explanation .partner-video { color: #1c2430; }
 .qcard--mini { height: 150px; padding: 12px 8px !important; border-radius: 12px !important; pointer-events: none; }
 .qcard--mini > .qcard__body { zoom: .48; }
 .qcard--mini .qmini-bar { display: block; height: 14px; border-radius: 7px; background: currentColor; opacity: .3; }

@@ -4,6 +4,8 @@
  *   npx tsx trailer/youtube/upload.ts <файл.mp4> <описание.json>   — загрузить
  *   npx tsx trailer/youtube/upload.ts --check                       — проверить ключи и показать канал
  *   npx tsx trailer/youtube/upload.ts <файл.mp4> <описание.json> --dry-run — только проверить описание
+ *   npx tsx trailer/youtube/upload.ts --update <описание.json>      — обновить название, описание и теги
+ *                                                                     уже загруженного ролика (поле youtubeId)
  *
  * Ключи — из переменных окружения YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN (см. README.md).
  * Токены нигде не печатаются и не сохраняются в файлы.
@@ -17,7 +19,22 @@ export interface VideoMeta {
   tags?: string[];
   /** Время публикации, ISO 8601 (например 2026-10-25T09:00:00+03:00). Видео до него скрыто. */
   publishAt?: string;
+  /** Номер уже загруженного ролика на YouTube — для --update. */
+  youtubeId?: string;
 }
+
+/**
+ * Хэштеги: в названии — не больше 2, всего — не больше 60 (иначе YouTube игнорирует все), лучше 12–15.
+ * Первые три в описании YouTube показывает над названием, поэтому описание начинается с KEY_HASHTAGS.
+ */
+export const KEY_HASHTAGS = ['#Shorts', '#пдд', '#экзаменгибдд'];
+/** Общие хэштеги по теме — из них берутся 9–10, плюс 1–2 по сюжету ролика. */
+export const TOPIC_HASHTAGS = ['#билетыпдд', '#теорияпдд', '#экзаменпдд', '#пдд2026', '#права', '#водительскиеправа',
+  '#автошкола', '#автошколаонлайн', '#вождение', '#сдатьнаправа', '#начинающийводитель', '#игра', '#обучение', '#лайфхак'];
+/** Теги (поле tags, зрителю не видны): общие + слова хэштегов ролика без решётки. */
+export const BASE_TAGS = ['пдд', 'пдд 2026', 'билеты пдд', 'экзамен гибдд', 'теория пдд', 'автошкола', 'курьер пдд'];
+
+export const hashtagsOf = (text: string): string[] => text.match(/#[\p{L}\p{N}_]+/gu) ?? [];
 
 const GAME_URL = 'https://artemigna777-sudo.github.io/Pdd.game/';
 const CHUNK = 8 * 1024 * 1024; // кусок загрузки, кратен 256 КБ
@@ -30,6 +47,7 @@ export function checkMeta(m: Partial<VideoMeta>): string[] {
     if ([...m.title].length > 100) errors.push(`title длиннее 100 знаков (${[...m.title].length})`);
     if (/[<>]/.test(m.title)) errors.push('в title нельзя < и >');
     if (!/#shorts/i.test(m.title)) errors.push('в title нет #Shorts');
+    if (hashtagsOf(m.title).length > 2) errors.push('в title больше 2 хэштегов — остальные в описание');
   }
   if (typeof m.description !== 'string' || !m.description.trim()) errors.push('нет description');
   else {
@@ -37,6 +55,11 @@ export function checkMeta(m: Partial<VideoMeta>): string[] {
     if (/[<>]/.test(m.description)) errors.push('в description нельзя < и >');
     if (!m.description.includes(GAME_URL) || !m.description.includes('ref=youtube'))
       errors.push(`в description нет ссылки на игру с меткой: ${GAME_URL}?ref=youtube`);
+    const tags = hashtagsOf(m.description);
+    if (KEY_HASHTAGS.some((h, i) => tags[i]?.toLowerCase() !== h.toLowerCase()))
+      errors.push(`description должен начинать хэштеги с ${KEY_HASHTAGS.join(' ')}`);
+    if (tags.length < 10 || tags.length > 20) errors.push(`в description ${tags.length} хэштегов, нужно 10–20 (лучше 12–15)`);
+    if (hashtagsOf(`${m.title ?? ''} ${m.description}`).length > 60) errors.push('больше 60 хэштегов — YouTube проигнорирует все');
   }
   if (m.tags !== undefined) {
     if (!Array.isArray(m.tags) || m.tags.some((t) => typeof t !== 'string')) errors.push('tags — не список строк');
@@ -191,6 +214,16 @@ async function upload(token: string, file: string, meta: VideoMeta): Promise<str
   }
 }
 
+/** Обновить название, описание и теги уже загруженного ролика (videos.update, part=snippet; ~50 единиц лимита). */
+async function update(token: string, id: string, meta: VideoMeta): Promise<void> {
+  const r = await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet', {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ id, snippet: videoResource(meta).snippet }),
+  });
+  if (!r.ok) throw await apiError(r);
+}
+
 /** «bytes=0-1234» → 1235 (сколько байт YouTube уже получил). */
 export function rangeEnd(range: string | null): number {
   const m = range?.match(/bytes=0-(\d+)/);
@@ -202,6 +235,19 @@ async function main() {
   if (args[0] === '--check') {
     const ch = await channel(await accessToken());
     console.log(`Канал: ${ch.title} ${ch.handle} · видео: ${ch.videos}`);
+    return;
+  }
+  if (args[0] === '--update') {
+    const metaFile = args[1];
+    const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as VideoMeta;
+    const errors = checkMeta({ ...meta, publishAt: undefined });
+    if (!meta.youtubeId) errors.push('нет youtubeId — номера ролика на YouTube');
+    if (errors.length) {
+      console.error(`Описание ${metaFile} не подходит:\n- ${errors.join('\n- ')}`);
+      process.exit(1);
+    }
+    await update(await accessToken(), meta.youtubeId!, meta);
+    console.log(`Обновлено: https://studio.youtube.com/video/${meta.youtubeId}/edit`);
     return;
   }
   const [file, metaFile] = args.filter((a) => !a.startsWith('--'));

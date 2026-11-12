@@ -69,14 +69,29 @@ function byNumber(questions: readonly ExamSource[]): Map<number, ExamSource[]> {
 
 const pick = <T>(items: readonly T[], rnd: () => number): T => items[Math.min(items.length - 1, Math.floor(rnd() * items.length))];
 
+/** Когда вопрос задавали в последний раз (мс); вопроса, которого не было, в карте нет. */
+export type LastAsked = ReadonlyMap<string, number>;
+
+/**
+ * Случайный вопрос из тех, что не выпадали дольше всего. Берётся старейшая четверть кандидатов (не меньше одного),
+ * а ещё не заданные вопросы идут раньше всех: пока не выпали все 40, ни один не повторяется.
+ */
+export function pickFresh<T extends { id: string }>(candidates: readonly T[], rnd: () => number, lastAsked?: LastAsked): T {
+  if (!lastAsked || candidates.length < 2) return pick(candidates, rnd);
+  const age = (q: T) => lastAsked.get(q.id) ?? -1;
+  const sorted = [...candidates].sort((a, b) => age(a) - age(b));
+  const limit = age(sorted[Math.max(0, Math.ceil(sorted.length / 4) - 1)]);
+  return pick(sorted.filter((q) => age(q) <= limit), rnd);
+}
+
 /** Начать экзамен: 20 вопросов, на каждое место — вопрос с тем же номером из случайного билета. */
-export function startExam(questions: readonly ExamSource[], now: number, rnd: () => number = Math.random): ExamState {
+export function startExam(questions: readonly ExamSource[], now: number, rnd: () => number = Math.random, lastAsked?: LastAsked): ExamState {
   const pool = byNumber(questions);
   const items: ExamItem[] = [];
   for (let n = 1; n <= EXAM_RULES.questions; n++) {
     const candidates = pool.get(n);
     if (!candidates?.length) throw new Error(`Нет вопросов с номером ${n}`);
-    items.push({ id: pick(candidates, rnd).id, block: blockOf(n), extra: false });
+    items.push({ id: pickFresh(candidates, rnd, lastAsked).id, block: blockOf(n), extra: false });
   }
   return { items, results: items.map(() => undefined), chosen: items.map(() => undefined), cursor: 0, startedAt: now, deadline: now + EXAM_RULES.minutes * MINUTE };
 }
@@ -134,7 +149,7 @@ export function checkTime(s: ExamState, now: number): boolean {
  * Ответ на текущий вопрос. Сразу решает, что дальше: следующий вопрос, дополнительные вопросы
  * или конец экзамена.
  */
-export function answerExam(s: ExamState, chosen: number, correct: boolean, questions: readonly ExamSource[], now: number, rnd: () => number = Math.random): ExamState {
+export function answerExam(s: ExamState, chosen: number, correct: boolean, questions: readonly ExamSource[], now: number, rnd: () => number = Math.random, lastAsked?: LastAsked): ExamState {
   if (checkTime(s, now) || s.outcome) return s;
   const at = s.cursor;
   const item = s.items[at];
@@ -171,7 +186,7 @@ export function answerExam(s: ExamState, chosen: number, correct: boolean, quest
       const number = block * EXAM_RULES.blockSize + 1 + (k % EXAM_RULES.blockSize);
       const candidates = (pool.get(number) ?? []).filter((q) => !used.has(q.id));
       if (!candidates.length) continue;
-      const q = pick(candidates, rnd);
+      const q = pickFresh(candidates, rnd, lastAsked);
       used.add(q.id);
       s.items.push({ id: q.id, block, extra: true });
       s.results.push(undefined);

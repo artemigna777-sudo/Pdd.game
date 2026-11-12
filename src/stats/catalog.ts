@@ -43,9 +43,6 @@ export const EVENTS: readonly (readonly [name: string, title: string])[] = [
   ['plan-date', 'Указали дату экзамена'],
   ['real-exam-pass', 'Сдали экзамен в ГИБДД'],
   ['real-exam-fail', 'Не сдали экзамен в ГИБДД'],
-  ['partner-video', 'Видеоразбор партнёра: открыли'],
-  ['partner-course', 'Курс партнёра: перешли'],
-  ['partner-locked', 'Закрытый разбор: перешли к курсу'],
   ['board-name', 'Таблица лидеров: ввели своё имя'],
 ];
 

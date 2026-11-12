@@ -37,6 +37,20 @@ npx tsx trailer/youtube/upload.ts <ролик.mp4> <описание.json> --dry
 - Видео загружается в категорию «Образование», язык — русский, «не для детей».
 - Тест: `tests/youtube.test.ts` проверяет и все описания в `meta/`.
 
+## Хэштеги и теги (правило Артёма, 24.10.2026)
+
+- **В названии** — не больше 2 хэштегов: `… #пдд #Shorts`.
+- **В конце описания** — 12–15 хэштегов одной строкой. Первые три всегда `#Shorts #пдд #экзаменгибдд`
+  (YouTube показывает их над названием), дальше 9 общих по теме (`TOPIC_HASHTAGS` в `upload.ts`):
+  `#билетыпдд #теорияпдд #экзаменпдд #пдд2026 #права #водительскиеправа #автошкола #сдатьнаправа #начинающийводитель`
+  (можно заменять на `#автошколаонлайн #вождение #игра #обучение #лайфхак`), и 1–2 по сюжету ролика
+  (`#икар #мифы`, `#реальнаяистория #упорство`, `#викторина #проверьсебя`…).
+- Больше 60 хэштегов нельзя — YouTube тогда игнорирует все.
+- **Теги** (поле `tags`, зрителю не видны): `BASE_TAGS` (`пдд`, `пдд 2026`, `билеты пдд`, `экзамен гибдд`,
+  `теория пдд`, `автошкола`, `курьер пдд`) + слова хэштегов ролика без решётки.
+- `upload.ts` не загрузит ролик, если правило нарушено. Уже загруженный ролик обновляется так:
+  `npx tsx trailer/youtube/upload.ts --update trailer/youtube/meta/<id>.json` (номер ролика — поле `youtubeId`).
+
 ## Ключи
 
 Переменные окружения (в настройках окружения Claude Code, не в репозитории):
@@ -80,3 +94,17 @@ ffmpeg -y -i trailer/ads/out/$id/raw.mp4 -i trailer/ads/out/$id/sfx.wav -map 0:v
 ```
 
 (`raw.mp4` и `sfx.wav` появляются после `sh trailer/ads/render7.sh <id>` или `render6.sh`.)
+
+## Загружено
+
+| Дата | Ролик | YouTube Studio |
+|---|---|---|
+| 23.10.2026 | 39 «Папа водит 20 лет» | https://studio.youtube.com/video/up4S5pAIIo0/edit |
+| 24.10.2026 | 34 «950 попыток» | https://studio.youtube.com/video/cKJMpt3Cjh4/edit |
+| 24.10.2026 | 21 «Сегодня теория» (Икар) | https://studio.youtube.com/video/pDOkejiRpL8/edit |
+| 24.10.2026 | 36 «139 раз» | https://studio.youtube.com/video/WzgYBupnYh8/edit |
+| 24.10.2026 | 22 Сизиф | https://studio.youtube.com/video/RxMHJh7UCAY/edit |
+| 24.10.2026 | 25 «Титаник» | https://studio.youtube.com/video/UXtk2y0b1Jo/edit |
+| 31.10.2026 | 48 «Фаэтон» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/FGvAQQse0Ek/edit |
+| 01.11.2026 | 49 «Троянский конь» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/2cXeBNlDTPs/edit |
+| 02.11.2026 | 50 «Одиссей и сирены» (с музыкой, −14 LUFS) | https://studio.youtube.com/video/HmWwjQCyVvs/edit |

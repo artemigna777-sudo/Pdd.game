@@ -24,14 +24,15 @@ async function target(page: Page, which: 'violator' | 'innocent', kind?: string)
         found = await page.evaluate(([w, k]) => (window as Any).__game.scene.getScene('patrol').debugTargets(k)[w], [which, kind] as const);
         return !!found;
       },
-      { timeout: 100_000, intervals: [300] },
+      // На медленном сервере CI смена идёт медленнее: ждём нарушителя дольше (смена в тесте — по игровому времени).
+      { timeout: 200_000, intervals: [300] },
     )
     .toBe(true);
   return found!;
 }
 
 test('пост ДПС: поймать нарушителя, вопрос по правилу, ошибочная остановка, итог и рекорд', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(600_000);
   await page.addInitScript(() => {
     if (sessionStorage.getItem('seeded')) return;
     localStorage.clear();

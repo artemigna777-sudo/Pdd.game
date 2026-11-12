@@ -38,10 +38,20 @@ import { v27 } from './videos/v27-ariadna.ts';
 import { v28 } from './videos/v28-damokl.ts';
 import { v29 } from './videos/v29-gretel.ts';
 import { v30 } from './videos/v30-uzel.ts';
+import { v48 } from './videos/v48-faeton.ts';
+import { v49 } from './videos/v49-troya.ts';
+import { v50 } from './videos/v50-odissey.ts';
+import { v51 } from './videos/v51-gudzon.ts';
+import { v52 } from './videos/v52-felps.ts';
+import { v53 } from './videos/v53-bruce.ts';
+import { v54 } from './videos/v54-linkoln.ts';
+import { v55 } from './videos/v55-dyson.ts';
+import { v56 } from './videos/v56-jordan.ts';
+import { writeVideo9, type Video9 } from './engine9.ts';
 
 export const VIDEOS: Video[] = [v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20];
 /** Третья серия — формат новых образцов (`engine3.ts`). */
-export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30];
+export const VIDEOS3: Video3[] = [v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v48, v49, v50, v53, v54, v55, v56];
 
 const only = process.argv.slice(2);
 for (const v of VIDEOS) {
@@ -51,4 +61,11 @@ for (const v of VIDEOS) {
 for (const v of VIDEOS3) {
   if (only.length && !only.some((n) => v.id.startsWith(n))) continue;
   console.log(`${v.id}: ${writeVideo3(v)}`);
+}
+
+/** Плоская цветная рисовка, монтаж серии 3 (`engine9.ts`). */
+export const VIDEOS9: Video9[] = [v51, v52];
+for (const v of VIDEOS9) {
+  if (only.length && !only.some((n) => v.id.startsWith(n))) continue;
+  console.log(`${v.id}: ${writeVideo9(v)}`);
 }

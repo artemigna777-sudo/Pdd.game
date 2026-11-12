@@ -57,7 +57,7 @@ test('«Ночной рейс»: покупка, выбор, испытание,
 
   const dialog = page.locator('.cutscene:not(.cutscene--modal)');
   await expect(dialog).toContainText('урчит фура Семёна', SLOW);
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await dialog.getByRole('button', { name: 'Поспите час — я подожду' }).tap();
   while (await dialog.count()) {
     await dialog.locator('.btn--primary:visible').first().tap();
@@ -107,7 +107,7 @@ test('«Ночной рейс»: последний шаг — концовка 
   }
   expect(await passTrial(page)).toBe(6);
   await expect(dialog).toContainText('Дальнобойщик и штурман спасли водителя');
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await expect(page.locator('#toast')).toContainText('Открыта концовка «Ночные ангелы»');
   await expect(page.locator('.tale-summary')).toContainText('Верных ответов: 31 из 35');
   await expect(page.locator('[data-ending="angel"]')).toHaveClass(/is-open/);
@@ -134,7 +134,7 @@ test('«Дело о перевёрнутом знаке»: в магазине �
   await card.getByRole('button', { name: 'Играть' }).tap();
   const dialog = page.locator('.cutscene:not(.cutscene--modal)');
   await expect(dialog).toContainText('Звонок с незнакомого номера', SLOW);
-  await page.getByRole('button', { name: 'Пропустить' }).tap();
+  await page.getByRole('button', { name: 'Пропустить', exact: true }).tap();
   await dialog.getByRole('button', { name: 'Сфотографировать знак и перекрёсток' }).tap();
   while (await dialog.count()) {
     await dialog.locator('.btn--primary:visible').first().tap();

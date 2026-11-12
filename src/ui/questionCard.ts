@@ -3,7 +3,6 @@ import { EXPLANATIONS_SOURCE } from '../config.ts';
 import { imageUrl } from '../data/questions.ts';
 import type { Question } from '../data/types.ts';
 import { el } from './dom.ts';
-import { partnerBlock } from './partnerVideo.ts';
 import { answerThemed, currentQTheme, dressCard, revealThemed } from './qthemes/index.ts';
 
 export interface AnswerResult {
@@ -132,12 +131,6 @@ export function renderQuestionCard(
           el('a', { href: EXPLANATIONS_SOURCE.url, target: '_blank', rel: 'noopener' }, EXPLANATIONS_SOURCE.name),
         ),
       );
-      explanation.hidden = false;
-    }
-    // Ошибка в билете с видеоразбором партнёра — кнопка «Смотреть разбор» под пояснением.
-    const video = isCorrect ? undefined : partnerBlock(question);
-    if (video) {
-      explanation.append(video);
       explanation.hidden = false;
     }
   }
